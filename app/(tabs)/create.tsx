@@ -1,0 +1,196 @@
+// app/(tabs)/create.tsx
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  ScrollView,
+  ActivityIndicator,
+  Image,
+} from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import {API} from "../../lib/api";
+import { router} from "expo-router"
+import * as ImageManipulator from "expo-image-manipulator"
+
+export default function CreateListingScreen() {
+  const [title, setTitle] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [price, setPrice] = useState("");
+  const [contactInfo, setContactInfo] = useState("");
+  const [description, setDescription] = useState("");
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const pickImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Please allow photo access.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+     if (!result.canceled) {
+      const uri = result.assets[0].uri;
+
+      const manipulated = await ImageManipulator.manipulateAsync(
+       uri,
+       [],
+       { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+  );
+
+  setImageUri(manipulated.uri);
+}
+
+  };
+
+  const handleSubmit = async () => {
+  if (!title || !price || !city || !state || !contactInfo) {
+    Alert.alert(
+      "Missing fields",
+      "Title, Price, City, State, Contact are required."
+    );
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const payload = {
+      title: title.trim(),
+      price: Number(price),
+      city: city.trim(),
+      state: state.trim(),
+      contact_info: contactInfo.trim(), // 👈 مهم
+      description: description?.trim() || "",
+    };
+
+    console.log("CREATE LISTING PAYLOAD:", payload);
+
+    const listing = await API.createListing(payload);
+    console.log("CREATE LISTING RESPONSE:", listing);
+
+    if (!listing?.id) {
+      throw new Error("Listing created but no id returned.");
+    }
+
+    if (imageUri) {
+  try {
+    console.log("UPLOADING IMAGE:", imageUri);
+    const uploadRes = await API.uploadListingImage(listing.id, imageUri);
+    console.log("UPLOAD IMAGE RESPONSE:", uploadRes);
+  } catch (e: any) {
+    console.log("UPLOAD IMAGE ERROR:", e?.response?.data || e?.message || e);
+    Alert.alert("Image Upload Error", "Check terminal logs (UPLOAD IMAGE ERROR).");
+  }
+}
+
+
+    Alert.alert("Success", "Listing created!");
+
+    router.replace({
+      pathname: "/(tabs)/explore",
+      params: { refresh: String(Date.now()) },
+    });
+
+  } catch (err: any) {
+    console.log("CREATE LISTING ERROR:", err?.response?.data || err);
+    Alert.alert("Error", "Check terminal logs.");
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16, backgroundColor: "#fff" }}>
+      <Text style={{ fontSize: 24, fontWeight: "800", marginBottom: 12 }}>Create Listing</Text>
+
+      <TextInput
+        value={title}
+        onChangeText={setTitle}
+        placeholder="Title"
+        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10 }}
+      />
+
+      <TextInput
+        value={price}
+        onChangeText={setPrice}
+        placeholder="Price"
+        keyboardType="numeric"
+        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10 }}
+      />
+
+      <TextInput
+        value={city}
+        onChangeText={setCity}
+        placeholder="City"
+        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10 }}
+      />
+
+      <TextInput
+        value={state}
+        onChangeText={setState}
+        placeholder="State"
+        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10 }}
+      />
+
+      <TextInput
+        value={contactInfo}
+        onChangeText={setContactInfo}
+        placeholder="Contact Info (phone/email)"
+        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10 }}
+      />
+
+      <TextInput
+        value={description}
+        onChangeText={setDescription}
+        placeholder="Description (optional)"
+        multiline
+        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10, height: 90 }}
+      />
+
+      <TouchableOpacity
+        onPress={pickImage}
+        style={{
+          borderWidth: 1,
+          padding: 12,
+          borderRadius: 10,
+          marginBottom: 10,
+          alignItems: "center",
+        }}
+      >
+        <Text>{imageUri ? "Change Image" : "Pick Image"}</Text>
+      </TouchableOpacity>
+
+      {imageUri ? (
+        <Image
+          source={{ uri: imageUri }}
+          style={{ width: "100%", height: 220, borderRadius: 12, marginBottom: 12 }}
+          resizeMode="cover"
+        />
+      ) : null}
+
+      <TouchableOpacity
+        onPress={handleSubmit}
+        disabled={loading}
+        style={{
+          backgroundColor: "black",
+          padding: 14,
+          borderRadius: 12,
+          alignItems: "center",
+          opacity: loading ? 0.6 : 1,
+        }}
+      >
+        {loading ? <ActivityIndicator /> : <Text style={{ color: "white", fontWeight: "800" }}>Submit</Text>}
+      </TouchableOpacity>
+    </ScrollView>
+  );
+}

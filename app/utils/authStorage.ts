@@ -1,40 +1,41 @@
 // app/utils/authStorage.ts
-import * as SecureStore from 'expo-secure-store';
 
-const ACCESS_TOKEN_KEY = 'accessToken';
-const REFRESH_TOKEN_KEY = 'refreshToken';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// ذخیره کردن توکن‌ها
-export async function saveTokens(accessToken: string, refreshToken: string) {
+const TOKEN_KEY = "authTokens";
+
+export type AuthTokens = {
+  access: string;
+  refresh?: string;
+};
+
+async function storeTokens(tokens: AuthTokens) {
   try {
-    await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken);
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
-    console.log('✅ Tokens saved in SecureStore');
+    await AsyncStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
   } catch (error) {
-    console.log('❌ Error saving tokens', error);
+    console.log("Error storing auth tokens:", error);
   }
 }
 
-// گرفتن توکن‌ها
-export async function getTokens() {
+async function getTokens(): Promise<AuthTokens | null> {
   try {
-    const accessToken = await SecureStore.getItemAsync(ACCESS_TOKEN_KEY);
-    const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
-    console.log('📥 Tokens loaded from SecureStore');
-    return { accessToken, refreshToken };
+    const value = await AsyncStorage.getItem(TOKEN_KEY);
+    if (!value) return null;
+    return JSON.parse(value) as AuthTokens;
   } catch (error) {
-    console.log('❌ Error loading tokens', error);
-    return { accessToken: null, refreshToken: null };
+    console.log("Error getting auth tokens:", error);
+    return null;
   }
 }
 
-// پاک کردن توکن‌ها (برای Logout)
-export async function clearTokens() {
+async function clearTokens() {
   try {
-    await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-    console.log('🗑️ Tokens removed from SecureStore');
+    await AsyncStorage.removeItem(TOKEN_KEY);
   } catch (error) {
-    console.log('❌ Error removing tokens', error);
+    console.log("Error clearing auth tokens:", error);
   }
 }
+
+const authStorage = { storeTokens, getTokens, clearTokens };
+
+export default authStorage;

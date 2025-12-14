@@ -1,42 +1,48 @@
-// app/(tabs)/_layout.tsx
-import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 
-export default function TabsLayout() {
+// app/_layout.tsx
+import React from "react";
+import { Stack } from "expo-router";
+
+export default function RootLayout() {
   return (
-    <Tabs screenOptions={{ headerTitleAlign: "center" }}>
-      {/* Home tab */}
-      <Tabs.Screen
-        name="index"
+    <Stack
+      initialRouteName="login"
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      {/* صفحه لاگین (اولین صفحه) */}
+      <Stack.Screen
+        name="login"
         options={{
-          title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" color={color} size={size} />
-          ),
+          title: "Login",
         }}
       />
 
-      {/* Explore tab (لیست آگهی‌ها بعداً) */}
-      <Tabs.Screen
-        name="explore"
+      {/* صفحه ثبت‌نام */}
+      <Stack.Screen
+        name="register"
         options={{
-          title: "Explore",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="paper-plane-outline" color={color} size={size} />
-          ),
+          title: "Register",
         }}
       />
 
-      {/* Profile tab جدید */}
-      <Tabs.Screen
-        name="profile"
+      {/* هر مودالی که خود Expo گذاشته بود */}
+      <Stack.Screen
+        name="modal"
         options={{
-          title: "Profile",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-circle-outline" color={color} size={size} />
-          ),
+          presentation: "modal",
+          title: "Modal",
         }}
       />
-    </Tabs>
+
+      {/* استک تب‌ها */}
+      <Stack.Screen
+        name="(tabs)"
+        options={{
+          headerShown: false,
+        }}
+      />
+    </Stack>
   );
 }
