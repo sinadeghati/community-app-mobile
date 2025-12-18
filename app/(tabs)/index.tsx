@@ -1,5 +1,5 @@
 // app/(tabs)/index.tsx
-
+import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -21,8 +21,9 @@ import authStorage from "../utils/authStorage";
 const API_LOGIN = "http://10.9.50.123:8000/api/accounts/login/";
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState<string>("admin");
-  const [password, setPassword] = useState<string>("admin123");
+  const router =useRouter();
+  const [username, setUsername] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
 
@@ -71,7 +72,10 @@ export default function LoginScreen() {
 
       if (response.ok) {
         await authStorage.storeTokens(data);
-        Alert.alert("Success", "You logged in successfully! 😎");
+        const check = await authStorage.getTokens();
+        console.log("AFTER LOGIN stored tokens:", check);
+        router.replace("/(tabs)/explore");
+        return;
       } else {
         console.log("LOGIN ERROR RESPONSE BODY:", data);
         Alert.alert(
@@ -142,6 +146,19 @@ export default function LoginScreen() {
                   <Text style={styles.buttonText}>Login</Text>
                 )}
               </TouchableOpacity>
+
+              <Text
+  style={{
+    marginTop: 12,
+    textAlign: "center",
+    color: "#007AFF",
+    fontSize: 14,
+  }}
+  onPress={() => router.push("/register")}
+>
+  Create account
+</Text>
+
 
               <Text style={styles.infoText}>
                 You don’t need to log in to browse listings. Just use the{" "}

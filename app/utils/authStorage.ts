@@ -2,7 +2,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const TOKEN_KEY = "authTokens";
+const TOKEN_KEY = "authTokens_v2";
 
 export type AuthTokens = {
   access: string;
@@ -20,13 +20,14 @@ async function storeTokens(tokens: AuthTokens) {
 async function getTokens(): Promise<AuthTokens | null> {
   try {
     const value = await AsyncStorage.getItem(TOKEN_KEY);
-    if (!value) return null;
+    if (!value) return null;   // 👈 این خط باید !value باشه
     return JSON.parse(value) as AuthTokens;
   } catch (error) {
     console.log("Error getting auth tokens:", error);
     return null;
   }
 }
+
 
 async function clearTokens() {
   try {

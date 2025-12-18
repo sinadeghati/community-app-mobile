@@ -11,7 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 
 // آدرس سرور Django — آدرس لپ‌تاپ خودت
-const REGISTER_URL = 'http://192.168.1.4:8000/api/auth/register/';
+const REGISTER_URL = 'http://10.9.50.123:8000/api/accounts/register/';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -23,47 +23,65 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    if (!username || !email || !password || !confirmPassword) {
-      Alert.alert('Missing information', 'Please fill in all fields.');
-      return;
-    }
+  if (!username || !email || !password || !confirmPassword) {
+    Alert.alert("Missing information", "Please fill in all fields.");
+    return;
+  }
 
-    if (password !== confirmPassword) {
-      Alert.alert('Password mismatch', 'Passwords do not match.');
-      return;
-    }
+  if (password !== confirmPassword) {
+    Alert.alert("Password mismatch", "Passwords do not match.");
+    return;
+  }
 
-    setLoading(true);
+  setLoading(true);
 
+  try {
+    const payload = {
+      username,
+      email,
+      password,
+      password2: confirmPassword, // خیلی مهم
+    };
+
+    console.log("REGISTER URL:", REGISTER_URL);
+    console.log("REGISTER PAYLOAD:", payload);
+
+    const res = await fetch(REGISTER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const raw = await res.text();
+    console.log("REGISTER STATUS:", res.status);
+    console.log("REGISTER RAW:", raw);
+
+    let data: any = {};
     try {
-      const response = await fetch(REGISTER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password }),
-      });
-
-      const data = await response.json();
-      console.log('REGISTER RESPONSE:', data);
-
-      if (!response.ok) {
-        Alert.alert('Registration failed', data.detail || JSON.stringify(data));
-        setLoading(false);
-        return;
-      }
-
-      Alert.alert('Success!', 'Your account has been created.', [
-        {
-          text: 'OK',
-          onPress: () => router.replace('/'),
-        },
-      ]);
-    } catch (err) {
-      console.log(err);
-      Alert.alert('Error', 'Something went wrong. Try again.');
-    } finally {
-      setLoading(false);
+      data = JSON.parse(raw);
+    } catch {
+      Alert.alert("Error", "Server did not return JSON");
+      return;
     }
-  };
+
+    if (!res.ok) {
+      Alert.alert("Error", JSON.stringify(data));
+      return;
+    }
+
+    Alert.alert("Success", "Account created!");
+    router.back();
+  } catch (e) {
+    console.log("REGISTER ERROR:", e);
+    Alert.alert("Error", "Network request failed");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <View style={styles.container}>

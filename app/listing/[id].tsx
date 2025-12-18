@@ -1,7 +1,7 @@
 // app/listing/[id].tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, Image, ActivityIndicator, ScrollView } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { View, Text, StyleSheet, Image, ActivityIndicator, ScrollView, Alert, Button } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { API } from "../../lib/api"; // اگر مسیرت فرق دارد، فقط همین import را مطابق پروژه‌ات کن
 
@@ -28,6 +28,7 @@ export default function ListingDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   // برای اینکه عکس کامل نمایش داده شود (بدون crop)
   const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
@@ -134,6 +135,85 @@ export default function ListingDetails() {
         <Text style={{ marginTop: 10, fontSize: 20, fontWeight: "700" }}>
           ${listing?.price}
         </Text>
+        <View style={{ marginTop: 12 }}>
+          <View style={{ marginTop: 12 }}>
+  <Button
+    title="Edit Listing"
+    onPress={() => {
+      const listingId = listing?.id;
+      if (!listingId) {
+        Alert.alert("Error", "Listing id is missing");
+        return;
+      }
+      router.push({
+        pathname: "/listing/edit",
+        params: { id: String(listingId) },
+      } as any);
+    }}
+    />
+
+    <Button
+  title="View Profile"
+  onPress={() => {
+    const profileId =
+      (listing as any)?.user_id ??
+      (listing as any)?.owner_id ??
+      (listing as any)?.user?.id;
+
+    if (!profileId) {
+      Alert.alert("Error", "Profile id is missing");
+      return;
+    }
+
+    router.push({
+      pathname: "/profile/[id]",
+      params: { id: String(profileId) },
+    } as any);
+  }}
+/>
+
+  
+</View>
+
+  <Button
+    title="Delete Listing"
+    color="red"
+    onPress={() => {
+      Alert.alert(
+        "Delete listing?",
+        "This action cannot be undone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                const id = listing?.id;
+                if (!id == null) {
+                  Alert.alert("Error", "Listing id is missing");
+                 return;
+                }
+                 await API.deleteListing(id);
+
+                router.replace({
+  pathname: "/(tabs)/explore",
+  params: { refresh: String(Date.now()) },
+} as any);
+
+              } catch (e: any) {
+                Alert.alert("Error", e?.message || "Delete failed");
+              }
+            },
+          },
+        ]
+      );
+    }}
+  />
+</View>
+
+
+
 
         {/* DESCRIPTION */}
 {listing?.description ? (

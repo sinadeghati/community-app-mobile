@@ -40,6 +40,8 @@ export default function ExploreScreen() {
     item?.images?.[0]?.image ||
     null;
 
+  
+
   return (
     <TouchableOpacity
       onPress={() => router.push(`/listing/${item.id}`)}
@@ -81,6 +83,13 @@ export default function ExploreScreen() {
         <Text style={{ fontWeight: "700", fontSize: 18 }}>{item?.title}</Text>
         <Text style={{ color: "#666" }}>
           {item?.city}, {item?.state}
+          <Text style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
+  {item?.posted_days_ago === 0
+    ? "Today"
+    : `Posted ${item?.posted_days_ago} day${item?.posted_days_ago > 1 ? "s" : ""} ago`}
+</Text>
+
+        
         </Text>
         <Text style={{ fontWeight: "800", fontSize: 22, marginTop: 6 }}>
           ${Number(item?.price || 0).toFixed(2)}
@@ -114,11 +123,19 @@ export default function ExploreScreen() {
       ) : null}
 
       <FlatList
-        data={listings}
-        keyExtractor={(item, idx) => String(item?.id ?? idx)}
-        renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 30 }}
-      />
+  data={listings}
+  keyExtractor={(item, idx) => String(item?.id ?? idx)}
+  renderItem={renderItem}
+  contentContainerStyle={{ paddingBottom: 30 }}
+  ListEmptyComponent={
+    !loading && !error ? (
+      <Text style={{ marginTop: 20, color: "#888" }}>
+        No listings yet.
+      </Text>
+    ) : null
+  }
+/>
+
     </View>
   );
 }

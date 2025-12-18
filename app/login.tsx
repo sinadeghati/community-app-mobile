@@ -1,4 +1,5 @@
 // app/login.tsx
+import { Link } from "expo-router";
 import React, { useState } from "react";
 import {
   View,
@@ -37,7 +38,7 @@ export default function LoginScreen() {
       await authStorage.storeTokens(response.data);
 
       Alert.alert("Success", "Logged in successfully!");
-      router.replace("/tabs"); // بعد از لاگین برو توی تب‌ها
+      router.replace("/(tabs)"); // بعد از لاگین برو توی تب‌ها
 
     } catch (error: any) {
       console.log("LOGIN ERROR OBJECT:", error);
@@ -83,6 +84,17 @@ export default function LoginScreen() {
           <Text style={styles.buttonText}>Login</Text>
         )}
       </TouchableOpacity>
+      <Text
+  style={{
+    marginTop: 16,
+    textAlign: "center",
+    color: "#007AFF",
+  }}
+  onPress={() => router.push("/register")}
+>
+  Create account
+</Text>
+
     </View>
   );
 }

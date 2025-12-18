@@ -31,10 +31,28 @@ export const API = {
     return res.data;
   },
 
+  async getListing(id: number | string) {
+  const res = await client.get(`/listings/${id}/`);
+  return res.data;
+},
+
+
   async createListing(payload: any) {
     const res = await client.post("/listings/", payload);
     return res.data;
   },
+
+  deleteListing: async (id: number) => {
+  await client.delete(`/listings/${id}/`);
+  return true;
+  },
+
+  updateListing: async (id: number, payload: any) => {
+  const res = await client.patch(`/listings/${id}/`, payload);
+  return res.data;
+},
+
+
 
   async uploadListingImage(listingId: number | string, imageUri: string) {
   const formData = new FormData();
