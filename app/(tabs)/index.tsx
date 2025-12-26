@@ -18,7 +18,7 @@ import {
 import authStorage from "../utils/authStorage";
 
 // 🔴 فقط این آدرس را وقتی IP عوض شد تغییر بده
-const API_LOGIN = "http://10.9.50.123:8000/api/accounts/login/";
+const API_LOGIN = "http://10.9.50.156:8000/api/accounts/login/";
 
 export default function LoginScreen() {
   const router =useRouter();

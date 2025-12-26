@@ -4,7 +4,7 @@ import authStorage from "../utils/authStorage";
 import { useRouter } from "expo-router";
 
 
-const PROFILE_URL = "http://10.9.50.123:8000/api/accounts/profile/";
+const PROFILE_URL = "http://10.9.50.156:8000/api/accounts/profile/";
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<any>(null);

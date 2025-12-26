@@ -51,24 +51,50 @@ export default function CreateListingScreen() {
 
   };
 
+  const toEnglishDigits = (s: string) =>
+  s
+    .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+
+
   const handleSubmit = async () => {
-  if (!title || !price || !city || !state || !contactInfo) {
-    Alert.alert(
-      "Missing fields",
-      "Title, Price, City, State, Contact are required."
-    );
-    return;
-  }
+  
+  
 
   setLoading(true);
 
   try {
+    const cleanTitle = String(title ?? "").trim();
+    const cleanCity = String(city ?? "").trim();
+    const cleanState = String(state ?? "").trim();
+    const cleanContact = String(contactInfo ?? "").trim();
+
+    if (!cleanTitle || !cleanCity || !cleanState || !cleanContact) {
+  Alert.alert("Missing fields", "Title, City, State, Contact are required.");
+  setLoading(false);
+  return;
+}
+
+    const cleanPrice = toEnglishDigits(String(price)).trim();
+    const numericPrice = Number(cleanPrice);
+
+    if (!cleanPrice || isNaN(numericPrice) || numericPrice <= 0) {
+     Alert.alert("Invalid price", "Please enter a valid price.");
+     setLoading(false);
+    return;
+}
+
+console.log("STATE DEBUG:", { state, cleanState });
+
+
+
+
     const payload = {
-      title: title.trim(),
-      price: Number(price),
-      city: city.trim(),
-      state: state.trim(),
-      contact_info: contactInfo.trim(), // 👈 مهم
+      title: cleanTitle,
+      price: numericPrice,
+      city: cleanCity,
+      state: cleanState,
+      contact_info: cleanContact,
       description: description?.trim() || "",
     };
 

@@ -264,7 +264,7 @@ export default function ListingDetails() {
 function API_BASE() {
   // اگر در api.ts BASE_URL داری، بهتره همون را import کنی.
   // اینجا فقط برای اینکه فایل مستقل باشد.
-  return "http://10.9.50.123:8000/api";
+  return "http://10.9.50.156:8000/api";
 }
 
 const styles = StyleSheet.create({

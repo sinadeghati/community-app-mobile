@@ -11,7 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 
 // آدرس سرور Django — آدرس لپ‌تاپ خودت
-const REGISTER_URL = 'http://10.9.50.123:8000/api/accounts/register/';
+const REGISTER_URL = 'http://10.9.50.156:8000/api/accounts/register/';
 
 export default function RegisterScreen() {
   const router = useRouter();

@@ -1,16 +1,20 @@
 // app/(tabs)/mylistings.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { View, Text, FlatList, ActivityIndicator, Alert, Image, TouchableOpacity,StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import authStorage from "../utils/authStorage";
 import { Pressable } from "react-native";
+import {API} from "../../lib/api"
+import { useFocusEffect } from "@react-navigation/native";
+
 
 
 // مثل همون login، همین IP رو نگه دار
-const BASE_URL = "http://10.9.50.123:8000";
+const BASE_URL = "http://10.9.50.156:8000";
 
 // اگر endpoint شما فرق داشت، فقط همین یک خط رو عوض می‌کنیم
 const MY_LISTINGS_URL = `${BASE_URL}/api/my-listing/`;
+const LISTINGS_URL = '${BASE_URL}/api/listings/';
 
 export default function MyListingsScreen() {
   const router = useRouter();
@@ -18,13 +22,52 @@ export default function MyListingsScreen() {
   const [loading, setLoading] = useState(true);
   const isEmpty = !loading && (!items || items.length === 0);
 
+
+//1.ADD DeleteListing
+
+ const deleteListing = async (id: number) => {
+  console.log("DELETE CLICKED ID =", id);
+
+  try {
+    const res = await API.deleteListing(id);
+    console.log("DELETE RES =", res);
+
+    setItems(prev => prev.filter(item => item.id !== id));
+    console.log("DELETE SUCCESS");
+  } catch (err: any) {
+    console.log("DELETE ERROR STATUS =", err?.response?.status);
+    console.log("DELETE ERROR DATA =", err?.response?.data);
+    console.log("DELETE ERROR URL =", err?.config?.url);
+    Alert.alert("Error", "Delete failed");
+  }
+};
+
+
+
+  // 2.confirmDelete
+  const confirmDelete = (id: number) => {
+  Alert.alert(
+    "Delete listing",
+    "Are you sure you want to delete this listing?",
+    [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => deleteListing(id) },
+    ]
+  );
+};
+
+  
+
+
+//3.renderItem
+
     const renderItem = ({ item }: { item: any }) => {
     const img = item?.image_url || item?.image || null;
 
     return (
       <TouchableOpacity
         style={styles.card}
-        onPress={() => router.push(`/listing/${item.id}`)}
+        onPress={() => router.push(`/listing/edit/${item.id}`)}
         activeOpacity={0.85}
       >
         <View style={styles.cardRow}>
@@ -34,6 +77,7 @@ export default function MyListingsScreen() {
             <View style={styles.imagePlaceholder}>
               <Text style={styles.imagePlaceholderText}>No Image</Text>
             </View>
+            
           )}
 
           <View style={styles.cardBody}>
@@ -58,6 +102,23 @@ export default function MyListingsScreen() {
                 <Text style={styles.age}> </Text>
               )}
             </View>
+
+            <View style={styles.actionsRow}>
+  <TouchableOpacity
+    style={styles.editBtn}
+    onPress={() => router.push(`/listing/edit?id=${item.id}`)}
+  >
+    <Text style={styles.editBtnText}>Edit</Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    style={styles.deleteBtn}
+    onPress={() => confirmDelete(item.id)}
+  >
+    <Text style={styles.deleteBtnText}>Delete</Text>
+  </TouchableOpacity>
+</View>
+
           </View>
         </View>
       </TouchableOpacity>
@@ -65,7 +126,7 @@ export default function MyListingsScreen() {
   };
 
 
-  useEffect(() => {
+  
     
     const load = async () => {
       try {
@@ -82,26 +143,15 @@ export default function MyListingsScreen() {
 
         console.log("MYLISTINGS fetching:", MY_LISTINGS_URL);
 
-        const res = await fetch(MY_LISTINGS_URL, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${access}`,
-          },
-        });
+        console.log("MYLISTINGS fetching via API.getMyListings()");
 
-        const data = await res.json();
-        console.log("MYLISTINGS status:", res.status);
+        const data = await API.getMyListings();
+
         console.log("MYLISTINGS data:", data);
 
-        if (!res.ok) {
-          Alert.alert("Error", data?.detail || "Could not load your listings.");
-          setItems([]);
-          return;
-        }
-
-        // ساپورت هم array مستقیم، هم pagination (results)
-        const list = Array.isArray(data) ? data : (data?.results ?? []);
-        setItems(Array.isArray(list) ? list : []);
+         const list = Array.isArray(data) ? data : (data?.results ?? []);
+         setItems(Array.isArray(list) ? list : []);
+ 
       } catch (e: any) {
         console.log("MYLISTINGS exception:", e);
         Alert.alert("Error", "Network error loading your listings.");
@@ -111,8 +161,16 @@ export default function MyListingsScreen() {
       }
     };
 
+    useFocusEffect(
+  React.useCallback(() => {
+    setLoading(true);
     load();
-  }, []);
+  }, [])
+);
+
+
+  
+  
 
   if (loading) {
     return (
@@ -144,7 +202,7 @@ export default function MyListingsScreen() {
   );
 }
 
-//stale sheet Air&B
+//stale sheet Aib&b
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
 
@@ -191,5 +249,35 @@ const styles = StyleSheet.create({
   price: { fontWeight: "700", fontSize: 14 },
 
   age: { color: "#666", fontSize: 12 },
+actionsRow: {
+  flexDirection: "row",
+  gap: 10,
+  marginTop: 10,
+},
+
+editBtn: {
+  paddingVertical: 8,
+  paddingHorizontal: 12,
+  borderRadius: 10,
+  backgroundColor: "#f1f5f9",
+},
+
+editBtnText: {
+  fontWeight: "700",
+},
+
+deleteBtn: {
+  paddingVertical: 8,
+  paddingHorizontal: 12,
+  borderRadius: 10,
+  backgroundColor: "#fee2e2",
+},
+
+deleteBtnText: {
+  fontWeight: "700",
+},
+
+
+
 });
 

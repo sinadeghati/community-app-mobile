@@ -2,7 +2,7 @@
 import axios from "axios";
 import authStorage from "../app/utils/authStorage"; // اگر مسیرت فرق دارد، فقط همین یک خط را اصلاح کن
 
-const BASE_URL = "http://10.9.50.123:8000/api"; // همون IP که تو لاگ‌ها داری
+const BASE_URL = "http://10.9.50.156:8000/api"; // همون IP که تو لاگ‌ها داری
 
 const client = axios.create({
   baseURL: BASE_URL,
@@ -11,14 +11,20 @@ const client = axios.create({
 
 client.interceptors.request.use(async (config) => {
   try {
-    const token = await authStorage.getToken();
-    if (token) {
+    const tokens = await authStorage.getTokens();
+    const access = tokens?.access;
+
+    if (access) {
       config.headers = config.headers ?? {};
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${access.trim()}`;
+      
+      console.log("AUTH HEADER >>>", config.headers.Authorization);
     }
   } catch (e) {}
+
   return config;
 });
+
 
 export const API = {
   async login(username: string, password: string) {
@@ -42,15 +48,26 @@ export const API = {
     return res.data;
   },
 
-  deleteListing: async (id: number) => {
-  await client.delete(`/listings/${id}/`);
-  return true;
-  },
+ 
 
   updateListing: async (id: number, payload: any) => {
-  const res = await client.patch(`/listings/${id}/`, payload);
+    console.log("PATCH URL:", '/my-listing/${id}/' , payload);
+    const res = await client.patch(`/my-listing/${id}/`, payload);
+    return res.data;
+},
+
+deleteListing: async (id: number) => {
+  console.log("DELETE URL:", ' /my-listing/${id}/');
+  await client.delete(`/my-listing/${id}/`);
+  return true;
+},
+
+getMyListings: async () => {
+  const res = await client.get("/my-listing/");
   return res.data;
 },
+
+
 
 
 
@@ -83,5 +100,11 @@ export const API = {
 
   return res.data;
 },
+
+async deleteListing(id: number) {
+  const res = await client.delete(`/my-listing/${id}/`);
+  return res.data;
+},
+
 
 };
