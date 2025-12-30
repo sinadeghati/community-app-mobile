@@ -71,28 +71,37 @@ export default function ProfileScreen() {
     loadProfile();
   }, []);
 
-  if (loading) return <ActivityIndicator size="large" />;
+  
 
-  return (
-    <View style={{ padding: 20 }}>
-      <Text style={{ fontSize: 22, fontWeight: "700" }}>Profile</Text>
-      <Text style={{ marginTop: 12 }}>Username: {profile?.username}</Text>
-      <Text>Email: {profile?.email}</Text>
-      <TouchableOpacity
-  onPress={handleLogout}
-  style={{
-    marginTop: 24,
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ccc",
-  }}
->
-  <Text style={{ textAlign: "center", fontWeight: "600" }}>
-    Logout
-  </Text>
-</TouchableOpacity>
+ return (
+  <View style={{ padding: 20 }}>
+    {loading ? (
+      <ActivityIndicator size="large" />
+    ) : (
+      <>
+        <Text style={{ fontSize: 22, fontWeight: "700" }}>Profile</Text>
+        <Text style={{ marginTop: 12 }}>
+          Username: {profile?.username}
+        </Text>
+        <Text>Email: {profile?.email}</Text>
 
-    </View>
-  );
+        <TouchableOpacity
+          onPress={handleLogout}
+          style={{
+            marginTop: 24,
+            padding: 14,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: "#ccc",
+          }}
+        >
+          <Text style={{ textAlign: "center", fontWeight: "600" }}>
+            Logout
+          </Text>
+        </TouchableOpacity>
+      </>
+    )}
+  </View>
+);
+
 }

@@ -1,61 +1,69 @@
-// app/utils/authStorage.ts
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Buffer } from "buffer";
 
-const TOKEN_KEY = "authTokens_v2";
+const KEY = "authTokens_v2";
 
-export type AuthTokens = {
+export type Tokens = {
   access: string;
   refresh?: string;
 };
 
-async function storeTokens(tokens: AuthTokens) {
-  try {
-    await AsyncStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
-  } catch (error) {
-    console.log("Error storing auth tokens:", error);
+async function setTokens(tokens: Tokens | null | undefined) {
+  // اگر توکن معتبر نداریم، پاک کن
+  if (!tokens?.access) {
+    await AsyncStorage.removeItem(KEY);
+    return;
   }
+  await AsyncStorage.setItem(KEY, JSON.stringify(tokens));
 }
 
-async function getTokens(): Promise<AuthTokens | null> {
+async function getTokens(): Promise<Tokens | null> {
+  const raw = await AsyncStorage.getItem(KEY);
+  if (!raw) return null;
   try {
-    const value = await AsyncStorage.getItem(TOKEN_KEY);
-    if (!value) return null;   // 👈 این خط باید !value باشه
-    return JSON.parse(value) as AuthTokens;
-  } catch (error) {
-    console.log("Error getting auth tokens:", error);
+    return JSON.parse(raw);
+  } catch {
     return null;
   }
 }
-
-export function getUserIdFromAccessToken(
-  access?: string | null
-): number | null {
-  try {
-    if (!access) return null;
-
-    const payload = access.split(".")[1];
-    const decoded = JSON.parse(
-      atob(payload.replace(/-/g, "+").replace(/_/g, "/"))
-    );
-
-    return decoded.user_id ?? decoded.id ?? null;
-  } catch (e) {
-    console.log("Failed to decode access token", e);
-    return null;
-  }
-}
-
-
 
 async function clearTokens() {
+  await AsyncStorage.removeItem(KEY);
+}
+
+// ✅ این تابع فقط همینجا و فقط یک بار تعریف بشه
+function getUserIdFromAccessToken(accessToken?: string | null): number | null {
   try {
-    await AsyncStorage.removeItem(TOKEN_KEY);
-  } catch (error) {
-    console.log("Error clearing auth tokens:", error);
+    if (!accessToken) return null;
+
+    const parts = accessToken.split(".");
+    if (parts.length < 2) return null;
+
+    // base64url -> base64
+    let payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = payload.length % 4;
+    if (pad) payload += "=".repeat(4 - pad);
+
+    const jsonStr = Buffer.from(payload, "base64").toString("utf8");
+    const data = JSON.parse(jsonStr);
+
+    // بعضی JWT ها user_id دارن، بعضی id
+    const uid = data.user_id ?? data.id;
+    return typeof uid === "number" ? uid : Number(uid) || null;
+  } catch {
+    return null;
   }
 }
 
-const authStorage = { storeTokens, getTokens, clearTokens };
+// برای سازگاری با کد قبلی (login.tsx و ...)
+async function storeTokens(tokens: Tokens | null | undefined) {
+  return setTokens(tokens);
+}
 
-export default authStorage;
+export default {
+  setTokens,
+  storeTokens,
+  getTokens,
+  clearTokens,
+  getUserIdFromAccessToken, // ✅ حتما داخل default export باشه
+};

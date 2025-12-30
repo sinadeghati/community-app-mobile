@@ -2,10 +2,20 @@
 import React, { useEffect, useState } from "react";
 import { Tabs, useRouter } from "expo-router";
 import authStorage from "../utils/authStorage";
+import { useSegments } from "expo-router";
 
 export default function TabLayout() {
   const router = useRouter();
+  const segments = useSegments();
   const [checking, setChecking] = useState(true);
+  // 🚫 if we are on login/register, DO NOT run tabs guard
+const isAuthScreen =
+  segments[0] === "login" || segments[0] === "register";
+
+if (isAuthScreen) {
+  return null;
+}
+
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -16,8 +26,9 @@ export default function TabLayout() {
         const access = tokens?.access;
 
         if (!access) {
-          console.log("TABS GUARD -> NO ACCESS, but wait (no redirect yet");
-          
+          console.log("TABS GUARD -> NO ACCESS, redirect to login");
+          setChecking(false);
+          router.replace("/login");
           return;
         }
 

@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { API } from "../../lib/api"; // اگر مسیرت فرق دارد، فقط همین import را مطابق پروژه‌ات کن
 import authStorage from "../utils/authStorage";
-import { getUserIdFromAccessToken } from "../utils/authStorage";
+
 
 type ListingImage = {
   id: number;
@@ -39,8 +39,8 @@ export default function ListingDetails() {
 useEffect(() => {
   const loadUser = async () => {
     const tokens = await authStorage.getTokens();
-    const uid = getUserIdFromAccessToken(tokens?.access);
-    setMyUserId(uid);
+    const uid = authStorage.getUserIdFromAccessToken(tokens?.access);
+    setMyUserId;
   };
   loadUser();
 }, []);
@@ -134,6 +134,42 @@ const isOwner =
   return (
   <SafeAreaView style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+      {isOwner && (
+  <View style={{ padding: 16, gap: 12 }}>
+    <Button
+      title="Edit Listing"
+      onPress={() => {
+        router.push({
+          pathname: "/listing/edit",
+          params: { id: String(listing?.id) },
+        } as any);
+      }}
+    />
+
+    <Button
+      title="Delete Listing"
+      color="red"
+      onPress={() => {
+        Alert.alert(
+          "Delete listing",
+          "Are you sure?",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: () => {
+                // بعداً API delete اینجا صدا زده میشه
+                console.log("delete", listing?.id);
+              },
+            },
+          ]
+        );
+      }}
+    />
+  </View>
+)}
+
       {/* IMAGE */}
       {firstImageUrl ? (
   <View style={{ width: "100%", height: 320, backgroundColor: "#000" }}>
@@ -167,52 +203,11 @@ const isOwner =
         <Text style={{ marginTop: 10, fontSize: 20, fontWeight: "700" }}>
           ${listing?.price}
         </Text>
+        <Text>MyUserId: {String(MyUserId)}</Text>
+        <Text>listingOwnerId: {String(listingOwnerId)}</Text>
+        <Text>isOwner: {String(isOwner)}</Text>
         
-         {isOwner ? (
-  <View style={{ marginTop: 16 }}>
-    <Button
-      title="Edit Listing"
-      onPress={() => {
-        const listingId = listing?.id;
-        if (!listingId) {
-          Alert.alert("Error", "Listing id is missing");
-          return;
-        }
-
-        router.push({
-          pathname: "/listing/edit",
-          params: { id: String(listingId) },
-        } as any);
-      }}
-    />
-
-    <Button
-      title="View Profile"
-      onPress={() => {}}
-    />
-
-    <Button
-      title="Delete Listing"
-      color="red"
-      onPress={() => {
-        Alert.alert(
-          "Delete listing?",
-          "This action cannot be undone.",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Delete",
-              style: "destructive",
-              onPress: async () => {
-                console.log("DELETE CONFIRMED");
-              },
-            },
-          ]
-        );
-      }}
-    />
-  </View>
-) : null}
+    
 
 
 

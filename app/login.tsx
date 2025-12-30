@@ -28,6 +28,7 @@ export default function LoginScreen() {
 
     try {
       setLoading(true);
+      console.log("LOGIN.TSX VERSION: 2025-12-29 A");
 
       console.log("SENDING LOGIN TO BACKEND...", { username, password });
 
@@ -35,10 +36,19 @@ export default function LoginScreen() {
 
       console.log("LOGIN RESPONSE DATA:", response.data);
 
-      await authStorage.storeTokens(response.data);
+      
+
+     const tokens = response?.data ?? response;
+
+     if (!tokens?.access) {
+       console.log("LOGIN ERROR: token missing access", tokens);
+       Alert.alert("ERROR", "Login response did not include tokens.");
+       return;
+     }
+     await authStorage.setTokens(tokens);
 
       Alert.alert("Success", "Logged in successfully!");
-      router.replace("/(tabs)"); // بعد از لاگین برو توی تب‌ها
+      router.replace("/(tabs)/explore"); // بعد از لاگین برو توی تب‌ها
 
     } catch (error: any) {
       console.log("LOGIN ERROR OBJECT:", error);

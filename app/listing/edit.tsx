@@ -13,6 +13,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { API } from "../../lib/api";
 
+
 export default function EditListing() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -81,10 +82,7 @@ export default function EditListing() {
       await API.updateListing(id, payload);
 
       // برگرد به Details همون آگهی + refresh
-      router.replace({
-        pathname: "/listing/[id]",
-        params: { id: String(id), refresh: String(Date.now()) },
-      } as any);
+     router.replace("/(tabs)/mylistings");
     } catch (e: any) {
       Alert.alert("Error", e?.message || "Update failed");
     } finally {
