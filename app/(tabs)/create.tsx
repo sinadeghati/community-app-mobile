@@ -14,6 +14,8 @@ import * as ImagePicker from "expo-image-picker";
 import {API} from "../../lib/api";
 import { router} from "expo-router"
 import * as ImageManipulator from "expo-image-manipulator"
+import { useLocalSearchParams } from "expo-router";
+import { useEffect } from "react";
 
 export default function CreateListingScreen() {
   const [title, setTitle] = useState("");
@@ -24,6 +26,41 @@ export default function CreateListingScreen() {
   const [description, setDescription] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const routeParams = useLocalSearchParams();
+const idParam = routeParams.id;
+
+const editId =
+  typeof idParam === "string" ? idParam :
+  Array.isArray(idParam) ? idParam[0] :
+  undefined;
+
+const isEdit = !!editId;
+
+    useEffect(() => {
+    const loadForEdit = async () => {
+      if (!isEdit) return;
+
+      try {
+        const listing = await API.getListing(Number(editId));
+
+        setTitle(listing.title ?? "");
+        setCity(listing.city ?? "");
+        setState(listing.state ?? "");
+        setPrice(String(listing.price ?? ""));
+        setContactInfo(listing.contact_info ?? "");
+        setDescription(listing.description ?? "");
+
+        // اگر بعداً خواستی عکس قدیمی رو نشون بدی:
+        // setImageUri(listing.image_url ?? null);
+      } catch (e) {
+        console.log("EDIT load failed:", e);
+        Alert.alert("Error", "Could not load listing for edit");
+      }
+    };
+
+    loadForEdit();
+  }, [editId]);
+
 
   const pickImage = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -55,6 +92,11 @@ export default function CreateListingScreen() {
   s
     .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
     .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+
+    const params = useLocalSearchParams();
+
+   
+
 
 
   const handleSubmit = async () => {
@@ -100,7 +142,15 @@ console.log("STATE DEBUG:", { state, cleanState });
 
     console.log("CREATE LISTING PAYLOAD:", payload);
 
-    const listing = await API.createListing(payload);
+    let listing;
+
+if (isEdit && editId) {
+  console.log("UPDATING LISTING ID:", editId);
+  listing = await API.updateMyListing(Number(editId), payload);
+} else {
+  listing = await API.createListing(payload);
+}
+
     console.log("CREATE LISTING RESPONSE:", listing);
 
     if (!listing?.id) {
@@ -119,12 +169,15 @@ console.log("STATE DEBUG:", { state, cleanState });
 }
 
 
-    Alert.alert("Success", "Listing created!");
+  router.replace({
+  pathname: "/(tabs)/explore",
+  params: { refresh: String(Date.now()) },
+});
 
-    router.replace({
-      pathname: "/(tabs)/explore",
-      params: { refresh: String(Date.now()) },
-    });
+
+
+return;
+
 
   } catch (err: any) {
     console.log("CREATE LISTING ERROR:", err?.response?.data || err);

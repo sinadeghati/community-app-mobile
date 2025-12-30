@@ -28,6 +28,25 @@ async function getTokens(): Promise<AuthTokens | null> {
   }
 }
 
+export function getUserIdFromAccessToken(
+  access?: string | null
+): number | null {
+  try {
+    if (!access) return null;
+
+    const payload = access.split(".")[1];
+    const decoded = JSON.parse(
+      atob(payload.replace(/-/g, "+").replace(/_/g, "/"))
+    );
+
+    return decoded.user_id ?? decoded.id ?? null;
+  } catch (e) {
+    console.log("Failed to decode access token", e);
+    return null;
+  }
+}
+
+
 
 async function clearTokens() {
   try {

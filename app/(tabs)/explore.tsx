@@ -1,9 +1,12 @@
 // app/(tabs)/explore.tsx
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, Image, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, Text, FlatList, Image, ActivityIndicator, TouchableOpacity,ScrollView, StyleSheet } from "react-native";
 import {API} from "../../lib/api";
 import { useLocalSearchParams } from "expo-router";
 import { router} from "expo-router"
+import { useFocusEffect } from "expo-router";
+import { useCallback } from "react";
+
 
 
 type Listing = any;
@@ -13,6 +16,20 @@ export default function ExploreScreen() {
   const [loading, setLoading] = useState(true);
   const [listings, setListings] = useState<Listing[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const [selectedCategory, setSelectedCategory] = useState("all");
+
+
+  const CATEGORIES = [
+  { key: "all", label: "All", icon: "🧭" },
+  { key: "rent", label: "Rent", icon: "🏠" },
+  { key: "job", label: "Jobs", icon: "💼" },
+  { key: "service", label: "Services", icon: "🛠️" },
+  { key: "food", label: "Food", icon: "🍲" },
+  { key: "beauty", label: "Beauty", icon: "💅" },
+  { key: "auto", label: "Auto", icon: "🚗" },
+];
+
 
   const load = async () => {
     try {
@@ -27,9 +44,26 @@ export default function ExploreScreen() {
     }
   };
 
-  useEffect(() => {
+  useFocusEffect(
+  useCallback(() => {
     load();
-  }, [refresh]);
+  }, [refresh])
+);
+
+const filteredListings =
+  selectedCategory === "all"
+    ? listings
+    : listings.filter((item: any) => {
+        const c =
+          (item?.category ||
+            item?.listing_type ||
+            item?.type ||
+            item?.service_type ||
+            "") + "";
+        return c.toLowerCase() === selectedCategory.toLowerCase();
+      });
+
+
 
   const renderItem = ({ item }: { item: any }) => {
   const imageUrl =
@@ -112,6 +146,7 @@ export default function ExploreScreen() {
   }
 
   return (
+    
     <View style={{ flex: 1, padding: 16, backgroundColor: "#fff" }}>
       <Text style={{ fontSize: 28, fontWeight: "800", marginBottom: 12 }}>Explore Listings</Text>
 
@@ -123,7 +158,35 @@ export default function ExploreScreen() {
       ) : null}
 
       <FlatList
-  data={listings}
+  data={CATEGORIES}
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  keyExtractor={(item) => item.key}
+  style={{ marginBottom: 12 }}
+  renderItem={({ item }) => {
+    const active = selectedCategory === item.key;
+    return (
+      <TouchableOpacity
+        onPress={() => setSelectedCategory(item.key)}
+        style={{
+          paddingVertical: 8,
+          paddingHorizontal: 14,
+          marginRight: 8,
+          borderRadius: 20,
+          backgroundColor: active ? "#000" : "#f2f2f2",
+        }}
+      >
+        <Text style={{ color: active ? "#fff" : "#000", fontWeight: "600" }}>
+          {item.icon} {item.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  }}
+/>
+
+
+      <FlatList
+  data={filteredListings}
   keyExtractor={(item, idx) => String(item?.id ?? idx)}
   renderItem={renderItem}
   contentContainerStyle={{ paddingBottom: 30 }}

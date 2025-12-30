@@ -106,5 +106,11 @@ async deleteListing(id: number) {
   return res.data;
 },
 
+async updateMyListing(id: number, payload: any) {
+  const res = await client.patch(`/my-listing/${id}/`, payload);
+  return res.data;
+},
+
+
 
 };

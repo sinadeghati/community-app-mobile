@@ -42,6 +42,15 @@ export default function MyListingsScreen() {
   }
 };
 
+// 1.5 ADD EditListing  👈 فقط یک کامنت برای نظم
+const editListing = (item: any) => {
+  router.push({
+    pathname: "/(tabs)/create",
+    params: { editId: String(item.id) },
+  });
+};
+
+
 
 
   // 2.confirmDelete
@@ -67,7 +76,11 @@ export default function MyListingsScreen() {
     return (
       <TouchableOpacity
         style={styles.card}
-        onPress={() => router.push(`/listing/edit/${item.id}`)}
+        onPress={() => router.push({
+          pathname: "/(tabs)/create",
+          params: {editId: String(item.id)},
+        })
+      }
         activeOpacity={0.85}
       >
         <View style={styles.cardRow}>

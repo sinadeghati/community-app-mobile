@@ -4,6 +4,8 @@ import { View, Text, StyleSheet, Image, ActivityIndicator, ScrollView, Alert, Bu
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { API } from "../../lib/api"; // اگر مسیرت فرق دارد، فقط همین import را مطابق پروژه‌ات کن
+import authStorage from "../utils/authStorage";
+import { getUserIdFromAccessToken } from "../utils/authStorage";
 
 type ListingImage = {
   id: number;
@@ -14,6 +16,7 @@ type ListingImage = {
 
 type Listing = {
   id: number;
+  user: number | { id: number};
   title: string;
   city: string;
   state: string;
@@ -29,6 +32,35 @@ export default function ListingDetails() {
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const [MyUserId, setMyUserId] = useState<number | null>(null);
+  
+
+
+useEffect(() => {
+  const loadUser = async () => {
+    const tokens = await authStorage.getTokens();
+    const uid = getUserIdFromAccessToken(tokens?.access);
+    setMyUserId(uid);
+  };
+  loadUser();
+}, []);
+
+   const listingUserRaw = (listing as any)?.user;
+
+const listingOwnerId =
+  listingUserRaw == null
+    ? null
+    : typeof listingUserRaw === "object"
+      ? Number(listingUserRaw.id)
+      : Number(listingUserRaw);
+
+const isOwner =
+  MyUserId != null &&
+  listingOwnerId != null &&
+  Number(MyUserId) === Number(listingOwnerId);
+
+  
+
 
   // برای اینکه عکس کامل نمایش داده شود (بدون crop)
   const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
@@ -135,82 +167,52 @@ export default function ListingDetails() {
         <Text style={{ marginTop: 10, fontSize: 20, fontWeight: "700" }}>
           ${listing?.price}
         </Text>
-        <View style={{ marginTop: 12 }}>
-          <View style={{ marginTop: 12 }}>
-  <Button
-    title="Edit Listing"
-    onPress={() => {
-      const listingId = listing?.id;
-      if (!listingId) {
-        Alert.alert("Error", "Listing id is missing");
-        return;
-      }
-      router.push({
-        pathname: "/listing/edit",
-        params: { id: String(listingId) },
-      } as any);
-    }}
+        
+         {isOwner ? (
+  <View style={{ marginTop: 16 }}>
+    <Button
+      title="Edit Listing"
+      onPress={() => {
+        const listingId = listing?.id;
+        if (!listingId) {
+          Alert.alert("Error", "Listing id is missing");
+          return;
+        }
+
+        router.push({
+          pathname: "/listing/edit",
+          params: { id: String(listingId) },
+        } as any);
+      }}
     />
 
     <Button
-  title="View Profile"
-  onPress={() => {
-    const profileId =
-      (listing as any)?.user_id ??
-      (listing as any)?.owner_id ??
-      (listing as any)?.user?.id;
+      title="View Profile"
+      onPress={() => {}}
+    />
 
-    if (!profileId) {
-      Alert.alert("Error", "Profile id is missing");
-      return;
-    }
-
-    router.push({
-      pathname: "/profile/[id]",
-      params: { id: String(profileId) },
-    } as any);
-  }}
-/>
-
-  
-</View>
-
-  <Button
-    title="Delete Listing"
-    color="red"
-    onPress={() => {
-      Alert.alert(
-        "Delete listing?",
-        "This action cannot be undone.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                const id = listing?.id;
-                if (!id == null) {
-                  Alert.alert("Error", "Listing id is missing");
-                 return;
-                }
-                 await API.deleteListing(id);
-
-                router.replace({
-  pathname: "/(tabs)/explore",
-  params: { refresh: String(Date.now()) },
-} as any);
-
-              } catch (e: any) {
-                Alert.alert("Error", e?.message || "Delete failed");
-              }
+    <Button
+      title="Delete Listing"
+      color="red"
+      onPress={() => {
+        Alert.alert(
+          "Delete listing?",
+          "This action cannot be undone.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: async () => {
+                console.log("DELETE CONFIRMED");
+              },
             },
-          },
-        ]
-      );
-    }}
-  />
-</View>
+          ]
+        );
+      }}
+    />
+  </View>
+) : null}
 
 
 
