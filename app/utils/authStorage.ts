@@ -60,10 +60,37 @@ async function storeTokens(tokens: Tokens | null | undefined) {
   return setTokens(tokens);
 }
 
+function isJwtNotExpired(token: string): boolean{
+
+  try{
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return false;
+
+    const payloadJson = atob (
+      payloadPart.replace(/-/g, "+").replace(/_/g,"/")
+    );
+    const payload = JSON.parse(payloadJson);
+
+    const exp = payload?.exp;
+    if (!exp) return true;
+
+    return Date.now() < exp * 1000;
+  } catch{
+    return false;
+  }
+
+  }
+
+
+
+
 export default {
   setTokens,
   storeTokens,
   getTokens,
   clearTokens,
-  getUserIdFromAccessToken, // ✅ حتما داخل default export باشه
+  getUserIdFromAccessToken,
+  isJwtNotExpired,
+
+   // ✅ حتما داخل default export باشه
 };

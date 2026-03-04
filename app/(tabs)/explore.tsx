@@ -6,6 +6,11 @@ import { useLocalSearchParams } from "expo-router";
 import { router} from "expo-router"
 import { useFocusEffect } from "expo-router";
 import { useCallback } from "react";
+import HeroBanner from "../../components/HeroBanner";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import authStorage from "../utils/authStorage";
+
+
 
 
 
@@ -16,8 +21,17 @@ export default function ExploreScreen() {
   const [loading, setLoading] = useState(true);
   const [listings, setListings] = useState<Listing[]>([]);
   const [error, setError] = useState<string | null>(null);
-
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams();
+  const [token, setToken] = useState<string | null>(null);
+    useEffect(() => {
+      authStorage.getTokens().then((tokens) => {
+        setToken(tokens?.access ?? null);
+      });
+    }, []);
+    const isLoggedIn = !!token;
+  
 
 
   const CATEGORIES = [
@@ -73,6 +87,62 @@ const filteredListings =
     item?.images?.[0]?.image_url ||
     item?.images?.[0]?.image ||
     null;
+
+    const ListHeader = () => (
+  <>
+    <Text style={{ fontSize: 28, fontWeight: "800", marginBottom: 12 }}>
+      Explore Listings
+    </Text>
+
+    {!isLoggedIn && (
+      <Text style={{ marginBottom: 10, color: "#666", fontSize: 14 }}>
+        Log in to post and manage your listing
+      </Text>
+    )}
+
+    <View style={{ marginBottom: 12 }}>
+      <HeroBanner />
+    </View>
+
+    {error ? (
+      <TouchableOpacity
+        onPress={load}
+        style={{ padding: 12, borderWidth: 1, marginBottom: 12 }}
+      >
+        <Text style={{ color: "#c00" }}>Error: {String(error)}</Text>
+        <Text style={{ marginTop: 6 }}>Tap to retry</Text>
+      </TouchableOpacity>
+    ) : null}
+
+    <FlatList
+      data={CATEGORIES}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyExtractor={(item) => item.key}
+      contentContainerStyle={{ paddingVertical: 8 }}
+      renderItem={({ item }) => {
+        const active = selectedCategory === item.key;
+        return (
+          <TouchableOpacity
+            onPress={() => setSelectedCategory(item.key)}
+            style={{
+              marginRight: 10,
+              paddingHorizontal: 14,
+              height: 38,
+              borderRadius: 18,
+              justifyContent: "center",
+              borderWidth: 1,
+              opacity: active ? 1 : 0.8,
+            }}
+          >
+            <Text>{item.label}</Text>
+          </TouchableOpacity>
+        );
+      }}
+    />
+  </>
+);
+
 
   
 
@@ -138,17 +208,37 @@ const filteredListings =
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <SafeAreaView style={{ flex: 1,paddingTop: insets.top, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator />
         <Text style={{ marginTop: 10 }}>Loading...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
+  if (!loading && filteredListings.length === 0) {
+    return (
+      <SafeAreaView style={{ flex: 1, paddingTop: insets.top}}>
+        <View style={{ paddingHorizontal: 16 }}>
+
+         <Text style={{ fontSize: 28, fontWeight: "800", marginBottom: 12}}>
+            Explore Listing
+          </Text>
+
+          <Text style={{ color: "#666", fontSize:16}}>
+            No listing yet. But the first to post somthing 
+          </Text>
+          </View>
+          </SafeAreaView>
+    );
+  }
+        
+         
+
   return (
     
-    <View style={{ flex: 1, padding: 16, backgroundColor: "#fff" }}>
-      <Text style={{ fontSize: 28, fontWeight: "800", marginBottom: 12 }}>Explore Listings</Text>
+    <SafeAreaView style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#fff", justifyContent: "flex-start", alignItems: "stretch" }}>
+      
+      
 
       {error ? (
         <TouchableOpacity onPress={load} style={{ padding: 12, borderWidth: 1, borderColor: "#f2c", borderRadius: 10 }}>
@@ -157,48 +247,86 @@ const filteredListings =
         </TouchableOpacity>
       ) : null}
 
-      <FlatList
-  data={CATEGORIES}
-  horizontal
-  showsHorizontalScrollIndicator={false}
-  keyExtractor={(item) => item.key}
-  style={{ marginBottom: 12 }}
-  renderItem={({ item }) => {
-    const active = selectedCategory === item.key;
-    return (
-      <TouchableOpacity
-        onPress={() => setSelectedCategory(item.key)}
-        style={{
-          paddingVertical: 8,
-          paddingHorizontal: 14,
-          marginRight: 8,
-          borderRadius: 20,
-          backgroundColor: active ? "#000" : "#f2f2f2",
-        }}
-      >
-        <Text style={{ color: active ? "#fff" : "#000", fontWeight: "600" }}>
-          {item.icon} {item.label}
-        </Text>
-      </TouchableOpacity>
-    );
-  }}
-/>
+      
 
 
       <FlatList
+  
   data={filteredListings}
   keyExtractor={(item, idx) => String(item?.id ?? idx)}
   renderItem={renderItem}
-  contentContainerStyle={{ paddingBottom: 30 }}
+  ListHeaderComponent={() => (
+  <View style={{ paddingHorizontal: 16 }}>
+    <Text style={{ fontSize: 28, fontWeight: "800", marginBottom: 12 }}>
+      Explore Listings
+    </Text>
+
+    {!isLoggedIn && (
+      <Text style={{ marginBottom: 10, color: "#666", fontSize: 14 }}>
+        Log in to post and manage your listing
+      </Text>
+    )}
+
+    <View style={{ marginBottom: 12 }}>
+      <HeroBanner />
+    </View>
+
+    {error ? (
+      <TouchableOpacity
+        onPress={load}
+        style={{ padding: 12, borderWidth: 1, marginBottom: 12 }}
+      >
+        <Text style={{ color: "#c00" }}>Error</Text>
+        <Text style={{ marginTop: 6 }}>Tap to retry</Text>
+      </TouchableOpacity>
+    ) : null}
+
+    <FlatList
+      data={CATEGORIES}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyExtractor={(item) => item.key}
+      contentContainerStyle={{ paddingVertical: 8 }}
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          onPress={() => setSelectedCategory(item.key)}
+          style={{
+            marginRight: 10,
+            paddingHorizontal: 14,
+            height: 38,
+            borderRadius: 18,
+            justifyContent: "center",
+            borderWidth: 1,
+          }}
+        >
+          <Text>{item.label}</Text>
+        </TouchableOpacity>
+      )}
+    />
+  </View>
+)}
+  contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 30}}
+    
   ListEmptyComponent={
     !loading && !error ? (
-      <Text style={{ marginTop: 20, color: "#888" }}>
-        No listings yet.
-      </Text>
+     <View style={{ padding: 24, alignItems: "center" }}>
+       <Text style={{ fontSize: 18, fontWeight: "700" }}>
+        No listing yet
+        </Text>
+        <Text
+          style={{
+            marginTop: 8,
+            color: "#666",
+            textAlign: "center",
+          }}
+          >
+            Be the first to post. Tap the + button below.
+          </Text>
+          </View>
     ) : null
   }
 />
 
-    </View>
+    </SafeAreaView>
   );
 }

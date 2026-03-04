@@ -2,9 +2,10 @@ import React, { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, Alert,TouchableOpacity } from "react-native";
 import authStorage from "../utils/authStorage";
 import { useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 
-const PROFILE_URL = "http://10.9.50.156:8000/api/accounts/profile/";
+const PROFILE_URL = "http://192.168.1.222:8000/api/accounts/profile/";
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<any>(null);
@@ -74,16 +75,17 @@ export default function ProfileScreen() {
   
 
  return (
-  <View style={{ padding: 20 }}>
+  <SafeAreaView style={{ flex: 1}} edges={["top", "bottom"]}>
+    <View style={{flex: 1, padding: 20}}>
     {loading ? (
       <ActivityIndicator size="large" />
-    ) : (
+    ) : profile ? (
       <>
         <Text style={{ fontSize: 22, fontWeight: "700" }}>Profile</Text>
         <Text style={{ marginTop: 12 }}>
           Username: {profile?.username}
         </Text>
-        <Text>Email: {profile?.email}</Text>
+        <Text>Email: {profile?.email ?? "-"}</Text>
 
         <TouchableOpacity
           onPress={handleLogout}
@@ -100,8 +102,34 @@ export default function ProfileScreen() {
           </Text>
         </TouchableOpacity>
       </>
+    ) : (
+      <>
+        <Text style={{ fontSize: 18, fontWeight: "600"}}>
+          You're not logged in
+        </Text>
+
+        <Text style={{ marginTop: 8, color: "#666"}}>
+          log in to post and manage your listing.
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => router.push("/login")}
+          style={{
+            marginTop: 16,
+            padding: 14,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: "#ccc",
+          }}
+          >
+            <Text style={{ textAlign: "center", fontWeight: "600"}}>
+              Login
+            </Text>
+            </TouchableOpacity>
+            </>
     )}
   </View>
+  </SafeAreaView>
 );
 
 }

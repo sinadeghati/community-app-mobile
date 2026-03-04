@@ -1,26 +1,54 @@
 // app/(tabs)/mylistings.tsx
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, FlatList, ActivityIndicator, Alert, Image, TouchableOpacity,StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import authStorage from "../utils/authStorage";
 import { Pressable } from "react-native";
 import {API} from "../../lib/api"
 import { useFocusEffect } from "@react-navigation/native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 
 
 // مثل همون login، همین IP رو نگه دار
-const BASE_URL = "http://10.9.50.156:8000";
+const BASE_URL = "http://192.168.1.222:8000";
 
 // اگر endpoint شما فرق داشت، فقط همین یک خط رو عوض می‌کنیم
 const MY_LISTINGS_URL = `${BASE_URL}/api/my-listing/`;
 const LISTINGS_URL = '${BASE_URL}/api/listings/';
 
 export default function MyListingsScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const isEmpty = !loading && (!items || items.length === 0);
+
+  const fetchData = useCallback(async () => {
+  const tokens = await authStorage.getTokens();
+  const access = tokens?.access;
+
+  const ok = !!access && authStorage.isJwtNotExpired(access);
+
+  
+
+  try {
+    setLoading(true);
+    const data = await API.getMyListings();
+    setItems(data);
+  } catch (err: any) {
+    console.log("MYLISTINGS fetch error:", err?.response?.status, err?.response?.data);
+    Alert.alert("Error", "Failed to load listings");
+  } finally {
+    setLoading(false);
+  }
+}, [router]);
+
+useFocusEffect(
+  useCallback(() => {
+    fetchData();
+  }, [fetchData])
+);
 
 
 //1.ADD DeleteListing
@@ -71,7 +99,15 @@ const editListing = (item: any) => {
 //3.renderItem
 
     const renderItem = ({ item }: { item: any }) => {
-    const img = item?.image_url || item?.image || null;
+    const img = 
+      item?.images?.[0]?.image_url ||
+      item?.images?.[0]?.image || 
+      item?.image_url || 
+      item?.image ||
+      null;
+
+      console.log("MYLIST item.images:", item?.images);
+      console.log("MYLIST img", img);
 
     return (
       <TouchableOpacity
@@ -174,13 +210,7 @@ const editListing = (item: any) => {
       }
     };
 
-    useFocusEffect(
-  React.useCallback(() => {
-    setLoading(true);
-    load();
-  }, [])
-);
-
+   
 
   
   
@@ -194,10 +224,16 @@ const editListing = (item: any) => {
     );
   }
 
-  
+  const isLoggedIn = true;
   return (
-    <View style={{ flex: 1, padding: 16 }}>
+    <SafeAreaView style={{ flex: 1, padding: 16, paddingTop: insets.top + 8 }}>
       <Text style={{ fontSize: 22, fontWeight: "800", marginBottom: 12 }}>My Listings</Text>
+      
+      {!isLoggedIn && (
+        <Text style={{ marginBottom: 10, color: "#666", fontSize: 14}}>
+          Log in to post and manage your listings.
+        </Text>
+      )}
 
       {items.length === 0 ? (
         <Text>No listings yet.</Text>
@@ -211,7 +247,7 @@ const editListing = (item: any) => {
   />
 )}
 
-    </View>
+  </SafeAreaView>
   );
 }
 

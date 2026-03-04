@@ -9,12 +9,16 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import AppInput from "../components/ui/Applnput";
+import AppButton from '@/components/ui/AppButton';
 
 // آدرس سرور Django — آدرس لپ‌تاپ خودت
-const REGISTER_URL = 'http://10.9.50.156:8000/api/accounts/register/';
+const REGISTER_URL = 'http://192.168.1.222:8000/api/accounts/register/';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -84,50 +88,58 @@ export default function RegisterScreen() {
 
 
   return (
+    <SafeAreaView style={{ flex:1, paddingTop: insets.top, backgroundColor: "#fff"}}>
     <View style={styles.container}>
       <Text style={styles.title}>Create account</Text>
 
-      <TextInput
+      <AppInput
         style={styles.input}
         placeholder="Username"
+        placeholderTextColor="#999"
         autoCapitalize="none"
         value={username}
         onChangeText={setUsername}
       />
 
-      <TextInput
+      <AppInput
         style={styles.input}
         placeholder="Email"
+        placeholderTextColor="#999"
         autoCapitalize="none"
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
       />
 
-      <TextInput
+      <AppInput
         style={styles.input}
         placeholder="Password"
+        placeholderTextColor="#999"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
       />
 
-      <TextInput
+      <AppInput
         style={styles.input}
         placeholder="Confirm password"
+        placeholderTextColor="#999"
         secureTextEntry
         value={confirmPassword}
         onChangeText={setConfirmPassword}
       />
 
-      <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign up</Text>}
-      </TouchableOpacity>
+      <AppButton
+        title="Create account"
+        onPress={handleRegister}
+        loading={loading}
+        />
 
       <TouchableOpacity onPress={() => router.replace('/')}>
         <Text style={styles.link}>Already have an account? Log in</Text>
       </TouchableOpacity>
     </View>
+    </SafeAreaView>
   );
 }
 

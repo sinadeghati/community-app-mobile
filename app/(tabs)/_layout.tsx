@@ -1,59 +1,150 @@
 // app/(tabs)/_layout.tsx
-import React, { useEffect, useState } from "react";
-import { Tabs, useRouter } from "expo-router";
-import authStorage from "../utils/authStorage";
-import { useSegments } from "expo-router";
 
-export default function TabLayout() {
+import { Tabs, useRouter, useFocusEffect, Redirect } from "expo-router";
+import { theme } from "../../lib/theme";
+import React, {useCallback, useState} from "react";
+import  authStorage  from "../utils/authStorage"; // اگر مسیرت فرق داره، همون مسیر واقعی authStorage رو بده
+import { Background } from "@react-navigation/elements";
+import { Ionicons } from "@expo/vector-icons";
+import { TouchableOpacity, View, Platform } from "react-native";
+
+export default function TabsLayout() {
   const router = useRouter();
-  const segments = useSegments();
-  const [checking, setChecking] = useState(true);
-  // 🚫 if we are on login/register, DO NOT run tabs guard
-const isAuthScreen =
-  segments[0] === "login" || segments[0] === "register";
 
-if (isAuthScreen) {
-  return null;
-}
-
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
+  const [isAuthed, setIsAuthed] = useState(false);
+  useFocusEffect(
+    useCallback(()=> {
+      let alive = true;
+      (async () =>{
         const tokens = await authStorage.getTokens();
-        console.log("TABS GUARD tokens:", tokens);
-
         const access = tokens?.access;
 
-        if (!access) {
-          console.log("TABS GUARD -> NO ACCESS, redirect to login");
-          setChecking(false);
-          router.replace("/login");
-          return;
-        }
+        const ok = !!access && authStorage.isJwtNotExpired(access);
+        if (alive) setIsAuthed(ok);
+      })();
+      return () => {
+        alive = false;
+      };
+    }, [])
+  );
+ 
 
-        console.log("TABS GUARD -> OK, stay in tabs");
-      } catch (e) {
-        console.log("TABS GUARD ERROR:", e);
-        router.replace("/login");
-      } finally {
-        setChecking(false);
-      }
-    };
+const guardTab = (target: string) => async (e: any) => {
+  try{
+    const tokens = await authStorage.getTokens();
+    const access = tokens?.access;
+    const ok = !!access && authStorage.isJwtNotExpired(access);
 
-    checkAuth();
-  }, [router]);
-
-  // تا وقتی چک نکردیم، Tabs رو رندر نکن که رفت و برگشت ایجاد نشه
-  if (checking) return null;
+    if (!ok) {
+      e.preventDefault();
+      router.push({
+        pathname: "/login",
+        params: { redirectTo: target},
+      });
+    }
+  } catch {
+    e.preventDefault();
+    router.push({
+      pathname: "/login",
+      params: { redirectTo: target },
+    });
+  }
+};
 
   return (
-    <Tabs>
-      <Tabs.Screen name="index" options={{ title: "Home" }} />
-      <Tabs.Screen name="create" options={{ title: "Post" }} />
-      <Tabs.Screen name="explore" options={{ title: "Explore" }} />
-      <Tabs.Screen name="mylistings" options={{ title: "My Listings" }} />
-      <Tabs.Screen name="profile" options={{ title: "Profile" }} />
+    <Tabs
+    screenOptions={{
+      headerShown: false,
+
+      tabBarActiveTintColor: theme.colors.primary,
+      tabBarInactiveTintColor: theme.colors.muted,
+
+      tabBarStyle: {
+        backgroundColor: theme.colors.card,
+        borderTopColor: theme.colors.border,
+        height: 72,
+        paddingBottom: Platform.OS === "ios" ? 18 :10,
+        paddingTop: 10,
+      },
+    }}
+      >
+      <Tabs.Screen
+        name="index"
+        options={{ title: "Home",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" size={size} color={color} />
+          ),
+         }}
+      />
+
+      <Tabs.Screen
+        name="create"
+        options={{ title: "Post",
+         
+          tabBarButton: (props) => (
+            <TouchableOpacity
+              onPress={props.onPress}
+              accessibilityRole={props.accessibilityRole}
+              accessibilityState={props.accessibilityState}
+              accessibilityLabel={props.accessibilityLabel}
+              testID={props.testID}
+            style={{
+              top: -10,
+              width: 64,
+              height: 64,
+              borderRadius: 32,
+              backgroundColor: theme.colors.primary,
+              alignItems: "center",
+              justifyContent: "center"
+             // shadowColor: "#000",
+              //shadowOpacity: 0.25,
+              //shadowRadius: 4,
+              //shadowOffset: { width: 0, height: 4},
+              //elevation: 6,
+            }}
+            >
+              <Ionicons name="add" size={32} color="#fff" />
+              </TouchableOpacity>
+          ),
+
+         }}
+        listeners={{ tabPress: guardTab("/(tabs)/create")
+
+         }}
+      />
+
+      <Tabs.Screen
+        name="explore"
+        options={{ title: "Explore",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="search-outline" size={size} color={color} />
+          ),
+         }}
+      />
+
+      <Tabs.Screen
+        name="mylistings"
+        options={{ title: "My Listings",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="list-outline" size={size} color={color} />
+          ),
+         }}
+        listeners={{ tabPress: guardTab("/(tabs)/mylistings")
+
+         }}
+      />
+
+      <Tabs.Screen
+        name="profile"
+        options={{ title: "Profile",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-outline" size={size} color={color} />
+          ),
+         }}
+        listeners={{ tabPress: guardTab("/(tabs)/profile")
+
+         }}
+      />
     </Tabs>
   );
 }

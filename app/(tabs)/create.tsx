@@ -16,6 +16,9 @@ import { router} from "expo-router"
 import * as ImageManipulator from "expo-image-manipulator"
 import { useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { Background } from "@react-navigation/elements";
+import { useRouter } from "expo-router";
 
 export default function CreateListingScreen() {
   const [title, setTitle] = useState("");
@@ -26,8 +29,10 @@ export default function CreateListingScreen() {
   const [description, setDescription] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const insets = useSafeAreaInsets();
   const routeParams = useLocalSearchParams();
-const idParam = routeParams.id;
+  const idParam = routeParams.id;
+  const router = useRouter();
 
 const editId =
   typeof idParam === "string" ? idParam :
@@ -168,6 +173,15 @@ if (isEdit && editId) {
   }
 }
 
+setTitle("");
+setPrice("");
+setCity("");
+setState("");
+setContactInfo("");
+setDescription("");
+setImageUri(null);
+
+Alert.alert("Success", "Listing posted successfully");
 
   router.replace({
   pathname: "/(tabs)/explore",
@@ -189,51 +203,58 @@ return;
 
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, backgroundColor: "#fff" }}>
+    <SafeAreaView style={{ flex:1, paddingTop: insets.top }}>
+      <ScrollView contentContainerStyle={{ padding: 16, backgroundColor: "#fff"}}>
       <Text style={{ fontSize: 24, fontWeight: "800", marginBottom: 12 }}>Create Listing</Text>
 
       <TextInput
         value={title}
         onChangeText={setTitle}
         placeholder="Title"
-        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10 }}
+        placeholderTextColor="#999"
+        style={{ borderWidth: 1, borderColor: "#ccc",color: "#111", padding: 12, borderRadius: 10, marginBottom: 10 }}
       />
 
       <TextInput
         value={price}
         onChangeText={setPrice}
         placeholder="Price"
+        placeholderTextColor="#999"
         keyboardType="numeric"
-        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10 }}
+        style={{ borderWidth: 1, borderColor: "#ccc", color: "#111",  padding: 12, borderRadius: 10, marginBottom: 10 }}
       />
 
       <TextInput
         value={city}
         onChangeText={setCity}
         placeholder="City"
-        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10 }}
+        placeholderTextColor="#999"
+        style={{ borderWidth: 1, borderColor: "#ccc", color: "#111", padding: 12, borderRadius: 10, marginBottom: 10 }}
       />
 
       <TextInput
         value={state}
         onChangeText={setState}
         placeholder="State"
-        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10 }}
+        placeholderTextColor="#999"
+        style={{ borderWidth: 1, borderColor: "#ccc", color: "#111" ,  padding: 12,  borderRadius: 10, marginBottom: 10 }}
       />
 
       <TextInput
         value={contactInfo}
         onChangeText={setContactInfo}
         placeholder="Contact Info (phone/email)"
-        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10 }}
+        placeholderTextColor="#999"
+        style={{ borderWidth: 1, borderColor: "#ccc", color: "#111" , padding: 12, borderRadius: 10, marginBottom: 10 }}
       />
 
       <TextInput
         value={description}
         onChangeText={setDescription}
         placeholder="Description (optional)"
+        placeholderTextColor="#999"
         multiline
-        style={{ borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 10, height: 90 }}
+        style={{ borderWidth: 1, borderColor: "#ccc", color: "#111" , padding: 12, borderRadius: 10, marginBottom: 10, height: 90 }}
       />
 
       <TouchableOpacity
@@ -271,5 +292,6 @@ return;
         {loading ? <ActivityIndicator /> : <Text style={{ color: "white", fontWeight: "800" }}>Submit</Text>}
       </TouchableOpacity>
     </ScrollView>
+    </SafeAreaView>
   );
 }

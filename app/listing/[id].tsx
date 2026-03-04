@@ -203,9 +203,7 @@ const isOwner =
         <Text style={{ marginTop: 10, fontSize: 20, fontWeight: "700" }}>
           ${listing?.price}
         </Text>
-        <Text>MyUserId: {String(MyUserId)}</Text>
-        <Text>listingOwnerId: {String(listingOwnerId)}</Text>
-        <Text>isOwner: {String(isOwner)}</Text>
+        
         
     
 
@@ -261,7 +259,7 @@ const isOwner =
 function API_BASE() {
   // اگر در api.ts BASE_URL داری، بهتره همون را import کنی.
   // اینجا فقط برای اینکه فایل مستقل باشد.
-  return "http://10.9.50.156:8000/api";
+  return "http://192.168.1.222:8000/api";
 }
 
 const styles = StyleSheet.create({

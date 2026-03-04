@@ -1,5 +1,5 @@
 // app/(tabs)/index.tsx
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -16,12 +16,14 @@ import {
   TouchableWithoutFeedback,
 } from "react-native";
 import authStorage from "../utils/authStorage";
+import AppButton from "@/components/ui/AppButton";
 
 // 🔴 فقط این آدرس را وقتی IP عوض شد تغییر بده
-const API_LOGIN = "http://10.9.50.156:8000/api/accounts/login/";
+const API_LOGIN = "http://192.168.1.222:8000/api/accounts/login/";
 
 export default function LoginScreen() {
-  const router =useRouter();
+  const router = useRouter();
+  const params = useLocalSearchParams();
   const [username, setUsername] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
@@ -74,7 +76,12 @@ export default function LoginScreen() {
         await authStorage.storeTokens(data);
         const check = await authStorage.getTokens();
         console.log("AFTER LOGIN stored tokens:", check);
-        router.replace("/(tabs)/explore");
+        const goToMyListings = params?.redirectTo === "/(tabs)/mylistings";
+        if (goToMyListings) {
+          router.replace("/(tabs)/mylistings");
+        } else {
+          router.replace("/(tabs)/explore");
+        }
         return;
       } else {
         console.log("LOGIN ERROR RESPONSE BODY:", data);
@@ -135,17 +142,11 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
               />
 
-              <TouchableOpacity
-                style={styles.button}
+              <AppButton
+                title="Login"
                 onPress={handleLogin}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.buttonText}>Login</Text>
-                )}
-              </TouchableOpacity>
+                loading={loading}
+                />
 
               <Text
   style={{

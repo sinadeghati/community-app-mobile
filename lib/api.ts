@@ -2,7 +2,7 @@
 import axios from "axios";
 import authStorage from "../app/utils/authStorage"; // اگر مسیرت فرق دارد، فقط همین یک خط را اصلاح کن
 
-const BASE_URL = "http://10.9.50.156:8000/api"; // همون IP که تو لاگ‌ها داری
+const BASE_URL = "http://192.168.1.222:8000/api"; // همون IP که تو لاگ‌ها داری
 
 const client = axios.create({
   baseURL: BASE_URL,
@@ -14,12 +14,19 @@ client.interceptors.request.use(async (config) => {
     const tokens = await authStorage.getTokens();
     const access = tokens?.access;
 
-    if (access) {
-      config.headers = config.headers ?? {};
-      config.headers.Authorization = `Bearer ${access.trim()}`;
-      
-      console.log("AUTH HEADER >>>", config.headers.Authorization);
+    if (!access) {
+      if (config.headers) delete (config.headers as any).Authorization;
+      return config;
     }
+    if (!authStorage.isJwtNotExpired(access)){
+      if (config.headers) delete (config.headers as any).Authorization;
+      return config;
+    }
+    config.headers = config.headers ?? {};
+    (config.headers as any).Authorization = `Bearer ${access.trim()}`;
+    console.log("Auth HEADER >>>", (config.headers as any).Authorization);
+  
+  
   } catch (e) {}
 
   return config;
@@ -101,10 +108,7 @@ getMyListings: async () => {
   return res.data;
 },
 
-async deleteListing(id: number) {
-  const res = await client.delete(`/my-listing/${id}/`);
-  return res.data;
-},
+
 
 async updateMyListing(id: number, payload: any) {
   const res = await client.patch(`/my-listing/${id}/`, payload);
