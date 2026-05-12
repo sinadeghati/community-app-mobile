@@ -19,7 +19,8 @@ import authStorage from "../utils/authStorage";
 import AppButton from "@/components/ui/AppButton";
 
 // 🔴 فقط این آدرس را وقتی IP عوض شد تغییر بده
-const API_LOGIN = "http://192.168.1.222:8000/api/accounts/login/";
+
+const API_LOGIN = "https://community-app-backend-production.up.railway.app/api/accounts/login/"
 
 export default function LoginScreen() {
   const router = useRouter();

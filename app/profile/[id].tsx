@@ -27,6 +27,7 @@ type Listing = {
   user_id?: number | string;
   owner_id?: number | string;
   user?: { id?: number | string };
+  description?: string;
 };
 
 export default function PublicProfileScreen() {
@@ -64,12 +65,118 @@ export default function PublicProfileScreen() {
     if (id) load();
   }, [id]);
 
-  const headerTitle = useMemo(() => {
-    return `Profile #${id ?? ""}`;
-  }, [id]);
+ const headerTitle = useMemo(() => {
+  if (listings.length > 0) {
+    return listings[0]?.title || "Business Profile";
+  }
+
+  return `Profile #${id ?? ""}`;
+}, [id, listings]);
+
+const businessDescription = useMemo(() => {
+  if (listings.length > 0) {
+    return listings[0]?.description || "";
+  }
+
+  return "";
+}, [listings]);
+
+const businessContact = useMemo(() => {
+  if (listings.length > 0) {
+    return (listings[0] as any)?.contact_info || "";
+  }
+
+  return "";
+}, [listings]);
+
+const heroImageUrl = useMemo(() => {
+  const firstListing = listings[0] as any;
+
+  const firstImage =
+    firstListing?.images &&
+    firstListing.images.length > 0
+      ? firstListing.images[0]
+      : null;
+
+  return (
+    firstListing?.image_url ||
+    firstListing?.image ||
+    firstImage?.image_url ||
+    firstImage?.image ||
+    ""
+  );
+}, [listings]);
+
+{businessDescription ? (
+  <Text
+    style={{
+      marginTop: 14,
+      color: "#ddd",
+      fontSize: 15,
+      lineHeight: 22,
+    }}
+    numberOfLines={4}
+  >
+    {businessDescription}
+  </Text>
+) : null}
+
+<View
+  style={{
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+  }}
+>
+  <Pressable
+    style={{
+      flex: 1,
+      backgroundColor: "#2563eb",
+      paddingVertical: 14,
+      borderRadius: 14,
+      alignItems: "center",
+    }}
+  >
+    <Text style={{ color: "#fff", fontWeight: "800", fontSize: 16 }}>
+      Call
+    </Text>
+  </Pressable>
+
+  <Pressable
+    style={{
+      flex: 1,
+      backgroundColor: "#222",
+      paddingVertical: 14,
+      borderRadius: 14,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: "#444",
+    }}
+  >
+    <Text style={{ color: "#fff", fontWeight: "800", fontSize: 16 }}>
+      Message
+    </Text>
+  </Pressable>
+</View>
+
+{businessContact ? (
+  <Text
+    style={{
+      marginTop: 14,
+      fontSize: 15,
+      color: "#fff",
+      fontWeight: "600",
+    }}
+  >
+    Contact: {businessContact}
+  </Text>
+) : null}
 
   const renderItem = ({ item }: { item: Listing }) => {
-    const first = item?.images?.[0];
+    const first =
+  item?.images && item.images.length > 0
+    ? item.images[item.images.length - 1]
+    : null;
     const imgUrl = (first?.image_url || first?.image || "") as string;
 
     return (
@@ -95,13 +202,150 @@ export default function PublicProfileScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.topRow}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>Back</Text>
-        </Pressable>
-        <Text style={styles.h1}>{headerTitle}</Text>
-      </View>
+    <View
+  style={[
+    styles.container,
+    {
+      paddingTop: 70,
+    },
+  ]}
+>
+      
+      <View
+  style={{
+    backgroundColor: "#111",
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 20,
+  }}
+>
+ {heroImageUrl ? (
+  <Image
+    source={{ uri: heroImageUrl }}
+    style={{
+      width: "100%",
+      height: 140,
+      borderRadius: 14,
+      marginBottom: 16,
+    }}
+    resizeMode="cover"
+  />
+) : (
+  <View
+    style={{
+      height: 140,
+      borderRadius: 14,
+      backgroundColor: "#222",
+      marginBottom: 16,
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
+    <Text style={{ color: "#888" }}>
+      Business Cover Image
+    </Text>
+  </View>
+)}
+  <View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+  }}
+>
+  <Text
+    style={{
+      fontSize: 28,
+      fontWeight: "800",
+      color: "#fff",
+    }}
+  >
+    {headerTitle}
+  </Text>
+
+  <View
+    style={{
+      marginLeft: 10,
+      backgroundColor: "#2563eb",
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: "700",
+      }}
+    >
+      VERIFIED
+    </Text>
+  </View>
+</View>
+
+  <Text
+    style={{
+      marginTop: 6,
+      fontSize: 16,
+      color: "#ccc",
+    }}
+  >
+    {listings.length} listings
+  </Text>
+  {businessDescription ? (
+  <Text
+    style={{
+      marginTop: 12,
+      fontSize: 15,
+      lineHeight: 22,
+      color: "#ddd",
+    }}
+  >
+    {businessDescription}
+  </Text>
+) : null}
+</View>
+
+<Text
+style={{
+  fontSize: 20,
+  fontWeight: "800",
+  marginBottom: 10,
+}}
+>
+  Photos
+</Text>
+
+<FlatList
+  data={listings.slice(0, 6)}
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  keyExtractor={(item) => String(item.id)}
+  renderItem={({ item }) => {
+    const img =
+      item.image_url ||
+      item.image ||
+      item.images?.[0]?.image_url ||
+      item.images?.[0]?.image;
+
+    if (!img) return null;
+
+    return (
+      <Image
+        source={{ uri: img }}
+        style={{
+          width: 90,
+          height: 90,
+          borderRadius: 14,
+          marginRight: 10,
+        }}
+      />
+    );
+  }}
+  contentContainerStyle={{
+    paddingBottom: 0,
+  }}
+/>
 
       <Text style={styles.h2}>Listings</Text>
 
@@ -111,6 +355,7 @@ export default function PublicProfileScreen() {
         <Text style={styles.error}>{error}</Text>
       ) : (
         <FlatList
+                
           data={listings}
           keyExtractor={(x) => String(x.id)}
           numColumns={2}

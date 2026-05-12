@@ -11,7 +11,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 
 
 // مثل همون login، همین IP رو نگه دار
-const BASE_URL = "http://192.168.1.222:8000";
+const BASE_URL = "https://community-app-backend-production.up.railway.app/api"
 
 // اگر endpoint شما فرق داشت، فقط همین یک خط رو عوض می‌کنیم
 const MY_LISTINGS_URL = `${BASE_URL}/api/my-listing/`;
@@ -99,12 +99,12 @@ const editListing = (item: any) => {
 //3.renderItem
 
     const renderItem = ({ item }: { item: any }) => {
-    const img = 
-      item?.images?.[0]?.image_url ||
-      item?.images?.[0]?.image || 
-      item?.image_url || 
-      item?.image ||
-      null;
+   const img =
+  item?.image_url ||
+  item?.image ||
+  (item?.images && item.images.length > 0
+    ? item.images[item.images.length - 1].image_url
+    : null);
 
       console.log("MYLIST item.images:", item?.images);
       console.log("MYLIST img", img);

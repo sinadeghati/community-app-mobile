@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 
-const PROFILE_URL = "http://192.168.1.222:8000/api/accounts/profile/";
+const PROFILE_URL = "https://community-app-backend-production.up.railway.app/api/accounts/profile/"
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<any>(null);

@@ -9,6 +9,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  StyleSheet,
+  Keyboard
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import {API} from "../../lib/api";
@@ -17,8 +19,17 @@ import * as ImageManipulator from "expo-image-manipulator"
 import { useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Background } from "@react-navigation/elements";
+import { Background, Label } from "@react-navigation/elements";
 import { useRouter } from "expo-router";
+
+const CATEGORIES = [
+  { key: "services", label: "Services" },
+  { key: "jobs", label: "Jobs" },
+  { key: "food", label: "Food" },
+  { key: "rent", label: "Rent" },
+  { key: "beauty", label: "Beauty" },
+  { key: "auto", label: "Auto" },
+];
 
 export default function CreateListingScreen() {
   const [title, setTitle] = useState("");
@@ -33,6 +44,7 @@ export default function CreateListingScreen() {
   const routeParams = useLocalSearchParams();
   const idParam = routeParams.id;
   const router = useRouter();
+  const [category, setCategory] = useState("services");
 
 const editId =
   typeof idParam === "string" ? idParam :
@@ -122,13 +134,17 @@ const isEdit = !!editId;
   return;
 }
 
-    const cleanPrice = toEnglishDigits(String(price)).trim();
-    const numericPrice = Number(cleanPrice);
+   
 
-    if (!cleanPrice || isNaN(numericPrice) || numericPrice <= 0) {
-     Alert.alert("Invalid price", "Please enter a valid price.");
-     setLoading(false);
-    return;
+    let numericPrice = null;
+
+if (price) {
+  const cleanPrice = toEnglishDigits(String(price).trim());
+  const parsed = Number(cleanPrice);
+
+  if (!isNaN(parsed) && parsed > 0) {
+    numericPrice = parsed;
+  }
 }
 
 console.log("STATE DEBUG:", { state, cleanState });
@@ -143,6 +159,7 @@ console.log("STATE DEBUG:", { state, cleanState });
       state: cleanState,
       contact_info: cleanContact,
       description: description?.trim() || "",
+      category: category,
     };
 
     console.log("CREATE LISTING PAYLOAD:", payload);
@@ -204,8 +221,40 @@ return;
 
   return (
     <SafeAreaView style={{ flex:1, paddingTop: insets.top }}>
-      <ScrollView contentContainerStyle={{ padding: 16, backgroundColor: "#fff"}}>
+      <ScrollView
+  keyboardShouldPersistTaps="handled"
+  onScrollBeginDrag={Keyboard.dismiss}
+  contentContainerStyle={{ padding: 16, backgroundColor: "#fff" }}
+>
       <Text style={{ fontSize: 24, fontWeight: "800", marginBottom: 12 }}>Create Listing</Text>
+
+      <Text style={{ marginBottom: 6, fontWeight: "600"}}>Category</Text>
+
+<View style={styles.categoryRow}>
+  {CATEGORIES.map((item) => {
+    const active = category === item.key;
+
+    return (
+      <TouchableOpacity
+        key={item.key}
+        onPress={() => setCategory(item.key)}
+        style={[
+          styles.categoryChip,
+          active && styles.categoryChipActive,
+        ]}
+      >
+        <Text
+          style={[
+            styles.categoryChipText,
+            active && styles.categoryChipTextActive,
+          ]}
+        >
+          {item.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  })}
+</View>
 
       <TextInput
         value={title}
@@ -295,3 +344,36 @@ return;
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  categoryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 12,
+  },
+
+  categoryChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 18,
+    marginRight: 8,
+    marginBottom: 8,
+    backgroundColor: "#fff",
+  },
+
+  categoryChipActive: {
+    backgroundColor: "#111",
+    borderColor: "#111",
+  },
+
+  categoryChipText: {
+    color: "#111",
+    fontSize: 14,
+  },
+
+  categoryChipTextActive: {
+    color: "#fff",
+  },
+});

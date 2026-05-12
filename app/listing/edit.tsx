@@ -9,9 +9,12 @@ import {
   Alert,
   Button,
   ActivityIndicator,
+  Image,
+  Keyboard
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { API } from "../../lib/api";
+import * as ImagePicker from "expo-image-picker";
 
 
 export default function EditListing() {
@@ -27,6 +30,8 @@ export default function EditListing() {
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
   const [contactInfo, setContactInfo] = useState("");
+  const [ currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -45,6 +50,11 @@ export default function EditListing() {
         setPrice(String(data?.price ?? ""));
         setDescription(data?.description ?? "");
         setContactInfo(data?.contact_info ?? "");
+        setCurrentImageUrl(
+  data?.images && data.images.length > 0
+    ? data.images[data.images.length - 1].image_url
+    : null
+);
       } catch (e: any) {
         Alert.alert("Error", e?.message || "Failed to load listing");
       } finally {
@@ -54,6 +64,27 @@ export default function EditListing() {
 
     load();
   }, [id]);
+
+  
+
+// 👇 اینجا اضافه کن
+const pickImage = async () => {
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.length > 0) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  } catch (e) {
+    Alert.alert("Error", "Failed to pick image");
+  }
+};
+
+
 
   const onSave = async () => {
     try {
@@ -79,7 +110,10 @@ export default function EditListing() {
         contact_info: contactInfo.trim(),
       };
 
-      await API.updateListing(id, payload);
+      await API.updateListing(Number(id), payload);
+      if (selectedImage) {
+        await API.uploadListingImage(Number(id), selectedImage);
+      }
 
       // برگرد به Details همون آگهی + refresh
      router.replace("/(tabs)/mylistings");
@@ -100,7 +134,11 @@ export default function EditListing() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+  keyboardShouldPersistTaps="handled"
+  onScrollBeginDrag={Keyboard.dismiss}
+  contentContainerStyle={styles.container}
+>
       <Text style={styles.header}>Edit Listing</Text>
 
       <Text style={styles.label}>Title</Text>
@@ -134,6 +172,23 @@ export default function EditListing() {
         onChangeText={setContactInfo}
         style={styles.input}
       />
+
+      <Text style={styles.label}>Image</Text>
+
+{selectedImage ? (
+  <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+) : currentImageUrl ? (
+  <Image source={{ uri: currentImageUrl }} style={styles.imagePreview} />
+) : (
+  <Text style={styles.noImageText}>No image selected</Text>
+)}
+
+<View style={{ marginTop: 10 }}>
+  <Button
+    title={selectedImage || currentImageUrl ? "Change Image" : "Add Image"}
+    onPress={pickImage}
+  />
+</View>
 
       <View style={{ marginTop: 16 }}>
         <Button
@@ -185,4 +240,17 @@ const styles = StyleSheet.create({
     minHeight: 110,
     textAlignVertical: "top",
   },
+
+imagePreview: {
+  width: "100%",
+  height: 220,
+  borderRadius: 12,
+  marginTop: 8,
+  backgroundColor: "#f2f2f2",
+},
+
+noImageText: {
+  marginTop: 8,
+  color: "#666",
+},  
 });

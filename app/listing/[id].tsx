@@ -1,6 +1,7 @@
 // app/listing/[id].tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, Image, ActivityIndicator, ScrollView, Alert, Button } from "react-native";
+import { View, Text, StyleSheet, Image, ActivityIndicator, ScrollView, Alert, Button, TouchableOpacity} from "react-native";
+import { Linking } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { API } from "../../lib/api"; // اگر مسیرت فرق دارد، فقط همین import را مطابق پروژه‌ات کن
@@ -66,9 +67,22 @@ const isOwner =
   const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
 
   const firstImageUrl = useMemo(() => {
-    const img = listing?.images?.[0];
-    return (img?.image_url || img?.image || "") as string;
-  }, [listing]);
+  const l: any = listing;
+
+  const img =
+    l?.images && l.images.length > 0
+      ? l.images[l.images.length - 1]
+      : null;
+
+  return (
+    l?.image_url ||
+    l?.image ||
+    l?.thumbnail ||
+    img?.image_url ||
+    img?.image ||
+    ""
+  ) as string;
+}, [listing]);
 
   useEffect(() => {
     let mounted = true;
@@ -132,8 +146,27 @@ const isOwner =
   }
 
   return (
-  <SafeAreaView style={{ flex: 1 }}>
-    <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+  <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+    <ScrollView contentContainerStyle={{ paddingBottom: 40,
+      backgroundColor: "#fff",
+     }}>
+      <TouchableOpacity
+  onPress={() => router.back()}
+ style={{
+  position: "absolute",
+  top: 18,
+  left: 16,
+  zIndex: 10,
+  backgroundColor: "rgba(0,0,0,0.45)",
+  paddingHorizontal: 14,
+  paddingVertical: 8,
+  borderRadius: 20,
+}}
+>
+  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "600" }}>
+    ← Back
+  </Text>
+</TouchableOpacity>
       {isOwner && (
   <View style={{ padding: 16, gap: 12 }}>
     <Button
@@ -172,7 +205,11 @@ const isOwner =
 
       {/* IMAGE */}
       {firstImageUrl ? (
-  <View style={{ width: "100%", height: 320, backgroundColor: "#000" }}>
+  <View style={{ width: "100%", height: 250, backgroundColor: "#000",
+    borderRadius: 18,
+    overflow: "hidden",
+    marginTop: 8,
+   }}>
     <Image
       source={{ uri: firstImageUrl }}
       style={{ width: "100%", height: "100%" }}
@@ -196,28 +233,38 @@ const isOwner =
 
       {/* DETAILS */}
       <View style={{ padding: 16 }}>
-        <Text style={{ fontSize: 22, fontWeight: "700" }}>{listing?.title}</Text>
+        <TouchableOpacity
+  onPress={() => {
+    router.push(`/profile/${(listing as any)?.user?.id ?? (listing as any)?.user_id?? (listing as any)?.owner_id}`);
+  }}
+>
+  <Text style={{ fontSize: 24, fontWeight: "800" }}>
+    {listing?.title}
+  </Text>
+</TouchableOpacity>
         <Text style={{ marginTop: 6, color: "#666" }}>
           {listing?.city}, {listing?.state}
         </Text>
-        <Text style={{ marginTop: 10, fontSize: 20, fontWeight: "700" }}>
-          ${listing?.price}
+        <Text style={{ marginTop: 14, fontSize: 22, fontWeight: "800" }}>
+          {listing?.price ? `$${listing.price}` : "Contact for price"}
         </Text>
         
         
     
 
-
+<Text style={{ marginTop: 20, fontSize: 16, fontWeight: "700" }}>
+  Description
+</Text>
 
 
         {/* DESCRIPTION */}
 {listing?.description ? (
   <Text
     style={{
-      marginTop: 12,
+      marginTop: 8,
       fontSize: 16,
       lineHeight: 22,
-      color: "#222",
+      color: "#444",
     }}
   >
     {listing.description}
@@ -228,24 +275,83 @@ const isOwner =
 {listing?.contact_info ? (
   <View
     style={{
-      marginTop: 16,
-      padding: 12,
+      marginTop: 24,
+      padding: 18,
       borderWidth: 1,
-      borderColor: "#eee",
-      borderRadius: 10,
-      backgroundColor: "#fafafa",
+      borderColor: "#ececec",
+      borderRadius: 18,
+      backgroundColor: "#fff",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 3,
     }}
   >
-    <Text style={{ fontWeight: "700", marginBottom: 6 }}>
+    <Text
+      style={{
+        fontSize: 18,
+        fontWeight: "700",
+        marginBottom: 10,
+        color: "#111",
+      }}
+    >
       Contact
     </Text>
-    <Text style={{ fontSize: 16 }}>
+
+    <Text
+      style={{
+        fontSize: 20,
+        fontWeight: "600",
+        color: "#111",
+        marginTop: 4,
+      }}
+    >
       {listing.contact_info}
     </Text>
+
+    <View style={{ flexDirection: "row", gap: 12, marginTop: 16 }}>
+      <Text
+        style={{
+          flex: 1,
+          backgroundColor: "#007AFF",
+          color: "#fff",
+          textAlign: "center",
+          paddingVertical: 14,
+          borderRadius: 14,
+          fontWeight: "700",
+          fontSize: 16,
+        }}
+      >
+        Message
+      </Text>
+
+     <TouchableOpacity
+  style={{
+    flex: 1,
+    backgroundColor: "#007AFF",
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+  }}
+  onPress={() => {
+    Alert.alert(" Call button works");
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      fontWeight: "700",
+      fontSize: 16,
+    }}
+  >
+    Call
+  </Text>
+</TouchableOpacity>
+    </View>
   </View>
 ) : null}
-
-      </View>
+    </View>
     </ScrollView>
   </SafeAreaView>
 );
@@ -259,7 +365,7 @@ const isOwner =
 function API_BASE() {
   // اگر در api.ts BASE_URL داری، بهتره همون را import کنی.
   // اینجا فقط برای اینکه فایل مستقل باشد.
-  return "http://192.168.1.222:8000/api";
+  return "https://community-app-backend-production.up.railway.app/api"
 }
 
 const styles = StyleSheet.create({

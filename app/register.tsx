@@ -14,7 +14,7 @@ import AppInput from "../components/ui/Applnput";
 import AppButton from '@/components/ui/AppButton';
 
 // آدرس سرور Django — آدرس لپ‌تاپ خودت
-const REGISTER_URL = 'http://192.168.1.222:8000/api/accounts/register/';
+const REGISTER_URL = "https://community-app-backend-production.up.railway.app/api/accounts/register/"
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -24,7 +24,10 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  
 
   const handleRegister = async () => {
   if (!username || !email || !password || !confirmPassword) {
@@ -32,7 +35,13 @@ export default function RegisterScreen() {
     return;
   }
 
-  if (password !== confirmPassword) {
+   const cleanUsername = username.trim().toLowerCase();
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPassword = password.trim();
+  const cleanConfirmPassword = confirmPassword.trim();
+
+
+  if (cleanPassword !== cleanConfirmPassword) {
     Alert.alert("Password mismatch", "Passwords do not match.");
     return;
   }
@@ -41,10 +50,10 @@ export default function RegisterScreen() {
 
   try {
     const payload = {
-      username,
-      email,
-      password,
-      password2: confirmPassword, // خیلی مهم
+      username: cleanUsername,
+      email: cleanEmail,
+      password: cleanPassword,
+      password2: cleanConfirmPassword, // خیلی مهم
     };
 
     console.log("REGISTER URL:", REGISTER_URL);
@@ -115,19 +124,30 @@ export default function RegisterScreen() {
         style={styles.input}
         placeholder="Password"
         placeholderTextColor="#999"
-        secureTextEntry
+        secureTextEntry={!showPassword}
         value={password}
         onChangeText={setPassword}
       />
+      <TouchableOpacity onPress={() =>setShowPassword(!showPassword)}>
+        <Text style={{ marginTop: -10, marginBottom: 12, color: "#007AFF", textAlign: "right"}}>
+        {showPassword ? "Hide password" : "show password"}
+          </Text>
+      </TouchableOpacity>
 
       <AppInput
         style={styles.input}
         placeholder="Confirm password"
         placeholderTextColor="#999"
-        secureTextEntry
+        secureTextEntry={!showConfirmPassword}
         value={confirmPassword}
         onChangeText={setConfirmPassword}
       />
+
+      <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+        <Text style={{ marginTop: -10, marginBottom: 12, color: "#007AFF", textAlign: "right"}}>
+        {showConfirmPassword ? "Hide password" : "show password"}
+          </Text>
+      </TouchableOpacity>
 
       <AppButton
         title="Create account"

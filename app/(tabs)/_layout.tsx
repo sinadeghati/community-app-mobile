@@ -7,8 +7,10 @@ import  authStorage  from "../utils/authStorage"; // اگر مسیرت فرق د
 import { Background } from "@react-navigation/elements";
 import { Ionicons } from "@expo/vector-icons";
 import { TouchableOpacity, View, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [isAuthed, setIsAuthed] = useState(false);
@@ -62,8 +64,8 @@ const guardTab = (target: string) => async (e: any) => {
       tabBarStyle: {
         backgroundColor: theme.colors.card,
         borderTopColor: theme.colors.border,
-        height: 72,
-        paddingBottom: Platform.OS === "ios" ? 18 :10,
+        height: 60 + (insets.bottom > 0 ? insets.bottom : 10),
+        paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
         paddingTop: 10,
       },
     }}

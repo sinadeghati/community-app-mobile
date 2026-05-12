@@ -2,7 +2,7 @@
 import axios from "axios";
 import authStorage from "../app/utils/authStorage"; // اگر مسیرت فرق دارد، فقط همین یک خط را اصلاح کن
 
-const BASE_URL = "http://192.168.1.222:8000/api"; // همون IP که تو لاگ‌ها داری
+const BASE_URL = "https://community-app-backend-production.up.railway.app/api";
 
 const client = axios.create({
   baseURL: BASE_URL,

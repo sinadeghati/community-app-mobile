@@ -19,7 +19,7 @@ export default function LoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-
+  const [showPassword, setShowPassword] = useState(false);
   const handleLogin = async () => {
     if (!username || !password) {
       Alert.alert("Error", "Please enter both username and password");
@@ -30,9 +30,12 @@ export default function LoginScreen() {
       setLoading(true);
       console.log("LOGIN.TSX VERSION: 2025-12-29 A");
 
-      console.log("SENDING LOGIN TO BACKEND...", { username, password });
+      const cleanUsername = username.trim().toLowerCase();
+      const cleanPassword = password.trim();
 
-      const response = await API.login(username, password);
+      console.log("SENDING LOGIN TO BACKEND...", { username: cleanUsername, password: "***" });
+
+      const response = await API.login(cleanUsername, cleanUsername);
 
       console.log("LOGIN RESPONSE DATA:", response.data);
 
@@ -81,11 +84,25 @@ export default function LoginScreen() {
 
       <TextInput
         placeholder="Password"
-        secureTextEntry
+        secureTextEntry={!showPassword}
         value={password}
         onChangeText={setPassword}
         style={styles.input}
       />
+      <TouchableOpacity
+  onPress={() => setShowPassword(!showPassword)}
+  style={{
+    backgroundColor: "#EAF3FF",
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 14,
+    alignItems: "center",
+  }}
+>
+  <Text style={{ color: "#007AFF", fontSize: 16, fontWeight: "700" }}>
+    {showPassword ? "Hide password" : "Show password"}
+  </Text>
+</TouchableOpacity>
 
       <TouchableOpacity style={styles.button} onPress={handleLogin}>
         {loading ? (
