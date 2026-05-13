@@ -252,6 +252,8 @@ const heroImageUrl = useMemo(() => {
   style={{
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
   }}
 >
   <Text
@@ -259,6 +261,7 @@ const heroImageUrl = useMemo(() => {
       fontSize: 28,
       fontWeight: "800",
       color: "#fff",
+      flexShrink:1,
     }}
   >
     {headerTitle}
@@ -379,46 +382,7 @@ const heroImageUrl = useMemo(() => {
   ))}
 </View>
 
-<Text
-style={{
-  fontSize: 20,
-  fontWeight: "800",
-  marginBottom: 10,
-}}
->
-  Photos
-</Text>
 
-<FlatList
-  data={listings.slice(0, 6)}
-  horizontal
-  showsHorizontalScrollIndicator={false}
-  keyExtractor={(item) => String(item.id)}
-  renderItem={({ item }) => {
-    const img =
-      item.image_url ||
-      item.image ||
-      item.images?.[0]?.image_url ||
-      item.images?.[0]?.image;
-
-    if (!img) return null;
-
-    return (
-      <Image
-        source={{ uri: img }}
-        style={{
-          width: 140,
-          height: 140,
-          borderRadius: 18,
-          marginRight: 14,
-        }}
-      />
-    );
-  }}
-  contentContainerStyle={{
-    paddingBottom: 0,
-  }}
-/>
 
       <Text style={styles.h2}>Listings</Text>
 
