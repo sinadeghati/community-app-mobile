@@ -98,6 +98,9 @@ const filteredListings = listings.filter((item: any) => {
     item?.state,
     item?.description,
     item?.contact_info,
+    item?.category,
+    item?.listing_type,
+    item?.service_type,
   ]
     .filter(Boolean)
     .join(" ")
@@ -296,31 +299,7 @@ const ListHeader = () => (
     );
   }
 
-  if (!loading && filteredListings.length === 0) {
-    return (
-      <SafeAreaView style={{ flex: 1, paddingTop: insets.top}}>
-        <View style={{ paddingHorizontal: 16 }}>
-
-         <Text style={{ fontSize: 28, fontWeight: "800", marginBottom: 12 }}>
-  Explore Listing
-</Text>
-
-{selectedCategory !== "all" && (
-  <Pressable onPress={() => setSelectedCategory("all")}>
-    <Text style={{ marginBottom: 12, color: "blue" }}>
-      ← Show All
-    </Text>
-  </Pressable>
-)}
-
-<Text style={{ color: "#666", fontSize: 16 }}>
-  No listing yet. But the first to post somthing
-</Text>
-          </View>
-          </SafeAreaView>
-    );
-  }
-        
+ 
          
 
   return (
@@ -368,7 +347,9 @@ const ListHeader = () => (
     !loading && !error ? (
      <View style={{ padding: 24, alignItems: "center" }}>
        <Text style={{ fontSize: 18, fontWeight: "700" }}>
-        No listing yet
+        {searchText.trim()
+          ?"No results found"
+          : "No listing yet"}
         </Text>
         <Text
           style={{
@@ -377,7 +358,9 @@ const ListHeader = () => (
             textAlign: "center",
           }}
           >
-            Be the first to post. Tap the + button below.
+            {searchText.trim()
+              ? "Try another search."
+              : "Be the first to post. Tap thr + button below."}
           </Text>
           </View>
     ) : null

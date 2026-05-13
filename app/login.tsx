@@ -35,7 +35,7 @@ export default function LoginScreen() {
 
       console.log("SENDING LOGIN TO BACKEND...", { username: cleanUsername, password: "***" });
 
-      const response = await API.login(cleanUsername, cleanUsername);
+      const response = await API.login(cleanUsername, cleanPassword);
 
       console.log("LOGIN RESPONSE DATA:", response.data);
 

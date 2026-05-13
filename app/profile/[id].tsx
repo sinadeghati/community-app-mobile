@@ -347,8 +347,14 @@ const heroImageUrl = useMemo(() => {
     }
 
     if (item === "Map") {
-      Alert.alert("Map feature coming soon");
-    }
+  const address = listings[0]?.city
+    ? `${listings[0]?.city}, ${listings[0]?.state || ""}`
+    : headerTitle;
+
+  Linking.openURL(
+    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+  );
+}
   }}
   style={{
     flex: 1,

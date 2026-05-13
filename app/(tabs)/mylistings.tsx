@@ -258,10 +258,20 @@ const styles = StyleSheet.create({
   header: { fontSize: 22, fontWeight: "800", marginBottom: 12 },
 
   card: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
+  backgroundColor: "#fff",
+  borderRadius: 16,
+  padding: 14,
+  marginBottom: 14,
+
+  borderWidth: 1,
+  borderColor: "#f1f1f1",
+
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.04,
+  shadowRadius: 6,
+  elevation: 2,
+},
 
   cardRow: { flexDirection: "row", gap: 12 },
 
