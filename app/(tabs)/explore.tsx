@@ -254,6 +254,16 @@ const ListHeader = () => (
 
       <View style={{ flex: 1 }}>
         <Text style={{ fontWeight: "700", fontSize: 18 }}>{item?.title}</Text>
+        <Text
+  style={{
+    marginTop: 4,
+    fontSize: 13,
+    color: "#d4af37",
+    fontWeight: "600",
+  }}
+>
+  ⭐ 4.8 • 24 reviews
+</Text>
         <Text style={{ color: "#666" }}>
           {item?.city}, {item?.state} •{" "}
           <Text style={{ fontSize: 12, color: "#888", marginTop: 2 }}>

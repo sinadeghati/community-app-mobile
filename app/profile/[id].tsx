@@ -8,6 +8,8 @@ import {
   FlatList,
   Image,
   Pressable,
+  Linking,
+  Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { API } from "../../lib/api";
@@ -182,7 +184,7 @@ const heroImageUrl = useMemo(() => {
     return (
       <Pressable
         style={styles.card}
-        onPress={() => router.push(`/listing/${item.id}`)}
+        onPress={() => router.replace(`/listing/${item.id}`)}
       >
         {imgUrl ? (
           <Image source={{ uri: imgUrl }} style={styles.image} />
@@ -292,6 +294,16 @@ const heroImageUrl = useMemo(() => {
   >
     {listings.length} listings
   </Text>
+  <Text
+  style={{
+    marginTop: 6,
+    fontSize: 14,
+    color: "#d4af37",
+    fontWeight: "700",
+  }}
+>
+  ⭐ 4.8 • 24 reviews
+</Text>
   {businessDescription ? (
   <Text
     style={{
@@ -304,6 +316,61 @@ const heroImageUrl = useMemo(() => {
     {businessDescription}
   </Text>
 ) : null}
+</View>
+<View
+  style={{
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 18,
+    marginBottom: 22,
+    gap: 10,
+  }}
+>
+  {["Call", "Message", "Reviews", "Map"].map((item) => (
+    <Pressable
+  key={item}
+  onPress={() => {
+    if (item === "Call") {
+      if (businessContact) {
+        Linking.openURL(`tel:${businessContact}`);
+      } else {
+        Alert.alert("No phone number");
+      }
+    }
+
+    if (item === "Message") {
+      Alert.alert("Messaging coming soon");
+    }
+
+    if (item === "Reviews") {
+      Alert.alert("Reviews coming soon");
+    }
+
+    if (item === "Map") {
+      Alert.alert("Map feature coming soon");
+    }
+  }}
+  style={{
+    flex: 1,
+    backgroundColor: "#fff",
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#eee",
+  }}
+>
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: "700",
+          color: "#111",
+        }}
+      >
+        {item}
+      </Text>
+    </Pressable>
+  ))}
 </View>
 
 <Text
@@ -334,10 +401,10 @@ style={{
       <Image
         source={{ uri: img }}
         style={{
-          width: 90,
-          height: 90,
-          borderRadius: 14,
-          marginRight: 10,
+          width: 140,
+          height: 140,
+          borderRadius: 18,
+          marginRight: 14,
         }}
       />
     );
