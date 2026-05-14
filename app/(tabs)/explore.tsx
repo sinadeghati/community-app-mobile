@@ -1,6 +1,6 @@
 // app/(tabs)/explore.tsx
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, Image, ActivityIndicator, TouchableOpacity,ScrollView, StyleSheet,Pressable, TextInput, RefreshControl } from "react-native";
+import { TouchableWithoutFeedback,View, Text, FlatList, Image, ActivityIndicator, TouchableOpacity,ScrollView, StyleSheet,Pressable, TextInput, RefreshControl, Keyboard } from "react-native";
 import {API} from "../../lib/api";
 import { useLocalSearchParams } from "expo-router";
 import { router} from "expo-router"
@@ -113,9 +113,11 @@ const filteredListings = listings.filter((item: any) => {
 
 const ListHeader = () => (
   <>
-    <Text style={{ fontSize: 28, fontWeight: "800", marginBottom: 12 }}>
+    <Text style={{ fontSize: 28, fontWeight: "800", marginBottom: 12, marginTop: 8, }}>
       Explore Listings
     </Text>
+    
+    <View style={{ position: "relative", marginBottom: 16}}>
 
     <TextInput
   value={searchText}
@@ -127,12 +129,27 @@ const ListHeader = () => (
     borderRadius: 16,
     paddingHorizontal: 18,
     paddingVertical: 14,
-    marginBottom: 16,
+    marginBottom: 0,
+    paddingRight: 44,
     backgroundColor: "#fff",
     fontSize: 16,
     height: 54,
   }}
 />
+
+{searchText.length > 0 && (
+  <Pressable
+    onPress={() => setSearchText("")}
+    style={{
+      position: "absolute",
+      right: 16,
+      top: 14,
+    }}
+  >
+    <Text style={{ fontSize: 18, color: "#666" }}>✕</Text>
+  </Pressable>
+)}
+</View>
 
     {!isLoggedIn && (
       <Text style={{ marginBottom: 10, color: "#666", fontSize: 14 }}>
@@ -175,23 +192,23 @@ const ListHeader = () => (
             onPress={() => setSelectedCategory(item.key)}
             style={{
               marginRight: 12,
-              paddingHorizontal: 14,
-              height: 38,
-              borderRadius: 18,
+              paddingHorizontal: 16,
+              height: 42,
+              borderRadius: 21,
               justifyContent: "center",
               borderWidth: 1,
               opacity: active ? 1 : 0.8,
               backgroundColor: active ? "#007AFF" : "#fff",
-              borderColor: active ? "#007AFF" :"#ccc",
+              borderColor: active ? "#007AFF" :"#e5e5e5",
             }}
           >
             <Text
               style={{
-                color: active ? "#fff" : "#222",
-                fontWeight: active ? "700" : "500",
+                color: active ? "#fff" : "#444",
+                fontWeight: active ? "700" : "600",
               }}
               >
-              {item.label}</Text>
+              {item.icon} {item.label}</Text>
           </TouchableOpacity>
         );
       }}
@@ -223,21 +240,26 @@ const ListHeader = () => (
       onPress={() => router.push(`/listing/${item.id}`)}
       activeOpacity={0.8}
       style={{
-        backgroundColor: "white",
-        borderRadius: 14,
-        padding: 12,
-        marginBottom: 12,
+        backgroundColor: "#FFF",
+        borderRadius: 18,
+        padding: 14,
+        marginBottom: 14,
         flexDirection: "row",
-        gap: 12,
+        gap: 14,
         alignItems: "center",
         borderWidth: 1,
-        borderColor: "#eee",
+        borderColor: "#f0f0f0",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2,},
+        shadowRadius: 6,
+        elevation: 2,
+        shadowOpacity: 0.06,
       }}
     >
       {imageUrl ? (
         <Image
           source={{ uri: imageUrl }}
-          style={{ width: 60, height: 60, borderRadius: 8 }}
+          style={{ width: 72, height: 72, borderRadius: 12 }}
           resizeMode="cover"
         />
       ) : (
@@ -267,7 +289,15 @@ const ListHeader = () => (
 >
   ⭐ 4.8 • 24 reviews
 </Text>
-        <Text style={{ color: "#666" }}>
+        <Text
+  numberOfLines={2}
+  ellipsizeMode="tail"
+  style={{
+    color: "#666",
+    marginTop: 2,
+    lineHeight: 20,
+  }}
+>
           {item?.city}, {item?.state} •{" "}
           <Text style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
   {item?.posted_days_ago === 0
@@ -303,8 +333,8 @@ const ListHeader = () => (
          
 
   return (
-    
-    <SafeAreaView style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#fff", justifyContent: "flex-start", alignItems: "stretch" }}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+     <SafeAreaView style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#fff", justifyContent: "flex-start", alignItems: "stretch" }}>
       
       
 
@@ -368,5 +398,6 @@ const ListHeader = () => (
 />
 
     </SafeAreaView>
+    </TouchableWithoutFeedback>
   );
 }

@@ -232,13 +232,13 @@ const isOwner =
 
 
       {/* DETAILS */}
-      <View style={{ padding: 16 }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40, }}>
         <TouchableOpacity
   onPress={() => {
     router.push(`/profile/${(listing as any)?.user?.id ?? (listing as any)?.user_id?? (listing as any)?.owner_id}`);
   }}
 >
-  <Text style={{ fontSize: 24, fontWeight: "800" }}>
+  <Text style={{ fontSize: 24,lineHeight: 30, fontWeight: "800" }}>
     {listing?.title}
   </Text>
 </TouchableOpacity>
@@ -261,9 +261,9 @@ const isOwner =
 {listing?.description ? (
   <Text
     style={{
-      marginTop: 8,
-      fontSize: 16,
-      lineHeight: 22,
+      marginTop: 10,
+      fontSize: 17,
+      lineHeight: 28,
       color: "#444",
     }}
   >
@@ -308,48 +308,48 @@ const isOwner =
       }}
     >
       {listing.contact_info}
-    </Text>
-
-    <View style={{ flexDirection: "row", gap: 12, marginTop: 16 }}>
-      <Text
-        style={{
-          flex: 1,
-          backgroundColor: "#007AFF",
-          color: "#fff",
-          textAlign: "center",
-          paddingVertical: 14,
-          borderRadius: 14,
-          fontWeight: "700",
-          fontSize: 16,
-        }}
-      >
-        Message
       </Text>
-
-     <TouchableOpacity
-  style={{
-    flex: 1,
-    backgroundColor: "#007AFF",
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-  }}
-  onPress={() => {
-    Alert.alert(" Call button works");
-  }}
->
-  <Text
+<View style={{ flexDirection: "row", gap: 12, marginTop: 16 }}>
+  <TouchableOpacity
     style={{
-      color: "#fff",
-      fontWeight: "700",
-      fontSize: 16,
+      flex: 1,
+      backgroundColor: "#007AFF",
+      paddingVertical: 14,
+      borderRadius: 14,
+      alignItems: "center",
+    }}
+    onPress={() => {
+      if (listing?.contact_info) {
+        Linking.openURL(`sms:${listing.contact_info}`);
+      }
     }}
   >
-    Call
-  </Text>
-</TouchableOpacity>
-    </View>
+    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
+      Message
+    </Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    style={{
+      flex: 1,
+      backgroundColor: "#007AFF",
+      paddingVertical: 14,
+      borderRadius: 14,
+      alignItems: "center",
+    }}
+    onPress={() => {
+      if (listing?.contact_info) {
+        Linking.openURL(`tel:${listing.contact_info}`);
+      }
+    }}
+  >
+    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
+      Call
+    </Text>
+  </TouchableOpacity>
   </View>
+  </View>
+
 ) : null}
     </View>
     </ScrollView>

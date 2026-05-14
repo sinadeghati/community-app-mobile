@@ -10,6 +10,8 @@ import {
   Pressable,
   Linking,
   Alert,
+  TouchableOpacity,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { API } from "../../lib/api";
@@ -83,6 +85,22 @@ const businessDescription = useMemo(() => {
   return "";
 }, [listings]);
 
+const businessWebsite = useMemo(() => {
+  if (listings.length > 0) {
+    return (listings[0] as any)?.website || "";
+  }
+
+  return "";
+}, [listings]);
+
+const businessInstagram = useMemo(() => {
+  if (listings.length > 0) {
+    return (listings[0] as any)?.instagram || "";
+  }
+
+  return "";
+}, [listings]);
+
 const businessContact = useMemo(() => {
   if (listings.length > 0) {
     return (listings[0] as any)?.contact_info || "";
@@ -145,6 +163,13 @@ const heroImageUrl = useMemo(() => {
   </Pressable>
 
   <Pressable
+    onPress={() => {
+  if (businessContact) {
+    Linking.openURL(`sms:${businessContact}`);
+  } else {
+    Alert.alert("No phone number");
+  }
+}}
     style={{
       flex: 1,
       backgroundColor: "#222",
@@ -173,6 +198,8 @@ const heroImageUrl = useMemo(() => {
     Contact: {businessContact}
   </Text>
 ) : null}
+
+ 
 
   const renderItem = ({ item }: { item: Listing }) => {
     const first =
@@ -212,6 +239,8 @@ const heroImageUrl = useMemo(() => {
     },
   ]}
 >
+
+  
       
       <View
   style={{
@@ -221,6 +250,14 @@ const heroImageUrl = useMemo(() => {
     marginBottom: 20,
   }}
 >
+  <View style={styles.topRow}>
+  <TouchableOpacity
+    style={styles.backBtn}
+    onPress={() => router.back()}
+  >
+    <Text style={styles.backText}>← Back</Text>
+  </TouchableOpacity>
+</View>
  {heroImageUrl ? (
   <Image
     source={{ uri: heroImageUrl }}
@@ -335,28 +372,44 @@ const heroImageUrl = useMemo(() => {
   onPress={() => {
     if (item === "Call") {
       if (businessContact) {
-        Linking.openURL(`tel:${businessContact}`);
+        const cleanPhone = businessContact.replace(/[^\d+]/g, "");
+Linking.openURL(`tel:${cleanPhone}`).catch((err) => {
+  console.log("Call open error:", err);
+});
       } else {
         Alert.alert("No phone number");
       }
     }
 
     if (item === "Message") {
-      Alert.alert("Messaging coming soon");
+      if (businessContact) {
+        const cleanPhone = businessContact.replace(/[^\d+]/g, "");
+Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
+  console.log("SMS open error:", err);
+});
+      } else {
+        Alert.alert("No phone number");
+      }
     }
 
     if (item === "Reviews") {
       Alert.alert("Reviews coming soon");
     }
 
-    if (item === "Map") {
+   if (item === "Map") {
   const address = listings[0]?.city
     ? `${listings[0]?.city}, ${listings[0]?.state || ""}`
     : headerTitle;
 
-  Linking.openURL(
-    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
-  );
+  const url =
+    Platform.OS === "ios"
+      ? `http://maps.apple.com/?q=${encodeURIComponent(address)}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+
+  Linking.openURL(url).catch((err) => {
+    console.log("Map open error:", err);
+    Alert.alert("Map error", "Unable to open maps.");
+  });
 }
   }}
   style={{
@@ -403,6 +456,22 @@ const heroImageUrl = useMemo(() => {
           }
         />
       )}
+      <Pressable
+  onPress={() => router.push("/profile/edit")}
+  style={{
+    marginTop: 14,
+    backgroundColor: "#fff",
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#444",
+  }}
+>
+  <Text style={{ color: "#111", fontWeight: "800", fontSize: 15 }}>
+    Edit Business Profile
+  </Text>
+</Pressable>
     </View>
   );
 }
@@ -411,7 +480,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#fff" },
   topRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
   backBtn: { paddingVertical: 6, paddingHorizontal: 10, marginRight: 10 },
-  backText: { color: "#007AFF", fontSize: 16 },
+  backText: { color: "#fff", fontSize: 16, fontWeight: "700", },
   h1: { fontSize: 18, fontWeight: "700" },
   h2: { fontSize: 16, fontWeight: "700", marginBottom: 10 },
 
