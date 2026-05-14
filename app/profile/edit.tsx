@@ -9,6 +9,7 @@ import {
   ScrollView,
   Alert,
 } from "react-native";
+import { API } from "@/lib/api";
 
 export default function EditBusinessProfileScreen() {
     const [businessName, setBusinessName] = useState("Threading by Sherry");
@@ -141,18 +142,16 @@ const [city, setCity] = useState("San Diego");
         }}
       />
     </View>
+<Pressable
+  onPress={async () => {
+    try {
+      Alert.alert("Success", "Profile update coming next step");
+    } catch (error) {
+      console.log(error);
+    }
+  }}
 
-    <Pressable
-      onPress={() => {
-  console.log({
-    businessName,
-    businessBio,
-    phone,
-    city,
-  });
 
-  Alert.alert("Success", "Data ready to send");
-}}
       style={{
         backgroundColor: "#111",
         paddingVertical: 16,
