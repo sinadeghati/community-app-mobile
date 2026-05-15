@@ -292,7 +292,7 @@ const heroImageUrl = useMemo(() => {
   <View style={styles.topRow}>
   <TouchableOpacity
     style={styles.backBtn}
-    onPress={() => router.back()}
+    onPress={() => router.replace("/explore")}
   >
     <Text style={styles.backText}>← Back</Text>
   </TouchableOpacity>

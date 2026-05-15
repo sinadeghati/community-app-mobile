@@ -179,6 +179,36 @@ const ListHeader = () => (
       </TouchableOpacity>
     ) : null}
 
+    <View
+  style={{
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 18,
+  }}
+>
+  <Text
+    style={{
+      fontSize: 30,
+      fontWeight: "800",
+      color: "#111",
+    }}
+  >
+    Discover
+  </Text>
+
+  <Text
+    style={{
+      fontSize: 16,
+      color: "#666",
+      marginTop: 6,
+      lineHeight: 22,
+    }}
+  >
+    Discover Iranian businesses, services, and
+    community near you.
+  </Text>
+</View>
+
     <FlatList
       data={CATEGORIES}
       horizontal
@@ -241,9 +271,9 @@ const ListHeader = () => (
       activeOpacity={0.8}
       style={{
         backgroundColor: "#FFF",
-        borderRadius: 18,
-        padding: 14,
-        marginBottom: 14,
+        borderRadius: 22,
+        padding: 16,
+        marginBottom: 18,
         flexDirection: "row",
         gap: 14,
         alignItems: "center",
@@ -259,7 +289,7 @@ const ListHeader = () => (
       {imageUrl ? (
         <Image
           source={{ uri: imageUrl }}
-          style={{ width: 72, height: 72, borderRadius: 12 }}
+          style={{ width: 84, height: 84, borderRadius: 16 }}
           resizeMode="cover"
         />
       ) : (
@@ -278,7 +308,7 @@ const ListHeader = () => (
       )}
 
       <View style={{ flex: 1 }}>
-        <Text style={{ fontWeight: "700", fontSize: 18 }}>{item?.title}</Text>
+        <Text style={{ fontWeight: "700", fontSize: 20 }}>{item?.title}</Text>
         <Text
   style={{
     marginTop: 4,
@@ -334,7 +364,7 @@ const ListHeader = () => (
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-     <SafeAreaView style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#fff", justifyContent: "flex-start", alignItems: "stretch" }}>
+     <SafeAreaView style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#f5f5f7", justifyContent: "flex-start", alignItems: "stretch" }}>
       
       
 
