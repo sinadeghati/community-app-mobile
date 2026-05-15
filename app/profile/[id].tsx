@@ -18,7 +18,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { API } from "../../lib/api";
 import authStorage from "../utils/authStorage";
 import { Ionicons } from "@expo/vector-icons";
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 type ListingImage = {
   image_url?: string;
   image?: string;
@@ -47,6 +48,18 @@ export default function PublicProfileScreen() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUserId, setCurrentUserId] =useState<string | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
+  const favoriteKey = `favorite-business-${id}`;
+  
+  useFocusEffect(
+  React.useCallback(() => {
+    const reloadFavorite = async () => {
+      const saved = await AsyncStorage.getItem(favoriteKey);
+      setIsFavorite(saved === "true");
+    };
+
+    reloadFavorite();
+  }, [favoriteKey])
+);
 
   useEffect(() => {
     const load = async () => {
@@ -71,6 +84,11 @@ export default function PublicProfileScreen() {
         });
 
         setListings(filtered);
+        const savedFavorite = await AsyncStorage.getItem(favoriteKey);
+
+        if (savedFavorite === "true") {
+         setIsFavorite(true);
+       }
       } catch (e: any) {
         setError(e?.message || "Failed to load profile");
       } finally {
@@ -310,7 +328,7 @@ const heroImageUrl = useMemo(() => {
   style={{
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
+    justifyContent: "space-between",
     gap: 8,
   }}
 >
@@ -345,7 +363,33 @@ const heroImageUrl = useMemo(() => {
     </Text>
   </View>
   <Pressable
-  onPress={() => setIsFavorite(!isFavorite)}
+ onPress={async () => {
+  const newValue = !isFavorite;
+
+  setIsFavorite(newValue);
+
+  await AsyncStorage.setItem(
+    favoriteKey,
+    newValue ? "true" : "false"
+  );
+
+  if (newValue) {
+    await AsyncStorage.setItem(
+      `favorite-business-data-${id}`,
+      JSON.stringify({
+        id,
+        title: headerTitle,
+        image: heroImageUrl,
+        city: listings[0]?.city || "",
+        state: listings[0]?.state || "",
+      })
+    );
+  } else {
+    await AsyncStorage.removeItem(
+      `favorite-business-data-${id}`
+    );
+  }
+}}
   style={{ marginLeft: 10 }}
 >
   <Ionicons
@@ -397,10 +441,14 @@ const heroImageUrl = useMemo(() => {
     gap: 10,
   }}
 >
-  {["Call", "Message", "Share", "Map"].map((item) => (
+  {["Call", "Message", "Share", "Map","Favorites"].map((item) => (
     <Pressable
   key={item}
   onPress={() => {
+    if (item === "Favorites") {
+      router.push("/favorites");
+      return;
+    }
     if (item === "Call") {
       if (businessContact) {
         const cleanPhone = businessContact.replace(/[^\d+]/g, "");
