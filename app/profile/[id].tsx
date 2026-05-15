@@ -12,9 +12,12 @@ import {
   Alert,
   TouchableOpacity,
   Platform,
+  Share,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { API } from "../../lib/api";
+import authStorage from "../utils/authStorage";
+import { Ionicons } from "@expo/vector-icons";
 
 type ListingImage = {
   image_url?: string;
@@ -41,12 +44,21 @@ export default function PublicProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [listings, setListings] = useState<Listing[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUserId, setCurrentUserId] =useState<string | null>(null);
+  const [isFavorite, setIsFavorite] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
+
+        const token = await authStorage.getTokens();
+        if (token?.access) {
+          setIsLoggedIn(true);
+          setCurrentUserId("");
+        }
 
         const data = await API.getListings();
 
@@ -153,8 +165,17 @@ const heroImageUrl = useMemo(() => {
       flex: 1,
       backgroundColor: "#2563eb",
       paddingVertical: 14,
-      borderRadius: 14,
+      borderRadius: 16,
       alignItems: "center",
+
+      shadowColor: "#2563eb",
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
+      elevation: 6,
     }}
   >
     <Text style={{ color: "#fff", fontWeight: "800", fontSize: 16 }}>
@@ -323,6 +344,16 @@ const heroImageUrl = useMemo(() => {
       VERIFIED
     </Text>
   </View>
+  <Pressable
+  onPress={() => setIsFavorite(!isFavorite)}
+  style={{ marginLeft: 10 }}
+>
+  <Ionicons
+    name={isFavorite ? "heart" : "heart-outline"}
+    size={26}
+    color={isFavorite ? "#ff3040" : "#fff"}
+  />
+</Pressable>
 </View>
 
   <Text
@@ -362,11 +393,11 @@ const heroImageUrl = useMemo(() => {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 18,
-    marginBottom: 22,
+    marginBottom: 24,
     gap: 10,
   }}
 >
-  {["Call", "Message", "Reviews", "Map"].map((item) => (
+  {["Call", "Message", "Share", "Map"].map((item) => (
     <Pressable
   key={item}
   onPress={() => {
@@ -392,8 +423,12 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
       }
     }
 
-    if (item === "Reviews") {
-      Alert.alert("Reviews coming soon");
+    if (item === "Share") {
+      Share.share({
+        message:
+           "Check out this business on IranianApp: Threading by Sherry",
+      });
+      return;
     }
 
    if (item === "Map") {
@@ -415,11 +450,17 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
   style={{
     flex: 1,
     backgroundColor: "#fff",
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: 13,
+    borderRadius: 16,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: "#e5e7eb",
+    shadowColor: "000",
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+    
   }}
 >
       <Text
@@ -456,6 +497,8 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
           }
         />
       )}
+
+      {false && (
       <Pressable
   onPress={() => router.push("/profile/edit")}
   style={{
@@ -472,6 +515,7 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
     Edit Business Profile
   </Text>
 </Pressable>
+  )}
     </View>
   );
 }
@@ -494,6 +538,14 @@ const styles = StyleSheet.create({
     borderColor: "#eee",
     borderRadius: 10,
     padding: 8,
+
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+
+
   },
   image: { width: "100%", height: 120, borderRadius: 8, marginBottom: 8 },
   noImage: {
