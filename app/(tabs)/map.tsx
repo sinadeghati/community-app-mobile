@@ -14,6 +14,7 @@ export default function MapScreen() {
   const loadListings = async () => {
     try {
       const data = await API.getListings();
+      
       setListings(Array.isArray(data) ? data : data?.results ?? []);
     } catch (e) {
       console.log("MAP LISTINGS ERROR:", e);
@@ -35,7 +36,9 @@ export default function MapScreen() {
         }}
       >
        
-{listings.map((item: any) => (
+{listings
+  .filter((item: any) => item.latitude != null && item.longitude != null )
+  .map((item: any) => (
   <Marker
     key={item.id}
     coordinate={{

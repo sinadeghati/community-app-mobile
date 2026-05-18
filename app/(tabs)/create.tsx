@@ -160,6 +160,8 @@ console.log("STATE DEBUG:", { state, cleanState });
       contact_info: cleanContact,
       description: description?.trim() || "",
       category: category,
+      latitude: 32.7157,
+      longitude: -117.1611,
     };
 
     console.log("CREATE LISTING PAYLOAD:", payload);

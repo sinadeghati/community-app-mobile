@@ -54,6 +54,7 @@ export default function ExploreScreen() {
       setLoading(true);
       setError(null);
       const data = await API.getListings();
+      
       setListings(Array.isArray(data) ? data : (data?.results ?? []));
     } catch (e: any) {
       setError(e?.message || "Failed to load listings");
