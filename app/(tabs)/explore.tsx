@@ -157,11 +157,14 @@ const ListHeader = () => (
       </Text>
     )}
 
-    <View style={{ marginBottom: 12 }}>
+    <View style={{ marginBottom: 18,
+                   borderRadius: 24,
+                   overflow: "hidden",
+     }}>
       <ImageBackground
   source={require("../../assets/images/hero1.jpeg")}
   style={{
-    height: 210,
+    height: 230,
     borderRadius: 20,
     overflow: "hidden",
   }}

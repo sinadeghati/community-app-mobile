@@ -70,6 +70,20 @@ const guardTab = (target: string) => async (e: any) => {
       },
     }}
       >
+<Tabs.Screen
+  name="map"
+  options={{
+    title: "Map",
+    tabBarIcon: ({ color, size }) => (
+      <Ionicons
+        name="map-outline"
+        size={size}
+        color={color}
+      />
+    ),
+  }}
+/>
+
       <Tabs.Screen
         name="index"
         options={{ title: "Home",
@@ -123,6 +137,8 @@ const guardTab = (target: string) => async (e: any) => {
           ),
          }}
       />
+
+      
 
       <Tabs.Screen
         name="mylistings"

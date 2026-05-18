@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import authStorage from "../utils/authStorage";
 import AppButton from "@/components/ui/AppButton";
+import { Redirect } from "expo-router";
 
 // 🔴 فقط این آدرس را وقتی IP عوض شد تغییر بده
 
@@ -37,6 +38,7 @@ export default function LoginScreen() {
         const tokens = await authStorage.getTokens();
         if (tokens?.access) {
           console.log("User already logged in (token found)");
+          router.replace("/map");
         }
       } catch (error) {
         console.log("LOAD TOKENS ERROR:", error);
