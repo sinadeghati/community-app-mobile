@@ -1,37 +1,29 @@
 import MapView, { Marker } from "react-native-maps";
 import { View, StyleSheet, TouchableOpacity } from "react-native";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Text } from "react-native";
 import { useRouter } from "expo-router";
+import { API } from "../../lib/api";
+
 
 export default function MapScreen() {
  const [selectedPlace, setSelectedPlace] = useState<any>(null);
  const router = useRouter();
- const listings = [
-  {
-    id: 1,
-    name: "Luxury Home Developments",
-    latitude: 32.7157,
-    longitude: -117.1611,
-    rating: 4.9,
-    category: "Construction",
-    city: "San Diego",
-  },
-  {
-    id: 2,
-    name: "Persian Cafe",
-    latitude: 32.705,
-    longitude: -117.185,
-    rating: 4.7,
-    category: "Cafe",
-    city: "San Diego",
-  },
-];
+ const [ listings, setListings] = useState<any[]>([]);
+ useEffect(() => {
+  const loadListings = async () => {
+    try {
+      const data = await API.getListings();
+      setListings(Array.isArray(data) ? data : data?.results ?? []);
+    } catch (e) {
+      console.log("MAP LISTINGS ERROR:", e);
+    }
+  };
 
- 
-
-
-  return (
+  loadListings();
+}, []);
+   
+ return (
     <View style={styles.container}>
       <MapView
         style={styles.map}
@@ -68,7 +60,7 @@ export default function MapScreen() {
       </Text>
 
       <Text style={{ fontSize: 10 }}>
-        {item.name.split(" ")[0]}
+        {(item.name || item.title || "Business").split(" ")[0]}
       </Text>
     </View>
   </Marker>
@@ -95,7 +87,7 @@ export default function MapScreen() {
     }}
   >
     <Text style={{ fontSize: 18, fontWeight: "bold" }}>
-      {selectedPlace.name}
+      {selectedPlace.name || selectedPlace.title || "Business"}
     </Text>
 
     <Text style={{ marginTop: 4, color: "#666" }}>
