@@ -1,5 +1,5 @@
 // app/(tabs)/index.tsx
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useFocusEffect, } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -30,25 +30,32 @@ export default function LoginScreen() {
   const [password, setPassword] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // وقتی اپ باز می‌شود، اگر توکن هست فقط لاگ می‌گیریم
-  useEffect(() => {
+  useFocusEffect(
+  React.useCallback(() => {
     const loadTokens = async () => {
       try {
         const tokens = await authStorage.getTokens();
+
         if (tokens?.access) {
           console.log("User already logged in (token found)");
-          router.replace("/map");
+          setIsLoggedIn(true);
+        } else {
+          await authStorage.clearTokens();
+          setIsLoggedIn(false);
         }
       } catch (error) {
         console.log("LOAD TOKENS ERROR:", error);
+        setIsLoggedIn(false);
       } finally {
         setAuthLoading(false);
       }
     };
 
     loadTokens();
-  }, []);
+  }, [])
+);
 
   const handleLogin = async () => {
     if (!username || !password) {
@@ -113,6 +120,10 @@ export default function LoginScreen() {
         <Text style={{ marginTop: 10 }}>Checking login status...</Text>
       </View>
     );
+  }
+
+  if (isLoggedIn) {
+    return <Redirect href="/explore" />;
   }
 
   return (

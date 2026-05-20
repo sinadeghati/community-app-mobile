@@ -32,24 +32,20 @@ export default function TabsLayout() {
  
 
 const guardTab = (target: string) => async (e: any) => {
-  try{
+  e.preventDefault();
+
+  try {
     const tokens = await authStorage.getTokens();
     const access = tokens?.access;
     const ok = !!access && authStorage.isJwtNotExpired(access);
 
-    if (!ok) {
-      e.preventDefault();
-      router.push({
-        pathname: "/login",
-        params: { redirectTo: target},
-      });
+    if (ok) {
+      router.push(target);
+    } else {
+      router.replace("/(tabs)");
     }
   } catch {
-    e.preventDefault();
-    router.push({
-      pathname: "/login",
-      params: { redirectTo: target },
-    });
+    router.replace("/(tabs)");
   }
 };
 
@@ -138,19 +134,14 @@ const guardTab = (target: string) => async (e: any) => {
          }}
       />
 
-      
-
       <Tabs.Screen
         name="mylistings"
-        options={{ title: "My Listings",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="list-outline" size={size} color={color} />
-          ),
-         }}
-        listeners={{ tabPress: guardTab("/(tabs)/mylistings")
+        options ={{
+          href: null,
+        }}
+        />
 
-         }}
-      />
+      
 
       <Tabs.Screen
         name="profile"
@@ -159,9 +150,9 @@ const guardTab = (target: string) => async (e: any) => {
             <Ionicons name="person-outline" size={size} color={color} />
           ),
          }}
-        listeners={{ tabPress: guardTab("/(tabs)/profile")
+        
 
-         }}
+         
       />
     </Tabs>
   );

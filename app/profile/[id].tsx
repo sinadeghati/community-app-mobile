@@ -82,6 +82,7 @@ export default function PublicProfileScreen() {
   const payload = JSON.parse(atob(token.access.split(".")[1]));
   setCurrentUserId(String(payload.user_id || payload.id || payload.userId || ""));
 } else {
+  await authStorage.clearTokens();
   setIsLoggedIn(false);
   setCurrentUserId(null);
 }

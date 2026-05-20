@@ -32,7 +32,7 @@ export default function ProfileScreen() {
           setProfile(null);
           setLoading(false);
 
-          router.replace("/(tabs)/profile");
+          router.replace("/(tabs)");
         },
       },
     ]
@@ -49,7 +49,7 @@ export default function ProfileScreen() {
         console.log("ACCESS:", access);
 
         if (!access) {
-          Alert.alert("Not logged in", "No access token found.");
+          setProfile(null);
           return;
         }
 
