@@ -28,8 +28,11 @@ export default function ProfileScreen() {
           await AsyncStorage.removeItem("token");
           await AsyncStorage.removeItem("user");
           await AsyncStorage.removeItem("userId");
-          
-          router.replace("/login");
+
+          setProfile(null);
+          setLoading(false);
+
+          router.replace("/(tabs)/profile");
         },
       },
     ]
@@ -119,7 +122,7 @@ export default function ProfileScreen() {
         </Text>
 
         <TouchableOpacity
-          onPress={() => router.push("/login")}
+          onPress={() => router.replace("/(tabs)")}
           style={{
             marginTop: 16,
             padding: 14,
