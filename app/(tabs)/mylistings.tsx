@@ -34,6 +34,14 @@ export default function MyListingsScreen() {
 
   try {
     setLoading(true);
+    const tokens = await authStorage.getTokens();
+const access = tokens?.access;
+
+if (!access || !authStorage.isJwtNotExpired(access)) {
+  await authStorage.clearTokens();
+  setItems([]);
+  return;
+}
     const data = await API.getMyListings();
     setItems(data);
   } catch (err: any) {

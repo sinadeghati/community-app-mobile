@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import { useFocusEffect } from "expo-router";
 import { View, Text, ActivityIndicator, Alert,TouchableOpacity } from "react-native";
 import authStorage from "../utils/authStorage";
 import { useRouter } from "expo-router";
@@ -40,7 +41,8 @@ export default function ProfileScreen() {
 };
 
 
-  useEffect(() => {
+  useFocusEffect(
+     React.useCallback(() => {
     const loadProfile = async () => {
       try {
         const tokens = await authStorage.getTokens();
@@ -48,10 +50,11 @@ export default function ProfileScreen() {
         console.log("TOKENS:", tokens);
         console.log("ACCESS:", access);
 
-        if (!access) {
-          setProfile(null);
-          return;
-        }
+       if (!access || !authStorage.isJwtNotExpired(access)) {
+  await authStorage.clearTokens();
+  setProfile(null);
+  return;
+}
 
 
         const res = await fetch(PROFILE_URL, {
@@ -79,7 +82,8 @@ export default function ProfileScreen() {
     };
 
     loadProfile();
-  }, []);
+  }, [])
+);
 
   
 
@@ -95,6 +99,26 @@ export default function ProfileScreen() {
           Username: {profile?.username}
         </Text>
         <Text>Email: {profile?.email ?? "-"}</Text>
+
+        <TouchableOpacity
+  onPress={() => router.push("/(tabs)/mylistings")}
+  style={{
+    marginTop: 24,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: "#2563eb",
+  }}
+>
+  <Text
+    style={{
+      textAlign: "center",
+      fontWeight: "700",
+      color: "#fff",
+    }}
+  >
+    My Listings
+  </Text>
+</TouchableOpacity>
 
         <TouchableOpacity
           onPress={handleLogout}
