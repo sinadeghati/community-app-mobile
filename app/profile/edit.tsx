@@ -1,5 +1,5 @@
-import { router } from "expo-router";
-import { useState} from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useState, useEffect} from "react";
 import {
   SafeAreaView,
   Text,
@@ -8,10 +8,33 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { API } from "@/lib/api";
 
 export default function EditBusinessProfileScreen() {
+    const { id } = useLocalSearchParams();
+    useEffect(() => {
+  const loadProfile = async () => {
+    if (!id) return;
+
+    try {
+      const data = await API.getListing(String(id));
+
+      setBusinessName(data?.title || "");
+      setBusinessBio(data?.description || "");
+      setPhone(data?.contact_info || "");
+      setCity(data?.city || "");
+    } catch (e) {
+      Alert.alert("Error", "Could not load business profile.");
+    }
+  };
+
+  loadProfile();
+}, [id]);
     const [businessName, setBusinessName] = useState("Threading by Sherry");
     const [businessBio, setBusinessBio] = useState(
   "زیبایی ابروی خود را به ما بسپارید..."
@@ -22,7 +45,13 @@ const [phone, setPhone] = useState("");
 
 const [city, setCity] = useState("San Diego");
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff", padding: 20 }}>
+    
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+  >
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#fff", padding: 20 }}>
       <Pressable onPress={() => router.back()} style={{ marginBottom: 24 }}>
         <Text style={{ fontSize: 18, color: "#007AFF" }}>← Back</Text>
       </Pressable>
@@ -144,14 +173,32 @@ const [city, setCity] = useState("San Diego");
     </View>
 <Pressable
   onPress={async () => {
+    Keyboard.dismiss();
     try {
-      Alert.alert("Success", "Profile update coming next step");
+      if (!id) {
+  Alert.alert("Error", "Missing business ID.");
+  return;
+}
+
+await API.updateMyListing(Number(id), {
+  title: businessName,
+  description: businessBio,
+  contact_info: phone,
+  city: city,
+});
+
+Alert.alert("Success", "Profile updated.", [
+  {
+    text: "OK",
+    onPress: () => router.back(),
+  },
+]);
     } catch (error) {
       console.log(error);
-    }
-  }}
-
-
+      Alert.alert("Error", "Could not update profile.");
+  }
+}}
+  
       style={{
         backgroundColor: "#111",
         paddingVertical: 16,
@@ -174,5 +221,7 @@ const [city, setCity] = useState("San Diego");
   </View>
 </ScrollView>
     </SafeAreaView>
+    </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }

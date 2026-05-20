@@ -1,7 +1,7 @@
 // lib/api.ts
 import axios from "axios";
 import authStorage from "../app/utils/authStorage"; // اگر مسیرت فرق دارد، فقط همین یک خط را اصلاح کن
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
 const BASE_URL = "https://community-app-backend-production.up.railway.app/api";
 
 const client = axios.create({

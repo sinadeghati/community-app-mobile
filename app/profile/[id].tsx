@@ -13,6 +13,8 @@ import {
   TouchableOpacity,
   Platform,
   Share,
+  ScrollView,
+  Modal,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { API } from "../../lib/api";
@@ -20,6 +22,7 @@ import authStorage from "../utils/authStorage";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
+
 type ListingImage = {
   image_url?: string;
   image?: string;
@@ -49,6 +52,7 @@ export default function PublicProfileScreen() {
   const [currentUserId, setCurrentUserId] =useState<string | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const favoriteKey = `favorite-business-${id}`;
+  const [ selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   
   useFocusEffect(
   React.useCallback(() => {
@@ -61,7 +65,9 @@ export default function PublicProfileScreen() {
   }, [favoriteKey])
 );
 
-  useEffect(() => {
+  useFocusEffect(
+    React.useCallback(() => {
+    
     const load = async () => {
       try {
         setLoading(true);
@@ -70,7 +76,8 @@ export default function PublicProfileScreen() {
         const token = await authStorage.getTokens();
         if (token?.access) {
           setIsLoggedIn(true);
-          setCurrentUserId("");
+          const payload = JSON.parse(atob(token.access.split(".")[1]));
+          setCurrentUserId(String(payload.user_id || payload.id || payload.userId || ""));
         }
 
         const data = await API.getListings();
@@ -97,7 +104,8 @@ export default function PublicProfileScreen() {
     };
 
     if (id) load();
-  }, [id]);
+  }, [id])
+);
 
  const headerTitle = useMemo(() => {
   if (listings.length > 0) {
@@ -153,6 +161,17 @@ const heroImageUrl = useMemo(() => {
     firstListing?.image ||
     firstImage?.image_url ||
     firstImage?.image ||
+    ""
+  );
+}, [listings]);
+
+ const logoImageUrl = useMemo(() => {
+  const firstListing = listings[0] as any;
+
+  return (
+    firstListing?.logo_image ||
+    firstListing?.image_url ||
+    firstListing?.image ||
     ""
   );
 }, [listings]);
@@ -270,7 +289,8 @@ const heroImageUrl = useMemo(() => {
   };
 
   return (
-    <View
+    <>
+    <ScrollView
   style={[
     styles.container,
     {
@@ -278,40 +298,91 @@ const heroImageUrl = useMemo(() => {
     },
   ]}
 >
+ 
 
   
       
-      <View
+<View
   style={{
-    backgroundColor: "#111",
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 20,
+    backgroundColor: "#fff",
+    borderRadius: 28,
+    padding: 0,
+    marginBottom: 24,
+    overflow: "hidden",
   }}
 >
   <View style={styles.topRow}>
   <TouchableOpacity
     style={styles.backBtn}
-    onPress={() => router.replace("/explore")}
+    onPress={() => {
+      console.log("BACK BUTTON PRESSED");
+      router.replace("/explore");
+    }}
   >
     <Text style={styles.backText}>← Back</Text>
   </TouchableOpacity>
 </View>
  {heroImageUrl ? (
+  <>
   <Image
     source={{ uri: heroImageUrl }}
     style={{
       width: "100%",
-      height: 140,
-      borderRadius: 14,
-      marginBottom: 16,
+      height: 240,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      borderBottomRightRadius: 0,
+      borderBottomLeftRadius: 0,
     }}
     resizeMode="cover"
   />
+
+  <View
+  style={{
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 285,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    backgroundColor: "rgba(0,0,0,0.14)",
+    
+  }}
+/>
+  <View
+  style={{
+    position: "absolute",
+    left: 24,
+    top: 235,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: "#222",
+    borderWidth: 4,
+    borderColor: "#fff",
+    shadowColor: "#111",
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    overflow: "hidden",
+  }}
+>
+  <Image
+    source={{ uri: logoImageUrl }}
+    style={{
+      width: "100%",
+      height: "100%",
+    }}
+    resizeMode="contain"
+    />
+  
+</View>
+</>
+  
 ) : (
   <View
     style={{
-      height: 140,
+      height: 220,
       borderRadius: 14,
       backgroundColor: "#222",
       marginBottom: 16,
@@ -327,25 +398,42 @@ const heroImageUrl = useMemo(() => {
   <View
   style={{
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: 8,
   }}
 >
+ <View>
   <Text
     style={{
       fontSize: 28,
       fontWeight: "800",
-      color: "#fff",
-      flexShrink:1,
+      color: "#111",
+      flexShrink: 1,
+      marginTop: 18,
     }}
   >
     {headerTitle}
   </Text>
 
+  <Text
+    style={{
+      color: "#666",
+      fontSize: 15,
+      marginTop: 4,
+      marginLeft: 2,
+      fontWeight: "500",
+    }}
+  >
+    Auto Repair & Mechanic
+  </Text>
+</View>
+  
+
   <View
     style={{
       marginLeft: 10,
+      marginTop: 18,
       backgroundColor: "#2563eb",
       paddingHorizontal: 10,
       paddingVertical: 4,
@@ -390,12 +478,24 @@ const heroImageUrl = useMemo(() => {
     );
   }
 }}
-  style={{ marginLeft: 10 }}
+  style={{
+  width: 42,
+  height: 42,
+  borderRadius: 21,
+  backgroundColor: "#fff",
+  justifyContent: "center",
+  alignItems: "center",
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.05,
+  shadowRadius: 4,
+  elevation: 2,
+}}
 >
   <Ionicons
     name={isFavorite ? "heart" : "heart-outline"}
     size={26}
-    color={isFavorite ? "#ff3040" : "#fff"}
+    color={isFavorite ? "#ff3040" : "#666"}
   />
 </Pressable>
 </View>
@@ -404,7 +504,7 @@ const heroImageUrl = useMemo(() => {
     style={{
       marginTop: 6,
       fontSize: 16,
-      color: "#ccc",
+      color: "#666",
     }}
   >
     {listings.length} listings
@@ -419,26 +519,34 @@ const heroImageUrl = useMemo(() => {
 >
   ⭐ 4.8 • 24 reviews
 </Text>
-  {businessDescription ? (
-  <Text
-    style={{
-      marginTop: 12,
-      fontSize: 15,
-      lineHeight: 22,
-      color: "#ddd",
-    }}
-  >
-    {businessDescription}
-  </Text>
-) : null}
+
+<View
+  style={{
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+    marginBottom: 18,
+    flexWrap: "wrap",
+  }}
+>
+  <View style={{ backgroundColor: "#f3f4f6", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 }}>
+    <Text style={{ color: "#111", fontSize: 13, fontWeight: "700" }}>✓ Verified Business</Text>
+  </View>
+
+  <View style={{ backgroundColor: "#f3f4f6", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 }}>
+    <Text style={{ color: "#111", fontSize: 13, fontWeight: "700" }}>📍 Escondido, CA</Text>
+  </View>
+</View>
+ 
 </View>
 <View
   style={{
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 18,
-    marginBottom: 24,
-    gap: 10,
+    justifyContent: "flex-start",
+    paddingHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+    gap: 8,
   }}
 >
   {["Call", "Message", "Share", "Map","Favorites"].map((item) => (
@@ -496,21 +604,42 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
 }
   }}
   style={{
-    flex: 1,
-    backgroundColor: "#fff",
-    paddingVertical: 13,
-    borderRadius: 16,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    shadowColor: "000",
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-    
-  }}
+  flex: 1,
+  height: 64,
+  backgroundColor: "#fff",
+
+  justifyContent: "center",
+  alignItems: "center",
+
+  borderRadius: 16,
+
+  borderWidth: 1,
+  borderColor: "#f2f2f2",
+
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.03,
+  shadowRadius: 4,
+
+  elevation: 1,
+}}
 >
+  <Ionicons
+  name={
+    item === "Call"
+      ? "call-outline"
+      : item === "Message"
+      ? "chatbubble-outline"
+      : item === "Share"
+      ? "share-social-outline"
+      : item === "Map"
+      ? "location-outline"
+      : "heart-outline"
+  }
+  size={20}
+  color="#111"
+  style={{ marginBottom: 6 }}
+/>
       <Text
         style={{
           fontSize: 13,
@@ -524,9 +653,171 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
   ))}
 </View>
 
+{businessDescription ? (
+  <View
+    style={{
+      backgroundColor: "#f8f8f8",
+      marginHorizontal: 16,
+      marginTop: 6,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 16,
+      shadowColor: "#000",
+      shadowOpacity: 0.05,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 3,
+    }}
+  >
+    <Text
+      style={{
+        fontSize: 18,
+        fontWeight: "700",
+        marginBottom: 10,
+        color: "#111",
+      }}
+    >
+      About
+    </Text>
+
+    <Text
+      style={{
+        fontSize: 15,
+        lineHeight: 24,
+        color: "#555",
+      }}
+    >
+      {businessDescription}
+    </Text>
+  </View>
+) : null}
+
+<View
+  style={{
+    backgroundColor: "#f8f8f8",
+    marginHorizontal: 16,
+    marginTop: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  }}
+>
+  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+    <View style={{ flex: 1 }}>
+      <Text style={{ fontSize: 18, fontWeight: "800", color: "#111" }}>
+        Photos & Highlights
+      </Text>
+      <Text style={{ marginTop: 3, color: "#666", fontSize: 13 }}>
+        3 photos
+      </Text>
+    </View>
+
+    <View style={{ flexDirection: "row", gap: 6 }}>
+      {[heroImageUrl, heroImageUrl, heroImageUrl].map((img, index) => (
+        <Pressable key={index} onPress={() => setSelectedPhoto(img)}>
+          <Image
+            source={{ uri: img }}
+            style={{
+              width: 54,
+              height: 54,
+              borderRadius: 10,
+            }}
+            resizeMode="cover"
+          />
+        </Pressable>
+      ))}
+    </View>
+  </View>
+</View>
+<View
+  style={{
+    backgroundColor: "#f8f8f8",
+    marginHorizontal: 16,
+    marginTop: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  }}
+>
+
+  <Text
+    style={{
+      fontSize: 18,
+      fontWeight: "700",
+      marginBottom: 8,
+      color: "#111",
+    }}
+  >
+    Reviews
+  </Text>
+
+  <Text
+    style={{
+      fontSize: 18,
+      fontWeight: "700",
+      color: "#d4af37",
+    }}
+  >
+    ⭐ 4.8 • 24 reviews
+  </Text>
+
+  <Text
+    style={{
+      marginTop: 10,
+      fontSize: 15,
+      color: "#666",
+      lineHeight: 26,
+    }}
+  >
+    Customers love the service, honesty, and professional work.
+  </Text>
+</View>
 
 
-      <Text style={styles.h2}>Listings</Text>
+
+ {currentUserId &&
+ listings.some(
+  (x: any) =>
+    String(x.user_id ?? x.owner_id ?? x.user?.id) ===
+    String(currentUserId)
+ ) && (
+  <Pressable
+    onPress={() => router.push(`/profile/edit?id=${listings[0]?.id}`)}
+    style={{
+      backgroundColor: "#2563eb",
+      paddingVertical: 9,
+      borderRadius: 12,
+      alignItems: "center",
+      marginTop: 8,
+      marginBottom: 4,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        fontWeight: "800",
+        fontSize: 14,
+      }}
+    >
+      Edit Profile
+    </Text>
+  </Pressable>
+)}
+
+
+
+      <Text style={styles.h2}>Recent Listings</Text>
 
       {loading ? (
         <ActivityIndicator size="large" />
@@ -536,44 +827,78 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
         <FlatList
                 
           data={listings}
+          scrollEnabled={false}
+          nestedScrollEnabled={true}
           keyExtractor={(x) => String(x.id)}
           numColumns={2}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 24 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
           ListEmptyComponent={
             <Text style={styles.empty}>No listings for this profile yet.</Text>
           }
         />
       )}
 
-      {false && (
+      
+    
+    </ScrollView>
+
+    {selectedPhoto && (
+  <Modal visible={true} transparent animationType="fade">
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.92)",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 20,
+      }}
+    >
       <Pressable
-  onPress={() => router.push("/profile/edit")}
-  style={{
-    marginTop: 14,
-    backgroundColor: "#fff",
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#444",
-  }}
->
-  <Text style={{ color: "#111", fontWeight: "800", fontSize: 15 }}>
-    Edit Business Profile
-  </Text>
-</Pressable>
-  )}
+        onPress={() => setSelectedPhoto(null)}
+        style={{
+          position: "absolute",
+          top: 60,
+          right: 24,
+          zIndex: 10,
+        }}
+      >
+       <Text style={{ color: "#fff", fontSize: 28, fontWeight: "800" }}>×</Text>
+      </Pressable>
+      <Text
+       style={{
+        color:"#fff",
+        fontSize: 14,
+        fontWeight: "700",
+        marginBottom: 1,
+        opacity: 0.9,
+       }}
+       >
+        1 / 3
+       </Text>
+
+      <Image
+        source={{ uri: selectedPhoto }}
+        style={{
+          width: "100%",
+          height: "70%",
+          borderRadius: 18,
+        }}
+        resizeMode="contain"
+      />
     </View>
+  </Modal>
+)} 
+</>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#fff" },
-  topRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  backBtn: { paddingVertical: 6, paddingHorizontal: 10, marginRight: 10 },
-  backText: { color: "#fff", fontSize: 16, fontWeight: "700", },
-  h1: { fontSize: 18, fontWeight: "700" },
+  topRow: { flexDirection: "row", alignItems: "center", marginBottom: 12,zIndex: 999, elevation: 999,},
+  backBtn: { paddingVertical: 10, paddingHorizontal: 12, marginRight: 10, zIndex: 1000,elevation:1000, },
+  backText: { color: "#111", fontSize: 16, fontWeight: "700", },
+  h1: { fontSize: 18, fontWeight: "700"},
   h2: { fontSize: 16, fontWeight: "700", marginBottom: 10 },
 
   error: { color: "red", marginTop: 10 },
@@ -581,31 +906,49 @@ const styles = StyleSheet.create({
 
   card: {
     flex: 1,
-    margin: 6,
-    borderWidth: 1,
-    borderColor: "#eee",
-    borderRadius: 10,
-    padding: 8,
+    margin: 8,
+    borderColor: "#fff",
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#fff",
 
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 6,
 
 
   },
-  image: { width: "100%", height: 120, borderRadius: 8, marginBottom: 8 },
+  image: { width: "100%", 
+           height: 170,
+           borderTopLeftRadius: 18,
+           borderTopRightRadius: 18,
+
+  },
   noImage: {
     width: "100%",
-    height: 120,
-    borderRadius: 8,
-    marginBottom: 8,
+    height: 170,
     backgroundColor: "#f2f2f2",
     alignItems: "center",
     justifyContent: "center",
   },
   noImageText: { color: "#888" },
-  title: { fontWeight: "700" },
-  sub: { color: "#666", marginTop: 2, fontSize: 12 },
+ 
+  title: {
+  fontWeight: "700",
+  fontSize: 20,
+  marginTop: 14,
+  marginHorizontal: 14,
+  color: "#111",
+},
+
+sub: {
+  color: "#666",
+  marginTop: 6,
+  fontSize: 14,
+  marginHorizontal: 14,
+  marginBottom: 14,
+  lineHeight: 20,
+},
 });
