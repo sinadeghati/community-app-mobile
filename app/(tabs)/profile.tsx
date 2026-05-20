@@ -3,7 +3,7 @@ import { View, Text, ActivityIndicator, Alert,TouchableOpacity } from "react-nat
 import authStorage from "../utils/authStorage";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const PROFILE_URL = "https://community-app-backend-production.up.railway.app/api/accounts/profile/"
 
@@ -23,6 +23,12 @@ export default function ProfileScreen() {
         style: "destructive",
         onPress: async () => {
           await authStorage.clearTokens();
+          await AsyncStorage.removeItem("authTokens_v2");
+          await AsyncStorage.removeItem("authToken");
+          await AsyncStorage.removeItem("token");
+          await AsyncStorage.removeItem("user");
+          await AsyncStorage.removeItem("userId");
+          
           router.replace("/login");
         },
       },

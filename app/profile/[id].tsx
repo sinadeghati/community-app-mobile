@@ -73,12 +73,18 @@ export default function PublicProfileScreen() {
         setLoading(true);
         setError(null);
 
+        setIsLoggedIn(false);
+        setCurrentUserId(null);
+
         const token = await authStorage.getTokens();
-        if (token?.access) {
-          setIsLoggedIn(true);
-          const payload = JSON.parse(atob(token.access.split(".")[1]));
-          setCurrentUserId(String(payload.user_id || payload.id || payload.userId || ""));
-        }
+        if (token?.access && authStorage.isJwtNotExpired(token.access)) {
+  setIsLoggedIn(true);
+  const payload = JSON.parse(atob(token.access.split(".")[1]));
+  setCurrentUserId(String(payload.user_id || payload.id || payload.userId || ""));
+} else {
+  setIsLoggedIn(false);
+  setCurrentUserId(null);
+}
 
         const data = await API.getListings();
 
@@ -786,7 +792,11 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
 
 
 
- {currentUserId &&
+ {isLoggedIn === true && 
+   currentUserId !== null &&
+   currentUserId !== "" &&
+   currentUserId !== "null" &&
+   currentUserId !== "undefined" &&
  listings.some(
   (x: any) =>
     String(x.user_id ?? x.owner_id ?? x.user?.id) ===
