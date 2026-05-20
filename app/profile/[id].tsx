@@ -322,7 +322,7 @@ const heroImageUrl = useMemo(() => {
     style={styles.backBtn}
     onPress={() => {
       console.log("BACK BUTTON PRESSED");
-      router.replace("/explore");
+      router.back();
     }}
   >
     <Text style={styles.backText}>← Back</Text>
