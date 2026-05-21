@@ -1,7 +1,6 @@
 import MapView, { Marker } from "react-native-maps";
-import { View, StyleSheet, TouchableOpacity, Image } from "react-native";
+import { View, StyleSheet, TouchableOpacity, Image, Text, TextInput,Keyboard, } from "react-native";
 import { useState, useEffect } from "react";
-import { Text } from "react-native";
 import { useRouter } from "expo-router";
 import { API } from "../../lib/api";
 
@@ -9,6 +8,7 @@ import { API } from "../../lib/api";
 export default function MapScreen() {
  const [selectedCategory, setSelectedCategory] =useState("All"); 
  const [selectedPlace, setSelectedPlace] = useState<any>(null);
+ const [searchText, setSearchText] = useState("");
  const router = useRouter();
  const [ listings, setListings] = useState<any[]>([]);
  useEffect(() => {
@@ -24,6 +24,39 @@ export default function MapScreen() {
 
   loadListings();
 }, []);
+
+const filteredListings = listings.filter((item: any) => {
+  const q = searchText.trim().toLowerCase();
+
+  const haystack = [
+    item?.title,
+    item?.city,
+    item?.state,
+    item?.description,
+    item?.contact_info,
+    item?.category,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const matchesSearch = q.length === 0 || haystack.includes(q);
+
+  const c = (
+    item?.category ||
+    item?.listing_type ||
+    item?.type ||
+    ""
+  )
+    .toString()
+    .toLowerCase();
+
+  const selected = selectedCategory.toLowerCase();
+
+  const matchesCategory =
+    selected === "all" ? true : c === selected;
+
+  return matchesSearch;
+});
    
  return (
     <View style={styles.container}>
@@ -50,14 +83,17 @@ export default function MapScreen() {
       elevation: 5,
     }}
   >
-    <Text
-      style={{
-        color: "#888",
-        fontSize: 15,
-      }}
-    >
-      Search businesses, food, services...
-    </Text>
+   <TextInput
+  value={searchText}
+  onChangeText={setSearchText}
+  placeholder="Search businesses, food, services..."
+  placeholderTextColor="#888"
+  style={{
+    fontSize: 15,
+    color: "#111",
+    flex: 1,
+  }}
+/>
   </View>
 </View>
  <View
@@ -106,9 +142,13 @@ export default function MapScreen() {
           latitudeDelta: 0.08,
           longitudeDelta: 0.08,
         }}
+        onPress={() => {
+  Keyboard.dismiss();
+  setSelectedPlace(null);
+}}
       >
        
-{listings
+{filteredListings
   .filter((item: any) => {
   const hasLocation = item.latitude != null && item.longitude != null;
 
@@ -124,7 +164,11 @@ export default function MapScreen() {
       latitude: item.latitude,
       longitude: item.longitude,
     }}
-    onPress={() => setSelectedPlace(item)}
+    onPress={(e) => {
+      e.stopPropagation();
+      Keyboard.dismiss();
+      setSelectedPlace(item);
+}}
   >
     <View
       style={{

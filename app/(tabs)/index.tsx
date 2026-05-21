@@ -38,13 +38,13 @@ export default function LoginScreen() {
       try {
         const tokens = await authStorage.getTokens();
 
-        if (tokens?.access) {
-          console.log("User already logged in (token found)");
-          setIsLoggedIn(true);
-        } else {
-          await authStorage.clearTokens();
-          setIsLoggedIn(false);
-        }
+        if (tokens?.access && authStorage.isJwtNotExpired(tokens.access)) {
+  console.log("User already logged in (valid token found)");
+  setIsLoggedIn(true);
+} else {
+  await authStorage.clearTokens();
+  setIsLoggedIn(false);
+}
       } catch (error) {
         console.log("LOAD TOKENS ERROR:", error);
         setIsLoggedIn(false);
