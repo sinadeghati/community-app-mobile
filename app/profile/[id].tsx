@@ -316,6 +316,7 @@ const heroImageUrl = useMemo(() => {
     padding: 0,
     marginBottom: 24,
     overflow: "hidden",
+    position: "relative",
   }}
 >
   <View style={styles.topRow}>
@@ -326,7 +327,7 @@ const heroImageUrl = useMemo(() => {
       router.back();
     }}
   >
-    <Text style={styles.backText}>← Back</Text>
+    <Text style={styles.backText}>‹</Text>
   </TouchableOpacity>
 </View>
  {heroImageUrl ? (
@@ -335,7 +336,7 @@ const heroImageUrl = useMemo(() => {
     source={{ uri: heroImageUrl }}
     style={{
       width: "100%",
-      height: 240,
+      height: 280,
       borderTopLeftRadius: 28,
       borderTopRightRadius: 28,
       borderBottomRightRadius: 0,
@@ -353,24 +354,29 @@ const heroImageUrl = useMemo(() => {
     height: 285,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    backgroundColor: "rgba(0,0,0,0.14)",
+    backgroundColor: "rgba(0,0,0,0.3)",
     
   }}
-/>
+
+
+/>    
+   
   <View
   style={{
     position: "absolute",
     left: 24,
-    top: 235,
-    width: 66,
-    height: 66,
-    borderRadius: 33,
+    top: 200,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     backgroundColor: "#222",
-    borderWidth: 4,
+    borderWidth: 3,
     borderColor: "#fff",
-    shadowColor: "#111",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
     shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
+    shadowRadius: 6,
+    elevation: 3,
     overflow: "hidden",
   }}
 >
@@ -405,31 +411,71 @@ const heroImageUrl = useMemo(() => {
   <View
   style={{
     flexDirection: "row",
-    flexWrap: "wrap",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "space-between",
+    marginTop: 8,
+    paddingHorizontal: 4,
   }}
 >
- <View>
+ <View style={{ flex:1}}>
+   <View 
+     style={{ 
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      flexWrap: "wrap"
+     }}>
   <Text
     style={{
-      fontSize: 28,
-      fontWeight: "800",
+      fontSize: 29,
+      fontWeight: "900",
       color: "#111",
       flexShrink: 1,
-      marginTop: 18,
+      marginTop: 20,
+      letterSpacing: -0.3,
     }}
   >
     {headerTitle}
   </Text>
+  <View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#2563eb",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    marginTop: 20,
+    marginLeft: 14,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      fontSize: 12,
+      fontWeight: "700",
+      marginRight: 4,
+    }}
+  >
+    VERIFIED
+  </Text>
+
+  <Ionicons
+    name="checkmark-circle"
+    size={14}
+    color="#fff"
+  />
+</View>
+</View>
 
   <Text
     style={{
-      color: "#666",
+      color: "#777",
       fontSize: 15,
-      marginTop: 4,
+      marginTop: 6,
       marginLeft: 2,
       fontWeight: "500",
+      lineHeight: 20,
     }}
   >
     Auto Repair & Mechanic
@@ -437,26 +483,7 @@ const heroImageUrl = useMemo(() => {
 </View>
   
 
-  <View
-    style={{
-      marginLeft: 10,
-      marginTop: 18,
-      backgroundColor: "#2563eb",
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 999,
-    }}
-  >
-    <Text
-      style={{
-        color: "#fff",
-        fontSize: 12,
-        fontWeight: "700",
-      }}
-    >
-      VERIFIED
-    </Text>
-  </View>
+
   <Pressable
  onPress={async () => {
   const newValue = !isFavorite;
@@ -486,17 +513,17 @@ const heroImageUrl = useMemo(() => {
   }
 }}
   style={{
-  width: 42,
-  height: 42,
-  borderRadius: 21,
+  width: 46,
+  height: 46,
+  borderRadius: 23,
   backgroundColor: "#fff",
   justifyContent: "center",
   alignItems: "center",
   shadowColor: "#000",
   shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.05,
+  shadowOpacity: 0.08,
   shadowRadius: 4,
-  elevation: 2,
+  elevation: 4,
 }}
 >
   <Ionicons
@@ -507,15 +534,15 @@ const heroImageUrl = useMemo(() => {
 </Pressable>
 </View>
 
-  <Text
+  {/* <Text 
     style={{
-      marginTop: 6,
+      marginTop: 0,
       fontSize: 16,
       color: "#666",
     }}
   >
     {listings.length} listings
-  </Text>
+  </Text> */}
   <Text
   style={{
     marginTop: 6,
@@ -524,7 +551,15 @@ const heroImageUrl = useMemo(() => {
     fontWeight: "700",
   }}
 >
-  ⭐ 4.8 • 24 reviews
+  ⭐ 4.8 • {" "}
+   <Text
+     style={{
+       color: "#2563eb",
+       fontWeight: "700",
+     }}
+     >
+      24 reviews
+     </Text>
 </Text>
 
 <View
@@ -536,25 +571,31 @@ const heroImageUrl = useMemo(() => {
     flexWrap: "wrap",
   }}
 >
-  <View style={{ backgroundColor: "#f3f4f6", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 }}>
-    <Text style={{ color: "#111", fontSize: 13, fontWeight: "700" }}>✓ Verified Business</Text>
-  </View>
+  
 
-  <View style={{ backgroundColor: "#f3f4f6", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 }}>
-    <Text style={{ color: "#111", fontSize: 13, fontWeight: "700" }}>📍 Escondido, CA</Text>
+  <View style={{ backgroundColor: "#f8fafc", paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999 }}>
+    <Text style={{ color: "#2563eb", fontSize: 13, fontWeight: "700" }}>📍 Escondido, CA</Text>
   </View>
 </View>
  
 </View>
 <View
-  style={{
-    flexDirection: "row",
-    justifyContent: "flex-start",
-    paddingHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 8,
-    gap: 8,
-  }}
+ style={{
+  flexDirection: "row",
+  backgroundColor: "#fff",
+  borderRadius: 24,
+
+  paddingVertical: 10,
+  marginTop: -20,
+  marginBottom: 22,
+  marginHorizontal: 18,
+
+  shadowColor: "#000",
+  shadowOpacity: 0.04,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 3 },
+  elevation: 2,
+}}
 >
   {["Call", "Message", "Share", "Map","Favorites"].map((item) => (
     <Pressable
@@ -612,23 +653,19 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
   }}
   style={{
   flex: 1,
-  height: 64,
-  backgroundColor: "#fff",
-
+  height: 76,
   justifyContent: "center",
   alignItems: "center",
-
-  borderRadius: 16,
-
-  borderWidth: 1,
-  borderColor: "#f2f2f2",
-
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.03,
-  shadowRadius: 4,
-
-  elevation: 1,
+  borderRadius: 18,
+  borderWidth: 0,
+  marginHorizontal: 4,
+  backgroundColor: "#fafafa",
+  paddingVertical: 12,
+  shadowColor: "#000000",
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  elevation: 0,
 }}
 >
   <Ionicons
@@ -643,13 +680,13 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
       ? "location-outline"
       : "heart-outline"
   }
-  size={20}
-  color="#111"
+  size={24}
+  color="#2563eb"
   style={{ marginBottom: 6 }}
 />
       <Text
         style={{
-          fontSize: 13,
+          fontSize: 14,
           fontWeight: "700",
           color: "#111",
         }}
@@ -663,12 +700,12 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
 {businessDescription ? (
   <View
     style={{
-      backgroundColor: "#f8f8f8",
-      marginHorizontal: 16,
-      marginTop: 6,
-      paddingVertical: 10,
-      paddingHorizontal: 14,
-      borderRadius: 16,
+      backgroundColor: "#fff",
+      marginHorizontal: 18,
+      marginTop: 18,
+      paddingVertical: 22,
+      paddingHorizontal: 24,
+      borderRadius: 28,
       shadowColor: "#000",
       shadowOpacity: 0.05,
       shadowRadius: 10,
@@ -676,16 +713,34 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
       elevation: 3,
     }}
   >
-    <Text
-      style={{
-        fontSize: 18,
-        fontWeight: "700",
-        marginBottom: 10,
-        color: "#111",
-      }}
-    >
-      About
-    </Text>
+   <View
+  style={{
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  }}
+>
+  <Text
+    style={{
+      fontSize: 20,
+      fontWeight: "700",
+      color: "#111",
+    }}
+  >
+    About
+  </Text>
+
+  <Text
+    style={{
+      fontSize: 14,
+      fontWeight: "600",
+      color: "#2563eb",
+    }}
+  >
+    See more ›
+  </Text>
+</View>
 
     <Text
       style={{
@@ -701,38 +756,63 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
 
 <View
   style={{
-    backgroundColor: "#f8f8f8",
-    marginHorizontal: 16,
-    marginTop: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 16,
+    backgroundColor: "#fff",
+    marginHorizontal: 18,
+    marginTop: 18,
+    paddingVertical: 22,
+    paddingHorizontal: 24,
+    borderRadius: 28,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.04,
     shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   }}
 >
-  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+  <View style={{ flexDirection: "column", alignItems: "flex-start", justifyContent: "flex-start" }}>
     <View style={{ flex: 1 }}>
-      <Text style={{ fontSize: 18, fontWeight: "800", color: "#111" }}>
-        Photos & Highlights
-      </Text>
+      <View
+  style={{
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+  }}
+>
+  <Text
+    style={{
+      fontSize: 20,
+      fontWeight: "800",
+      color: "#111",
+    }}
+  >
+    Photos & Highlights
+  </Text>
+
+  <Text
+    style={{
+      fontSize: 14,
+      fontWeight: "600",
+      color: "#2563eb",
+    }}
+  >
+    See all ›
+  </Text>
+</View>
       <Text style={{ marginTop: 3, color: "#666", fontSize: 13 }}>
         3 photos
       </Text>
     </View>
 
-    <View style={{ flexDirection: "row", gap: 6 }}>
+    <View style={{ flexDirection: "row", gap: 6, marginTop: 14, }}>
       {[heroImageUrl, heroImageUrl, heroImageUrl].map((img, index) => (
         <Pressable key={index} onPress={() => setSelectedPhoto(img)}>
           <Image
             source={{ uri: img }}
             style={{
-              width: 54,
-              height: 54,
-              borderRadius: 10,
+              width: 72,
+              height: 72,
+              borderRadius: 16,
             }}
             resizeMode="cover"
           />
@@ -743,12 +823,12 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
 </View>
 <View
   style={{
-    backgroundColor: "#f8f8f8",
-    marginHorizontal: 16,
-    marginTop: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 18,
+    backgroundColor: "#fff",
+    marginHorizontal: 18,
+    marginTop: 18,
+    paddingVertical: 22,
+    paddingHorizontal: 24,
+    borderRadius: 28,
 
     shadowColor: "#000",
     shadowOpacity: 0.05,
@@ -758,16 +838,34 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
   }}
 >
 
+  <View
+  style={{
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  }}
+>
   <Text
     style={{
-      fontSize: 18,
-      fontWeight: "700",
-      marginBottom: 8,
+      fontSize: 20,
+      fontWeight: "800",
       color: "#111",
     }}
   >
     Reviews
   </Text>
+
+  <Text
+    style={{
+      fontSize: 14,
+      fontWeight: "600",
+      color: "#2563eb",
+    }}
+  >
+    See all ›
+  </Text>
+</View>
 
   <Text
     style={{
@@ -828,7 +926,20 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
 
 
 
-      <Text style={styles.h2}>Recent Listings</Text>
+      <Text
+  style={[
+    styles.h2,
+    {
+      marginTop: 30,
+      marginHorizontal: 18,
+      marginBottom: 14,
+      fontSize: 20,
+      fontWeight: "800",
+    },
+  ]}
+>
+  Recent Listings
+</Text>
 
       {loading ? (
         <ActivityIndicator size="large" />
@@ -906,9 +1017,21 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#fff" },
-  topRow: { flexDirection: "row", alignItems: "center", marginBottom: 12,zIndex: 999, elevation: 999,},
-  backBtn: { paddingVertical: 10, paddingHorizontal: 12, marginRight: 10, zIndex: 1000,elevation:1000, },
-  backText: { color: "#111", fontSize: 16, fontWeight: "700", },
+  topRow: { position: "absolute", top: 16, left: 16, zIndex: 20, },
+  backBtn: {
+  width: 46,
+  height: 46,
+  borderRadius: 23,
+  backgroundColor: "#fff",
+  alignItems: "center",
+  justifyContent: "center",
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.12,
+  shadowRadius: 8,
+  elevation: 4,
+},
+  backText: { fontSize: 26, fontWeight: 700, color: "#111" },
   h1: { fontSize: 18, fontWeight: "700"},
   h2: { fontSize: 16, fontWeight: "700", marginBottom: 10 },
 
@@ -916,23 +1039,29 @@ const styles = StyleSheet.create({
   empty: { color: "#666", marginTop: 10 },
 
   card: {
-    flex: 1,
-    margin: 8,
+    
+    marginTop: 8,
+    marginHorizontal: 18,
+    marginBottom: 24,
+    
+    alignSelf: "stretch",
+    maxWidth: "100%",
+
     borderColor: "#fff",
-    borderRadius: 18,
+    borderRadius: 24,
     overflow: "hidden",
     backgroundColor: "#fff",
 
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.06,
     shadowRadius: 10,
-    elevation: 6,
+    elevation: 3,
 
 
   },
   image: { width: "100%", 
-           height: 170,
+           height: 210,
            borderTopLeftRadius: 18,
            borderTopRightRadius: 18,
 
@@ -947,19 +1076,19 @@ const styles = StyleSheet.create({
   noImageText: { color: "#888" },
  
   title: {
-  fontWeight: "700",
-  fontSize: 20,
-  marginTop: 14,
-  marginHorizontal: 14,
+  fontWeight: "800",
+  fontSize: 24,
+  marginTop: 16,
+  marginHorizontal: 18,
   color: "#111",
 },
 
 sub: {
   color: "#666",
   marginTop: 6,
-  fontSize: 14,
-  marginHorizontal: 14,
-  marginBottom: 14,
-  lineHeight: 20,
+  fontSize: 16,
+  marginHorizontal: 18,
+  marginBottom: 18,
+  lineHeight: 22,
 },
 });
