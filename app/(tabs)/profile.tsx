@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Alert,
   Image,
@@ -48,12 +48,10 @@ export default function ProfileV2Clean() {
             setProfileImage(saved.profileImage || saved.profile_image);
           }
 
-          if (saved?.name || saved?.username || saved?.email) {
-            setProfile((prev: any) => ({
-              ...(prev || {}),
-              ...saved,
-            }));
-          }
+          setProfile((prev: any) => ({
+            ...(prev || {}),
+            ...saved,
+          }));
         } catch (error) {
           console.log("PROFILE CACHE LOAD ERROR:", error);
         }
@@ -77,60 +75,6 @@ export default function ProfileV2Clean() {
     }
   };
 
-
-  useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const tokens = await authStorage.getTokens();
-
-        if (!tokens?.access) return;
-
-        const response = await fetch(
-          "https://community-app-backend-production.up.railway.app/api/accounts/profile/",
-          {
-            headers: {
-              Authorization: `Bearer ${tokens.access}`,
-            },
-          }
-        );
-
-        const data = await response.json();
-
-        console.log("PROFILE DATA:", data);
-
-        setProfile(data);
-
-        await AsyncStorage.setItem(
-          "user_profile_v2",
-          JSON.stringify(data)
-        );
-
-
-        const savedUserProfileRaw = await AsyncStorage.getItem("user_profile_v2");
-
-        const savedUserProfile = savedUserProfileRaw
-          ? JSON.parse(savedUserProfileRaw)
-          : null;
-
-        if (savedUserProfile?.profileImage) {
-          setProfileImage(savedUserProfile.profileImage);
-        }
-        const localRaw = await AsyncStorage.getItem("my_local_businesses");
-        const localList = localRaw ? JSON.parse(localRaw) : [];
-        setLocalBusinesses(localList);
-        console.log("PROFILE LOCAL BUSINESSES:", localList);
-        console.log("PROFILE RESPONSE:", data);
-
-        if (data?.business_id) {
-          setMyBusinessId(String(data.business_id));
-        }
-      } catch (e) {
-        console.log("PROFILE ERROR:", e);
-      }
-    };
-
-    loadProfile();
-  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -488,7 +432,12 @@ export default function ProfileV2Clean() {
                   color: theme.colors.charcoal,
                 }}
               >
-                {isLoggedIn ? profile?.username || profile?.email || "User" : "Community Member"}
+                {isLoggedIn
+                  ? profile?.name ||
+                    profile?.username ||
+                    profile?.email ||
+                    "User"
+                  : "Community Member"}
               </Text>
 
               <Text

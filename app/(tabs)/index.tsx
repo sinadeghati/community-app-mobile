@@ -6,15 +6,26 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import authStorage from "../utils/authStorage";
 import { API } from "../../lib/api";
+import { theme } from "../../lib/theme";
+
+const DISCOVER_CATEGORIES = [
+  "Restaurants",
+  "Events",
+  "Services",
+  "Culture",
+  "Markets",
+];
 
 const heroSlides = [
   {
@@ -80,17 +91,39 @@ export default function HomeLoginV2() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
-  useEffect(() => {
-  const restoreSession = async () => {
-    const tokens = await authStorage.getTokens();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [displayName, setDisplayName] = useState("there");
+  const [authChecked, setAuthChecked] = useState(false);
 
-    if (tokens?.access) {
-      router.replace("/(tabs)/explore");
+  const loadAuthState = async () => {
+    const tokens = await authStorage.getTokens();
+    const access = tokens?.access;
+    const ok = !!access && authStorage.isJwtNotExpired(access);
+
+    setIsLoggedIn(ok);
+
+    if (ok) {
+      try {
+        const raw = await AsyncStorage.getItem("user_profile_v2");
+        if (raw) {
+          const saved = JSON.parse(raw);
+          setDisplayName(
+            saved?.username || saved?.email?.split("@")[0] || "there"
+          );
+        }
+      } catch {
+        // keep default display name
+      }
     }
+
+    setAuthChecked(true);
   };
 
-  restoreSession();
-}, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadAuthState();
+    }, [])
+  );
 
   const activeSlide = heroSlides[slideIndex];
 
@@ -144,7 +177,10 @@ export default function HomeLoginV2() {
         refresh,
       });
 
-      router.replace("/(tabs)/explore");
+      setDisplayName(cleanUsername);
+      setIsLoggedIn(true);
+      setAuthChecked(true);
+      setMode("home");
     } catch (e: any) {
       console.log("Login V2 error:", e?.response?.data || e);
       Alert.alert(
@@ -155,6 +191,228 @@ export default function HomeLoginV2() {
       setLoading(false);
     }
   };
+
+  if (!authChecked) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: theme.colors.ivory,
+        }}
+      >
+        <ActivityIndicator size="large" color={theme.colors.turquoise} />
+      </View>
+    );
+  }
+
+  if (isLoggedIn) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ padding: 22, paddingBottom: 48 }}
+        >
+          <Text
+            style={{
+              fontSize: 32,
+              fontWeight: "900",
+              color: theme.colors.charcoal,
+            }}
+          >
+            Welcome back, {displayName}
+          </Text>
+
+          <Text
+            style={{
+              marginTop: 10,
+              fontSize: 16,
+              lineHeight: 24,
+              color: theme.colors.muted,
+              fontWeight: "600",
+            }}
+          >
+            Discover Persian businesses, events, and places near you
+          </Text>
+
+          <View
+            style={{
+              marginTop: 24,
+              borderRadius: 30,
+              overflow: "hidden",
+              borderWidth: 1,
+              borderColor: theme.colors.gold,
+              backgroundColor: theme.colors.deepTeal,
+              ...theme.shadow.medium,
+            }}
+          >
+            <ImageBackground
+              source={{
+                uri: "https://images.unsplash.com/photo-1578898886225-c7c894047899?q=80&w=1200",
+              }}
+              resizeMode="cover"
+              style={{ minHeight: 220 }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  minHeight: 220,
+                  padding: 22,
+                  justifyContent: "flex-end",
+                  backgroundColor: "rgba(6,59,62,0.72)",
+                }}
+              >
+                <View
+                  style={{
+                    alignSelf: "flex-start",
+                    backgroundColor: "rgba(230,194,122,0.22)",
+                    borderRadius: 999,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderWidth: 1,
+                    borderColor: "rgba(230,194,122,0.45)",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: theme.colors.gold,
+                      fontWeight: "900",
+                      fontSize: 12,
+                      letterSpacing: 0.6,
+                    }}
+                  >
+                    PERSIAN DISCOVER
+                  </Text>
+                </View>
+
+                <Text
+                  style={{
+                    marginTop: 14,
+                    fontSize: 26,
+                    fontWeight: "900",
+                    color: "#fff",
+                    lineHeight: 32,
+                  }}
+                >
+                  Your community, beautifully connected
+                </Text>
+
+                <Text
+                  style={{
+                    marginTop: 8,
+                    color: "rgba(255,255,255,0.88)",
+                    fontSize: 15,
+                    lineHeight: 22,
+                    fontWeight: "600",
+                  }}
+                >
+                  Explore trusted businesses, cultural events, and local favorites.
+                </Text>
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    marginTop: 18,
+                    gap: 10,
+                  }}
+                >
+                  <Pressable
+                    onPress={() => router.push("/(tabs)/explore")}
+                    style={{
+                      flex: 1,
+                      height: 52,
+                      borderRadius: 16,
+                      backgroundColor: theme.colors.turquoise,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#fff",
+                        fontWeight: "900",
+                        fontSize: 15,
+                      }}
+                    >
+                      Explore
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => router.push("/(tabs)/map")}
+                    style={{
+                      flex: 1,
+                      height: 52,
+                      borderRadius: 16,
+                      backgroundColor: "rgba(255,255,255,0.14)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.28)",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#fff",
+                        fontWeight: "900",
+                        fontSize: 15,
+                      }}
+                    >
+                      Map
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </ImageBackground>
+          </View>
+
+          <Text
+            style={{
+              marginTop: 26,
+              fontSize: 18,
+              fontWeight: "900",
+              color: theme.colors.charcoal,
+            }}
+          >
+            Browse by category
+          </Text>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ marginTop: 14, gap: 10 }}
+          >
+            {DISCOVER_CATEGORIES.map((label) => (
+              <Pressable
+                key={label}
+                onPress={() => router.push("/(tabs)/explore")}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  borderRadius: 999,
+                  backgroundColor: theme.colors.card,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.deepTeal,
+                    fontWeight: "800",
+                    fontSize: 14,
+                  }}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <ImageBackground
       source={{ uri: activeSlide.image }}
