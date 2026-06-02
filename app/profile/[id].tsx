@@ -275,7 +275,7 @@ const heroImageUrl = useMemo(() => {
 
     return (
       <Pressable
-        style={styles.card}
+        style={{ width: "48%", margin: "1%", }}
         onPress={() => router.replace(`/listing/${item.id}`)}
       >
         {imgUrl ? (
@@ -285,12 +285,7 @@ const heroImageUrl = useMemo(() => {
             <Text style={styles.noImageText}>No image</Text>
           </View>
         )}
-        <Text numberOfLines={1} style={styles.title}>
-          {item.title || "Untitled"}
-        </Text>
-        <Text style={styles.sub}>
-          {(item.city || "") + (item.state ? `, ${item.state}` : "")}
-        </Text>
+       
       </Pressable>
     );
   };
@@ -788,7 +783,7 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
   >
     Photos & Highlights
   </Text>
-
+ <Pressable onPress={() => router.push('/profile/gallery')}>
   <Text
     style={{
       fontSize: 14,
@@ -798,6 +793,76 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
   >
     See all ›
   </Text>
+  </Pressable>
+
+  
+</View>
+
+
+<View
+  style={{
+    marginTop: 28,
+  }}
+>
+  <View
+    style={{
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 14,
+    }}
+  >
+    <Text
+      style={{
+        fontSize: 20,
+        fontWeight: "800",
+        color: "#111",
+      }}
+    >
+      Latest Updates
+    </Text>
+  </View>
+
+  <View
+    style={{
+      backgroundColor: "#fff",
+      borderRadius: 18,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: "#ECECEC",
+    }}
+  >
+    <Text
+      style={{
+        fontSize: 15,
+        fontWeight: "700",
+        color: "#111",
+        marginBottom: 6,
+      }}
+    >
+      Tahchin Tuesday Special
+    </Text>
+
+    <Text
+      style={{
+        fontSize: 14,
+        color: "#666",
+        lineHeight: 22,
+      }}
+    >
+      20% off all crispy tahchin orders this Tuesday.
+    </Text>
+
+    <Text
+      style={{
+        marginTop: 10,
+        fontSize: 12,
+        color: "#999",
+      }}
+    >
+      Posted just now
+    </Text>
+  </View>
 </View>
       <Text style={{ marginTop: 3, color: "#666", fontSize: 13 }}>
         3 photos
@@ -806,7 +871,7 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
 
     <View style={{ flexDirection: "row", gap: 6, marginTop: 14, }}>
       {[heroImageUrl, heroImageUrl, heroImageUrl].map((img, index) => (
-        <Pressable key={index} onPress={() => setSelectedPhoto(img)}>
+        <Pressable key={index} onPress={() => router.push('/profile/gallery')}>
           <Image
             source={{ uri: img }}
             style={{
@@ -821,6 +886,8 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
     </View>
   </View>
 </View>
+
+
 <View
   style={{
     backgroundColor: "#fff",
@@ -924,46 +991,7 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
   </Pressable>
 )}
 
-
-
-      <Text
-  style={[
-    styles.h2,
-    {
-      marginTop: 30,
-      marginHorizontal: 18,
-      marginBottom: 14,
-      fontSize: 20,
-      fontWeight: "800",
-    },
-  ]}
->
-  Recent Listings
-</Text>
-
-      {loading ? (
-        <ActivityIndicator size="large" />
-      ) : error ? (
-        <Text style={styles.error}>{error}</Text>
-      ) : (
-        <FlatList
-                
-          data={listings}
-          scrollEnabled={false}
-          nestedScrollEnabled={true}
-          keyExtractor={(x) => String(x.id)}
-          numColumns={2}
-          renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 120 }}
-          ListEmptyComponent={
-            <Text style={styles.empty}>No listings for this profile yet.</Text>
-          }
-        />
-      )}
-
-      
-    
-    </ScrollView>
+</ScrollView>
 
     {selectedPhoto && (
   <Modal visible={true} transparent animationType="fade">
@@ -1061,7 +1089,7 @@ const styles = StyleSheet.create({
 
   },
   image: { width: "100%", 
-           height: 210,
+           aspectRatio: 1,
            borderTopLeftRadius: 18,
            borderTopRightRadius: 18,
 

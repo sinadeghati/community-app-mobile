@@ -1,437 +1,749 @@
-// app/(tabs)/explore.tsx
-import React, { useEffect, useState } from "react";
-import { TouchableWithoutFeedback,View, Text, FlatList, Image, ActivityIndicator, TouchableOpacity,ScrollView, StyleSheet,Pressable, TextInput, RefreshControl, Keyboard } from "react-native";
-import {API} from "../../lib/api";
-import { useLocalSearchParams } from "expo-router";
-import { router} from "expo-router"
-import { useFocusEffect } from "expo-router";
-import { useCallback } from "react";
-import HeroBanner from "../../components/HeroBanner";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import authStorage from "../utils/authStorage";
-import { ImageBackground } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  ImageBackground,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API } from "../../lib/api";
+import { theme } from "../../lib/theme";
 
+type Listing = {
+  id: number | string;
+  title?: string;
+  name?: string;
+  business_name?: string;
+  category?: string;
+  business_category?: string;
+  city?: string;
+  state?: string;
+  address?: string;
+  description?: string;
+  price?: string | number;
+  image?: string;
+  image_url?: string;
+  cover_image?: string;
+  is_verified?: boolean;
+  is_featured?: boolean;
+  rating?: number;
+  reviews?: number;
+};
 
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1200";
 
+const HERO_IMAGE =
+  "https://images.unsplash.com/photo-1518005020951-eccb494ad742?q=80&w=1200";
 
+const EVENT_IMAGE =
+  "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=1200";
 
-
-type Listing = any;
-
-export default function ExploreScreen() {
-  const  {refresh} = useLocalSearchParams();
-  const [loading, setLoading] = useState(true);
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [searchText, setSearchText] =useState("");
-  const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams();
-  const [token, setToken] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-    useEffect(() => {
-      authStorage.getTokens().then((tokens) => {
-        setToken(tokens?.access ?? null);
-      });
-    }, []);
-    const isLoggedIn = !!token;
-  
-
-
-  const CATEGORIES = [
-  { key: "all", label: "All", icon: "🧭" },
-  { key: "rent", label: "Rent", icon: "🏠" },
-  { key: "job", label: "Jobs", icon: "💼" },
-  { key: "services", label: "Services", icon: "🛠️" },
-  { key: "food", label: "Food", icon: "🍲" },
-  { key: "beauty", label: "Beauty", icon: "💅" },
-  { key: "auto", label: "Auto", icon: "🚗" },
+const categories = [
+  { key: "All", label: "All", icon: "apps-outline" },
+  { key: "Restaurant", label: "Restaurant", icon: "restaurant-outline" },
+  { key: "Cafe", label: "Cafe", icon: "cafe-outline" },
+  { key: "Auto Repair", label: "Auto", icon: "car-outline" },
+  { key: "Beauty", label: "Beauty", icon: "sparkles-outline" },
+  { key: "Real Estate", label: "Real Estate", icon: "home-outline" },
+  { key: "Events", label: "Events", icon: "calendar-outline" },
+  { key: "Services", label: "Services", icon: "briefcase-outline" },
 ];
 
+const getId = (item: Listing) => String(item?.id || "");
 
-  const load = async () => {
+const getTitle = (item: Listing) =>
+  item?.business_name || item?.name || item?.title || "Local Business";
+
+const getCategory = (item: Listing) =>
+  item?.business_category || item?.category || "Local Business";
+
+const getImage = (item: Listing) =>
+  item?.cover_image || item?.image_url || item?.image || FALLBACK_IMAGE;
+
+const getAddress = (item: Listing) =>
+  item?.address || [item?.city, item?.state].filter(Boolean).join(", ");
+
+const isFeatured = (item: Listing) =>
+  Boolean(item?.is_featured || item?.business_name || item?.cover_image);
+
+const goProfile = (item: Listing) => {
+  router.push({
+    pathname: "/profile/v2",
+    params: { id: getId(item) },
+  });
+};
+
+export default function ExploreScreen() {
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [favorites, setFavorites] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    loadListings();
+  }, []);
+
+  const loadListings = async () => {
     try {
       setLoading(true);
-      setError(null);
-      const data = await API.getListings();
-      
-      setListings(Array.isArray(data) ? data : (data?.results ?? []));
-    } catch (e: any) {
-      setError(e?.message || "Failed to load listings");
+
+      const response = await API.getListings();
+      const data = Array.isArray(response) ? response : response?.results || [];
+
+      setListings(data);
+
+      const keys = await AsyncStorage.getAllKeys();
+      const favoriteKeys = keys.filter((key) => key.startsWith("favorite-business-"));
+
+      const favMap: Record<string, boolean> = {};
+      favoriteKeys.forEach((key) => {
+        const id = key.replace("favorite-business-", "");
+        if (!key.includes("data")) favMap[id] = true;
+      });
+
+      setFavorites(favMap);
+    } catch (e) {
+      console.log("Explore V2.5 load error:", e);
     } finally {
       setLoading(false);
     }
   };
-const onRefresh = async () => {
-  setRefreshing(true);
 
-  await load();
-  setRefreshing(false);
-};
+  const toggleFavorite = async (item: Listing) => {
+    const id = getId(item);
+    const next = !favorites[id];
 
-  useFocusEffect(
-  useCallback(() => {
-    load();
-  }, [refresh])
-);
+    setFavorites((prev) => ({ ...prev, [id]: next }));
 
-const filteredListings = listings.filter((item: any) => {
-  const c = (
-    item?.category ||
-    item?.listing_type ||
-    item?.type ||
-    item?.service_type ||
-    ""
-  )
-    .toString()
-    .toLowerCase();
+    if (next) {
+      await AsyncStorage.setItem(`favorite-business-${id}`, "true");
+      await AsyncStorage.setItem(
+        `favorite-business-data-${id}`,
+        JSON.stringify({
+          id,
+          name: getTitle(item),
+          title: getTitle(item),
+          category: getCategory(item),
+          image: getImage(item),
+          address: getAddress(item),
+          city: item.city,
+          state: item.state,
+          rating: item.rating || 4.8,
+          reviews: item.reviews || 24,
+        })
+      );
+    } else {
+      await AsyncStorage.removeItem(`favorite-business-${id}`);
+      await AsyncStorage.removeItem(`favorite-business-data-${id}`);
+    }
+  };
 
-  const selected = selectedCategory.toLowerCase();
+  const filteredListings = useMemo(() => {
+    const q = search.trim().toLowerCase();
 
-  const matchesCategory =
-    selected === "all" ? true : c === selected;
+    return listings.filter((item) => {
+      const title = getTitle(item).toLowerCase();
+      const category = getCategory(item).toLowerCase();
+      const city = String(item.city || "").toLowerCase();
+      const description = String(item.description || "").toLowerCase();
 
-  const q = searchText.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        title.includes(q) ||
+        category.includes(q) ||
+        city.includes(q) ||
+        description.includes(q);
 
-  const haystack = [
-    item?.title,
-    item?.city,
-    item?.state,
-    item?.description,
-    item?.contact_info,
-    item?.category,
-    item?.listing_type,
-    item?.service_type,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+      const matchesCategory =
+        selectedCategory === "All" ||
+        category.includes(selectedCategory.toLowerCase());
 
-  const matchesSearch = q ? haystack.includes(q) : true;
+      return matchesSearch && matchesCategory;
+    });
+  }, [listings, search, selectedCategory]);
 
-  return matchesCategory && matchesSearch;
-});
+  const featured = useMemo(() => {
+    const list = filteredListings.filter(isFeatured);
+    return list.length ? list.slice(0, 6) : filteredListings.slice(0, 6);
+  }, [filteredListings]);
 
-const ListHeader = () => (
-  <>
-    <Text style={{ fontSize: 28, fontWeight: "800", marginBottom: 12, marginTop: 8, }}>
-      Explore Listings
-    </Text>
-    
-    <View style={{ position: "relative", marginBottom: 16}}>
+  const popular = useMemo(() => filteredListings.slice(0, 8), [filteredListings]);
 
-    <TextInput
-  value={searchText}
-  onChangeText={setSearchText}
-  placeholder="Search businesses, services, food..."
-  style={{
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    marginBottom: 0,
-    paddingRight: 44,
-    backgroundColor: "#fff",
-    fontSize: 16,
-    height: 54,
-  }}
-/>
-
-{searchText.length > 0 && (
-  <Pressable
-    onPress={() => setSearchText("")}
-    style={{
-      position: "absolute",
-      right: 16,
-      top: 14,
-    }}
-  >
-    <Text style={{ fontSize: 18, color: "#666" }}>✕</Text>
-  </Pressable>
-)}
-</View>
-
-    {!isLoggedIn && (
-      <Text style={{ marginBottom: 10, color: "#666", fontSize: 14 }}>
-        Log in to post and manage your listing
-      </Text>
-    )}
-
-    <View style={{ marginBottom: 18,
-                   borderRadius: 24,
-                   overflow: "hidden",
-     }}>
-      <ImageBackground
-  source={require("../../assets/images/hero1.jpeg")}
-  style={{
-    height: 230,
-    borderRadius: 20,
-    overflow: "hidden",
-  }}
-  resizeMode="cover"
-/>
-    </View>
-
-    {error ? (
-      <TouchableOpacity
-        onPress={load}
-        style={{ padding: 12, borderWidth: 1, marginBottom: 12 }}
-      >
-        <Text style={{ color: "#c00" }}>Error: {String(error)}</Text>
-        <Text style={{ marginTop: 6 }}>Tap to retry</Text>
-      </TouchableOpacity>
-    ) : null}
-
+  const SectionHeader = ({ title, action }: { title: string; action?: string }) => (
     <View
-  style={{
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 18,
-  }}
->
-  <Text
-    style={{
-      fontSize: 30,
-      fontWeight: "800",
-      color: "#111",
-    }}
-  >
-    Discover
-  </Text>
-
-  <Text
-    style={{
-      fontSize: 16,
-      color: "#666",
-      marginTop: 6,
-      lineHeight: 22,
-    }}
-  >
-    Discover Iranian businesses, services, and
-    community near you.
-  </Text>
-</View>
-
-    <FlatList
-      data={CATEGORIES}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      keyExtractor={(item) => item.key}
-      contentContainerStyle={{ paddingVertical: 8, paddingRight: 24, }}
-      renderItem={({ item }) => {
-        const active = selectedCategory === item.key;
-        return (
-          <TouchableOpacity
-            onPress={() => setSelectedCategory(item.key)}
-            style={{
-              marginRight: 12,
-              paddingHorizontal: 16,
-              height: 42,
-              borderRadius: 21,
-              justifyContent: "center",
-              borderWidth: 1,
-              opacity: active ? 1 : 0.8,
-              backgroundColor: active ? "#007AFF" : "#fff",
-              borderColor: active ? "#007AFF" :"#e5e5e5",
-            }}
-          >
-            <Text
-              style={{
-                color: active ? "#fff" : "#444",
-                fontWeight: active ? "700" : "600",
-              }}
-              >
-              {item.icon} {item.label}</Text>
-          </TouchableOpacity>
-        );
-      }}
-    />
- 
-  </>
-  
-
-);
-
-
-
-  const renderItem = ({ item }: { item: any }) => {
-  const imageUrl =
-    item?.image_url ||
-    item?.image ||
-    item?.thumbnail ||
-    (item?.images && item.images.length > 0
-     ? item.images[item.images.length - 1].image_url
-     : null);
-
-    
-
-
-  
-
-  return (
-    <TouchableOpacity
-      onPress={() => router.push(`/listing/${item.id}`)}
-      activeOpacity={0.8}
       style={{
-        backgroundColor: "#FFF",
-        borderRadius: 22,
-        padding: 16,
-        marginBottom: 18,
         flexDirection: "row",
-        gap: 14,
         alignItems: "center",
-        borderWidth: 1,
-        borderColor: "#f0f0f0",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2,},
-        shadowRadius: 6,
-        elevation: 2,
-        shadowOpacity: 0.06,
+        paddingHorizontal: 20,
+        marginTop: 28,
+        marginBottom: 14,
       }}
     >
-      {imageUrl ? (
+      <Text
+        style={{
+          flex: 1,
+          fontSize: 24,
+          fontWeight: "900",
+          color: theme.colors.charcoal,
+        }}
+      >
+        {title}
+      </Text>
+
+      {action ? (
+        <Text
+          style={{
+            color: theme.colors.turquoise,
+            fontWeight: "800",
+            fontSize: 14,
+          }}
+        >
+          {action}
+        </Text>
+      ) : null}
+    </View>
+  );  const CategoryPill = ({ item }: { item: any }) => {
+    const active = selectedCategory === item.key;
+
+    return (
+      <Pressable
+        onPress={() => setSelectedCategory(item.key)}
+        style={{
+          width: 96,
+          height: 92,
+          borderRadius: 26,
+          backgroundColor: active ? "rgba(13,148,136,0.14)" : theme.colors.card,
+          borderWidth: 1,
+          borderColor: active ? "rgba(13,148,136,0.32)" : theme.colors.border,
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: 12,
+          ...theme.shadow.soft,
+        }}
+      >
+        <Ionicons
+          name={item.icon as any}
+          size={28}
+          color={active ? theme.colors.turquoise : theme.colors.charcoal}
+        />
+        <Text
+          numberOfLines={1}
+          style={{
+            marginTop: 9,
+            fontSize: 13,
+            fontWeight: "900",
+            color: theme.colors.charcoal,
+          }}
+        >
+          {item.label}
+        </Text>
+      </Pressable>
+    );
+  };
+
+  const BusinessCard = ({ item, large = false }: { item: Listing; large?: boolean }) => {
+    const id = getId(item);
+    const saved = favorites[id];
+
+    return (
+      <Pressable
+        onPress={() => goProfile(item)}
+        style={{
+          width: large ? 182 : 165,
+          backgroundColor: theme.colors.card,
+          borderRadius: 26,
+          marginRight: 14,
+          overflow: "hidden",
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          ...theme.shadow.soft,
+        }}
+      >
         <Image
-          source={{ uri: imageUrl }}
-          style={{ width: 84, height: 84, borderRadius: 16 }}
+          source={{ uri: getImage(item) }}
+          style={{
+            width: "100%",
+            height: large ? 128 : 112,
+            backgroundColor: "#eee",
+          }}
           resizeMode="cover"
         />
-      ) : (
-        <View
+
+        <Pressable
+          onPress={() => toggleFavorite(item)}
           style={{
-            width: 60,
-            height: 60,
-            borderRadius: 8,
-            backgroundColor: "#eee",
+            position: "absolute",
+            top: 10,
+            right: 10,
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            backgroundColor: "rgba(255,255,255,0.92)",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <Text>No image</Text>
+          <Ionicons
+            name={saved ? "heart" : "heart-outline"}
+            size={22}
+            color={saved ? theme.colors.danger : theme.colors.charcoal}
+          />
+        </Pressable>
+
+        <View style={{ padding: 13 }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                flex: 1,
+                fontSize: large ? 18 : 16,
+                fontWeight: "900",
+                color: theme.colors.charcoal,
+              }}
+            >
+              {getTitle(item)}
+            </Text>
+
+            {item.is_verified ? (
+              <Ionicons name="checkmark-circle" size={17} color={theme.colors.turquoise} />
+            ) : null}
+          </View>
+
+          <Text
+            numberOfLines={1}
+            style={{
+              marginTop: 4,
+              color: theme.colors.muted,
+              fontSize: 13,
+              fontWeight: "600",
+            }}
+          >
+            {getCategory(item)}
+          </Text>
+
+          <Text
+            style={{
+              marginTop: 8,
+              color: "#C49A3A",
+              fontSize: 13,
+              fontWeight: "900",
+            }}
+          >
+            ⭐ {item.rating || "4.8"} · {item.reviews || 24} reviews
+          </Text>
         </View>
-      )}
+      </Pressable>
+    );
+  };
 
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontWeight: "700", fontSize: 20 }}>{item?.title}</Text>
-        <Text
-  style={{
-    marginTop: 4,
-    fontSize: 13,
-    color: "#d4af37",
-    fontWeight: "600",
-  }}
->
-  ⭐ 4.8 • 24 reviews
-</Text>
-        <Text
-  numberOfLines={2}
-  ellipsizeMode="tail"
-  style={{
-    color: "#666",
-    marginTop: 2,
-    lineHeight: 20,
-  }}
->
-          {item?.city}, {item?.state} •{" "}
-          <Text style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
-  {item?.posted_days_ago === 0
-    ? "Today"
-    : `Posted ${item?.posted_days_ago} day${item?.posted_days_ago > 1 ? "s" : ""} ago`}
-</Text>
+  const PopularRow = ({ item }: { item: Listing }) => {
+    const id = getId(item);
+    const saved = favorites[id];
 
-        
-        </Text>
-        <Text style={{ fontWeight: "500", fontSize: 16, marginTop: 4, color:"#666" }}>
-          {Number(item?.price) > 0
-           ? `$${Number(item.price).toFixed(2)}`
-           : "Contact for price"}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-};
+    return (
+      <Pressable
+        onPress={() => goProfile(item)}
+        style={{
+          marginHorizontal: 20,
+          marginBottom: 13,
+          backgroundColor: theme.colors.card,
+          borderRadius: 24,
+          padding: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          ...theme.shadow.soft,
+        }}
+      >
+        <Image
+          source={{ uri: getImage(item) }}
+          style={{
+            width: 76,
+            height: 76,
+            borderRadius: 18,
+            backgroundColor: "#eee",
+          }}
+          resizeMode="cover"
+        />
 
+        <View style={{ flex: 1, marginLeft: 14 }}>
+          <Text
+            numberOfLines={1}
+            style={{
+              fontSize: 18,
+              fontWeight: "900",
+              color: theme.colors.charcoal,
+            }}
+          >
+            {getTitle(item)}
+          </Text>
 
+          <Text
+            numberOfLines={1}
+            style={{
+              marginTop: 3,
+              color: theme.colors.muted,
+              fontWeight: "600",
+            }}
+          >
+            {getCategory(item)}
+          </Text>
 
+          <Text
+            style={{
+              marginTop: 6,
+              color: "#C49A3A",
+              fontWeight: "900",
+            }}
+          >
+            ⭐ {item.rating || "4.8"} · {item.reviews || 24} reviews
+          </Text>
+        </View>
+
+        <Pressable onPress={() => toggleFavorite(item)}>
+          <Ionicons
+            name={saved ? "bookmark" : "bookmark-outline"}
+            size={27}
+            color={saved ? theme.colors.turquoise : theme.colors.charcoal}
+          />
+        </Pressable>
+      </Pressable>
+    );
+  };
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1,paddingTop: insets.top, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator />
-        <Text style={{ marginTop: 10 }}>Loading...</Text>
+      <SafeAreaView
+        style={{
+          flex: 1,
+          backgroundColor: theme.colors.ivory,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator size="large" color={theme.colors.turquoise} />
       </SafeAreaView>
     );
-  }
-
- 
-         
-
-  return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-     <SafeAreaView style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#f5f5f7", justifyContent: "flex-start", alignItems: "stretch" }}>
-      
-      
-
-      {error ? (
-        <TouchableOpacity onPress={load} style={{ padding: 12, borderWidth: 1, borderColor: "#f2c", borderRadius: 10 }}>
-          <Text style={{ color: "#c00" }}>Error: {error}</Text>
-          <Text style={{ marginTop: 6 }}>Tap to retry</Text>
-        </TouchableOpacity>
-      ) : null}
-
-      {selectedCategory !== "all" && (
-  <Pressable onPress={() => { setSelectedCategory("all");
-    setSearchText("");
-  }}
-  >
-    <Text style={{ marginVertical: 10, marginLeft: 16 }}>
-      ← Show All
-    </Text>
-  </Pressable>
-)}
-
-
+  }  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
       <FlatList
-  
-  data={filteredListings}
-  keyExtractor={(item, idx) => String(item?.id ?? idx)}
-  renderItem={renderItem}
-  ListHeaderComponent={ListHeader ()}
-  
-  contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 30}}
+        data={popular}
+        keyExtractor={(item) => String(item.id)}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        ListHeaderComponent={
+          <>
+            <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 34,
+                      fontWeight: "900",
+                      color: theme.colors.charcoal,
+                    }}
+                  >
+                    Explore
+                  </Text>
+                  <Text
+                    style={{
+                      marginTop: 4,
+                      color: theme.colors.muted,
+                      fontSize: 15,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Discover the heart of your community
+                  </Text>
+                </View>
 
-  refreshControl={
-    <RefreshControl
-      refreshing={refreshing}
-      onRefresh={onRefresh}
-      />
-  }
-    
-  ListEmptyComponent={
-    !loading && !error ? (
-     <View style={{ padding: 24, alignItems: "center" }}>
-       <Text style={{ fontSize: 18, fontWeight: "700" }}>
-        {searchText.trim()
-          ?"No results found"
-          : "No listing yet"}
-        </Text>
-        <Text
-          style={{
-            marginTop: 8,
-            color: "#666",
-            textAlign: "center",
-          }}
-          >
-            {searchText.trim()
-              ? "Try another search."
-              : "Be the first to post. Tap thr + button below."}
-          </Text>
+                <Pressable
+                  style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 23,
+                    backgroundColor: theme.colors.card,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    ...theme.shadow.soft,
+                  }}
+                >
+                  <Ionicons
+                    name="options-outline"
+                    size={23}
+                    color={theme.colors.turquoise}
+                  />
+                </Pressable>
+              </View>
+
+              <View
+                style={{
+                  marginTop: 18,
+                  height: 56,
+                  borderRadius: 22,
+                  backgroundColor: theme.colors.card,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 15,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  ...theme.shadow.soft,
+                }}
+              >
+                <Ionicons
+                  name="search-outline"
+                  size={21}
+                  color={theme.colors.turquoise}
+                />
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search businesses, services, events..."
+                  placeholderTextColor="#9CA3AF"
+                  style={{
+                    flex: 1,
+                    marginLeft: 10,
+                    fontSize: 15,
+                    color: theme.colors.charcoal,
+                  }}
+                />
+                {search.length > 0 ? (
+                  <Pressable onPress={() => setSearch("")}>
+                    <Ionicons name="close-circle" size={21} color="#999" />
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={{ marginTop: 22, paddingHorizontal: 20 }}>
+              <ImageBackground
+                source={{ uri: HERO_IMAGE }}
+                imageStyle={{ borderRadius: 32 }}
+                style={{
+                  height: 210,
+                  borderRadius: 32,
+                  overflow: "hidden",
+                  ...theme.shadow.medium,
+                }}
+              >
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: "rgba(6,31,36,0.52)",
+                    padding: 22,
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <View
+                    style={{
+                      alignSelf: "flex-start",
+                      backgroundColor: "rgba(13,148,136,0.92)",
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 999,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#fff",
+                        fontSize: 12,
+                        fontWeight: "900",
+                        letterSpacing: 0.4,
+                      }}
+                    >
+                      PERSIAN COMMUNITY
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={{
+                      color: "#fff",
+                      fontSize: 28,
+                      lineHeight: 33,
+                      fontWeight: "900",
+                      width: "85%",
+                    }}
+                  >
+                    Discover the heart of your community
+                  </Text>
+
+                  <Text
+                    style={{
+                      marginTop: 8,
+                      color: "rgba(255,255,255,0.9)",
+                      fontSize: 14.5,
+                      lineHeight: 21,
+                      width: "88%",
+                    }}
+                  >
+                    Local businesses, events, services, and Persian culture near you.
+                  </Text>
+
+                  <Pressable
+                    onPress={() => router.push("/(tabs)/map")}
+                    style={{
+                      marginTop: 15,
+                      alignSelf: "flex-start",
+                      backgroundColor: theme.colors.turquoise,
+                      borderRadius: 16,
+                      paddingHorizontal: 18,
+                      paddingVertical: 11,
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "900" }}>
+                      Open Map
+                    </Text>
+                  </Pressable>
+                </View>
+              </ImageBackground>
+            </View>
+
+            <SectionHeader title="Popular Categories" action="See all" />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingLeft: 20, paddingRight: 8 }}
+            >
+              {categories.map((item) => (
+                <CategoryPill key={item.key} item={item} />
+              ))}
+            </ScrollView>
+
+            <SectionHeader title="Featured Businesses" action="See all" />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingLeft: 20, paddingRight: 8 }}
+            >
+              {featured.map((item) => (
+                <BusinessCard key={`featured-${item.id}`} item={item} large />
+              ))}
+            </ScrollView>
+
+            <SectionHeader title="Upcoming Events" action="View all" />
+            <View
+              style={{
+                marginHorizontal: 20,
+                borderRadius: 30,
+                overflow: "hidden",
+                backgroundColor: theme.colors.card,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                ...theme.shadow.medium,
+              }}
+            >
+              <ImageBackground
+                source={{ uri: EVENT_IMAGE }}
+                style={{ height: 150 }}
+                resizeMode="cover"
+              >
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: "rgba(15,43,51,0.42)",
+                    padding: 18,
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <View
+                    style={{
+                      alignSelf: "flex-start",
+                      backgroundColor: theme.colors.eventPurple,
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
+                      TONIGHT
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={{
+                      marginTop: 8,
+                      color: "#fff",
+                      fontSize: 22,
+                      fontWeight: "900",
+                    }}
+                  >
+                    Persian Events Near You
+                  </Text>
+                </View>
+              </ImageBackground>
+
+              <View style={{ padding: 16 }}>
+                <Text style={{ color: theme.colors.muted, lineHeight: 22 }}>
+                  Concerts, Nowruz, Yalda, networking nights, and community events.
+                </Text>
+
+                <Pressable
+                  onPress={() => router.push("/(tabs)/map")}
+                  style={{
+                    marginTop: 14,
+                    height: 46,
+                    borderRadius: 16,
+                    backgroundColor: "rgba(13,148,136,0.12)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: theme.colors.turquoise,
+                      fontWeight: "900",
+                    }}
+                  >
+                    Explore Events on Map
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <SectionHeader title="Popular This Week" />
+          </>
+        }
+        renderItem={({ item }) => <PopularRow item={item} />}
+        ListEmptyComponent={
+          <View style={{ alignItems: "center", paddingTop: 70, paddingHorizontal: 30 }}>
+            <Ionicons name="search-outline" size={42} color={theme.colors.turquoise} />
+            <Text
+              style={{
+                marginTop: 14,
+                fontSize: 20,
+                fontWeight: "900",
+                color: theme.colors.charcoal,
+              }}
+            >
+              No businesses found
+            </Text>
+            <Text
+              style={{
+                marginTop: 6,
+                color: theme.colors.muted,
+                textAlign: "center",
+                lineHeight: 22,
+              }}
+            >
+              Try another keyword, category, or city.
+            </Text>
           </View>
-    ) : null
-  }
-/>
-
+        }
+      />
     </SafeAreaView>
-    </TouchableWithoutFeedback>
   );
 }

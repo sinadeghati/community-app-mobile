@@ -1,247 +1,843 @@
-// app/(tabs)/index.tsx
-import { useRouter, useLocalSearchParams, useFocusEffect, } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
+  ActivityIndicator,
   Alert,
+  ImageBackground,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
-  ActivityIndicator,
-  Keyboard,
-  TouchableWithoutFeedback,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import authStorage from "../utils/authStorage";
-import AppButton from "@/components/ui/AppButton";
-import { Redirect } from "expo-router";
+import { API } from "../../lib/api";
 
-// 🔴 فقط این آدرس را وقتی IP عوض شد تغییر بده
+const heroSlides = [
+  {
+    id: "hafez",
+    title: "Welcome to Persian Map",
+    subtitle: "Discover Persian businesses, events, and community near you.",
+    image:
+      "https://images.unsplash.com/photo-1605723517503-3cadb5818a0c?q=80&w=1200",
+    badge: "Persian Community",
+  },
+  {
+    id: "persepolis",
+    title: "Persian culture, everywhere",
+    subtitle: "From San Diego to LA, Toronto, and beyond.",
+    image:
+      "https://images.unsplash.com/photo-1578898886225-c7c894047899?q=80&w=1200",
+    badge: "Culture",
+  },
+  {
+    id: "event",
+    title: "Find what’s happening tonight",
+    subtitle: "Concerts, Nowruz, Yalda, festivals, and community events.",
+    image:
+      "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=1200",
+    badge: "Events",
+  },
+];
 
-const API_LOGIN = "https://community-app-backend-production.up.railway.app/api/accounts/login/"
+const featuredCards = [
+  {
+    id: "1",
+    title: "Fair Auto Repair",
+    subtitle: "Featured business",
+    image:
+      "https://images.unsplash.com/photo-1487754180451-c456f719a1fc?q=80&w=900",
+    tag: "FEATURED",
+  },
+  {
+    id: "2",
+    title: "Persian Events",
+    subtitle: "Tonight & this weekend",
+    image:
+      "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=900",
+    tag: "EVENT",
+  },
+];
 
-export default function LoginScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams();
-  const [username, setUsername] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
-  const [authLoading, setAuthLoading] = useState<boolean>(true);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+const normalizeUsername = (value: string) => {
+  return value.trim().toLowerCase();
+};
 
-  useFocusEffect(
-  React.useCallback(() => {
-    const loadTokens = async () => {
-      try {
-        const tokens = await authStorage.getTokens();
+const normalizePassword = (value: string) => {
+  return value.trim();
+};
 
-        if (tokens?.access && authStorage.isJwtNotExpired(tokens.access)) {
-  console.log("User already logged in (valid token found)");
-  setIsLoggedIn(true);
-} else {
-  await authStorage.clearTokens();
-  setIsLoggedIn(false);
-}
-      } catch (error) {
-        console.log("LOAD TOKENS ERROR:", error);
-        setIsLoggedIn(false);
-      } finally {
-        setAuthLoading(false);
-      }
+export default function HomeLoginV2() {
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [mode, setMode] = useState<"home" | "login">("home");
+
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+  const restoreSession = async () => {
+    const tokens = await authStorage.getTokens();
+
+    if (tokens?.access) {
+      router.replace("/(tabs)/explore");
+    }
+  };
+
+  restoreSession();
+}, []);
+
+  const activeSlide = heroSlides[slideIndex];
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSlideIndex((prev) => (prev + 1) % heroSlides.length);
+    }, 4500);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const passwordHints = useMemo(() => {
+    const p = password;
+
+    return {
+      length: p.length >= 8,
+      upper: /[A-Z]/.test(p),
+      lower: /[a-z]/.test(p),
+      number: /\d/.test(p),
+      symbol: /[^A-Za-z0-9]/.test(p),
     };
-
-    loadTokens();
-  }, [])
-);
+  }, [password]);
 
   const handleLogin = async () => {
-    if (!username || !password) {
-      Alert.alert("Error", "Please enter both username and password.");
+    const cleanUsername = normalizeUsername(username);
+    const cleanPassword = normalizePassword(password);
+
+    if (!cleanUsername || !cleanPassword) {
+      Alert.alert("Missing information", "Please enter your username/email and password.");
       return;
     }
 
-    // بستن کیبورد موقع لاگین
-    Keyboard.dismiss();
-    setLoading(true);
-
     try {
-      console.log("SENDING LOGIN TO:", API_LOGIN);
-      console.log("LOGIN BODY:", { username, password });
+      setLoading(true);
 
-      const response = await fetch(API_LOGIN, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ username, password }),
+      const result = await API.login(
+        cleanUsername,
+        cleanPassword,
+      );
+
+      const access = result?.access || result?.tokens?.access;
+      const refresh = result?.refresh || result?.tokens?.refresh;
+
+      if (!access) {
+        Alert.alert("Login failed", "Invalid username or password.");
+        return;
+      }
+
+      await authStorage.setTokens({
+        access,
+        refresh,
       });
 
-      const data = await response.json();
-      console.log("LOGIN RAW RESPONSE:", data, "STATUS:", response.status);
-
-      if (response.ok) {
-        await authStorage.storeTokens(data);
-        const check = await authStorage.getTokens();
-        console.log("AFTER LOGIN stored tokens:", check);
-        const goToMyListings = params?.redirectTo === "/(tabs)/mylistings";
-        if (goToMyListings) {
-          router.replace("/(tabs)/mylistings");
-        } else {
-          router.replace("/(tabs)/explore");
-        }
-        return;
-      } else {
-        console.log("LOGIN ERROR RESPONSE BODY:", data);
-        Alert.alert(
-          "Error",
-          data?.detail ||
-            data?.non_field_errors?.[0] ||
-            "Invalid username or password."
-        );
-      }
-    } catch (error) {
-      console.log("LOGIN FETCH ERROR:", error);
+      router.replace("/(tabs)/explore");
+    } catch (e: any) {
+      console.log("Login V2 error:", e?.response?.data || e);
       Alert.alert(
-        "Error",
-        "There was a problem connecting to the server. Please try again."
+        "Login failed",
+        "Please check your username/password. Usernames are not case-sensitive, but passwords must match exactly."
       );
     } finally {
       setLoading(false);
     }
   };
-
-  if (authLoading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-        <Text style={{ marginTop: 10 }}>Checking login status...</Text>
-      </View>
-    );
-  }
-
-  if (isLoggedIn) {
-    return <Redirect href="/explore" />;
-  }
-
   return (
-    <KeyboardAvoidingView
+    <ImageBackground
+      source={{ uri: activeSlide.image }}
+      resizeMode="cover"
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1 }}
-          keyboardShouldPersistTaps="handled"
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.48)",
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
         >
-          <View style={styles.container}>
-            <View style={styles.card}>
-              <Text style={styles.title}>Login</Text>
-
-              <TextInput
-                style={styles.input}
-                placeholder="Username"
-                value={username}
-                autoCapitalize="none"
-                onChangeText={setUsername}
-              />
-
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                value={password}
-                secureTextEntry
-                onChangeText={setPassword}
-              />
-
-              <AppButton
-                title="Login"
-                onPress={handleLogin}
-                loading={loading}
-                />
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingBottom: 40,
+            }}
+          >
+            <View
+              style={{
+                paddingTop: 72,
+                paddingHorizontal: 24,
+              }}
+            >
+              <View
+                style={{
+                  alignSelf: "flex-start",
+                  backgroundColor: "rgba(255,255,255,0.16)",
+                  borderRadius: 999,
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.18)",
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontWeight: "900",
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  {activeSlide.badge}
+                </Text>
+              </View>
 
               <Text
-  style={{
-    marginTop: 12,
-    textAlign: "center",
-    color: "#007AFF",
-    fontSize: 14,
-  }}
-  onPress={() => router.push("/register")}
->
-  Create account
-</Text>
-
-
-              <Text style={styles.infoText}>
-                You don’t need to log in to browse listings. Just use the{" "}
-                <Text style={{ fontWeight: "700" }}>Explore</Text> tab below. 🙂
+                style={{
+                  marginTop: 22,
+                  fontSize: 38,
+                  lineHeight: 44,
+                  fontWeight: "900",
+                  color: "#fff",
+                }}
+              >
+                {activeSlide.title}
               </Text>
+
+              <Text
+                style={{
+                  marginTop: 14,
+                  color: "rgba(255,255,255,0.92)",
+                  fontSize: 16,
+                  lineHeight: 25,
+                }}
+              >
+                {activeSlide.subtitle}
+              </Text>
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  marginTop: 22,
+                }}
+              >
+                {heroSlides.map((_, index) => (
+                  <View
+                    key={index}
+                    style={{
+                      width: slideIndex === index ? 28 : 8,
+                      height: 8,
+                      borderRadius: 999,
+                      backgroundColor:
+                        slideIndex === index ? "#fff" : "rgba(255,255,255,0.35)",
+                      marginRight: 8,
+                    }}
+                  />
+                ))}
+              </View>
             </View>
-          </View>
-        </ScrollView>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+
+            <View style={{ marginTop: "auto", paddingHorizontal: 18 }}>
+              {mode === "home" ? (
+                <View
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.96)",
+                    borderRadius: 34,
+                    padding: 22,
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.3)",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 28,
+                      fontWeight: "900",
+                      color: "#111",
+                    }}
+                  >
+                    Explore the Persian community
+                  </Text>
+
+                  <Text
+                    style={{
+                      marginTop: 10,
+                      color: "#666",
+                      lineHeight: 24,
+                      fontSize: 15,
+                    }}
+                  >
+                    Businesses, concerts, events, food, services, and everything
+                    Persian — all in one place.
+                  </Text>
+
+                  <View style={{ marginTop: 22 }}>
+                    {featuredCards.map((card) => (
+                      <View
+                        key={card.id}
+                        style={{
+                          height: 86,
+                          borderRadius: 22,
+                          overflow: "hidden",
+                          marginBottom: 12,
+                        }}
+                      >
+                        <ImageBackground
+                          source={{ uri: card.image }}
+                          style={{
+                            flex: 1,
+                            justifyContent: "flex-end",
+                          }}
+                        >
+                          <View
+                            style={{
+                              flex: 1,
+                              backgroundColor: "rgba(0,0,0,0.35)",
+                              justifyContent: "flex-end",
+                              padding: 14,
+                            }}
+                          >
+                            <View
+                              style={{
+                                alignSelf: "flex-start",
+                                backgroundColor:
+                                  card.tag === "FEATURED"
+                                    ? "#d4af37"
+                                    : "#7c3aed",
+                                borderRadius: 999,
+                                paddingHorizontal: 10,
+                                paddingVertical: 4,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  color: "#fff",
+                                  fontSize: 11,
+                                  fontWeight: "900",
+                                }}
+                              >
+                                {card.tag}
+                              </Text>
+                            </View>
+
+                            <Text
+                              style={{
+                                marginTop: 8,
+                                color: "#fff",
+                                fontWeight: "900",
+                                fontSize: 17,
+                              }}
+                            >
+                              {card.title}
+                            </Text>
+
+                            <Text
+                              style={{
+                                color: "rgba(255,255,255,0.88)",
+                                marginTop: 2,
+                              }}
+                            >
+                              {card.subtitle}
+                            </Text>
+                          </View>
+                        </ImageBackground>
+                      </View>
+                    ))}
+                  </View>
+
+                  <Pressable
+                    onPress={() => setMode("login")}
+                    style={{
+                      height: 58,
+                      borderRadius: 18,
+                      backgroundColor: "#111",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginTop: 8,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#fff",
+                        fontWeight: "900",
+                        fontSize: 16,
+                      }}
+                    >
+                      Continue
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => router.replace("/(tabs)/explore")}
+                    style={{
+                      marginTop: 16,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#555",
+                        fontWeight: "700",
+                      }}
+                    >
+                      Continue as guest
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.97)",
+                    borderRadius: 34,
+                    padding: 22,
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.3)",
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        flex: 1,
+                        fontSize: 30,
+                        fontWeight: "900",
+                        color: "#111",
+                      }}
+                    >
+                      Welcome back
+                    </Text>
+
+                    <Pressable onPress={() => setMode("home")}>
+                      <Ionicons name="close" size={28} color="#111" />
+                    </Pressable>
+                  </View>
+
+                  <Text
+                    style={{
+                      marginTop: 8,
+                      color: "#666",
+                      lineHeight: 22,
+                    }}
+                  >
+                    Sign in to manage your business, events, favorites, and community profile.
+                  </Text>
+
+                  <View
+                    style={{
+                      marginTop: 22,
+                      height: 58,
+                      borderRadius: 18,
+                      backgroundColor: "#f5f6f8",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: 16,
+                    }}
+                  >
+                    <Ionicons name="person-outline" size={22} color="#666" />
+
+                    <TextInput
+                      value={username}
+                      onChangeText={setUsername}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      placeholder="Username or email"
+                      placeholderTextColor="#888"
+                      style={{
+                        flex: 1,
+                        marginLeft: 12,
+                        fontSize: 16,
+                        color: "#111",
+                      }}
+                    />
+                  </View>
+
+                  <View
+                    style={{
+                      marginTop: 14,
+                      height: 58,
+                      borderRadius: 18,
+                      backgroundColor: "#f5f6f8",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: 16,
+                    }}
+                  >
+                    <Ionicons name="lock-closed-outline" size={22} color="#666" />
+
+                    <TextInput
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      textContentType="password"
+                      passwordRules="minlength: 8;"
+                      placeholder="Password"
+                      placeholderTextColor="#888"
+                      style={{
+                        flex: 1,
+                        marginLeft: 12,
+                        fontSize: 16,
+                        color: "#111",
+                      }}
+                    />
+
+                    <Pressable onPress={() => setShowPassword(!showPassword)}>
+                      <Ionicons
+                        name={showPassword ? "eye-off-outline" : "eye-outline"}
+                        size={22}
+                        color="#666"
+                      />
+                    </Pressable>
+                  </View>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginTop: 14,
+                    }}
+                  >
+                    <Pressable
+                      onPress={() => setRememberMe(!rememberMe)}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 7,
+                          backgroundColor: rememberMe ? "#111" : "#e5e7eb",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {rememberMe ? (
+                          <Ionicons name="checkmark" size={15} color="#fff" />
+                        ) : null}
+                      </View>
+
+                      <Text
+                        style={{
+                          marginLeft: 9,
+                          color: "#444",
+                          fontWeight: "600",
+                        }}
+                      >
+                        Remember me
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() =>
+                        Alert.alert(
+                          "Forgot password",
+                          "Password reset flow will be connected next."
+                        )
+                      }
+                    >
+                      <Text
+                        style={{
+                          color: "#2563eb",
+                          fontWeight: "800",
+                        }}
+                      >
+                        Forgot password?
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={{ marginTop: 18 }}>
+                    <Text
+                      style={{
+                        color: "#666",
+                        fontSize: 12,
+                        marginBottom: 8,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Password requirements
+                    </Text>
+
+                    <View style={{ gap: 5 }}>
+                      {[
+                        {
+                          ok: passwordHints.length,
+                          label: "At least 8 characters",
+                        },
+                        {
+                          ok: passwordHints.upper,
+                          label: "Uppercase letter",
+                        },
+                        {
+                          ok: passwordHints.lower,
+                          label: "Lowercase letter",
+                        },
+                        {
+                          ok: passwordHints.number,
+                          label: "Number",
+                        },
+                        {
+                          ok: passwordHints.symbol,
+                          label: "Special character",
+                        },
+                      ].map((item) => (
+                        <View
+                          key={item.label}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Ionicons
+                            name={
+                              item.ok
+                                ? "checkmark-circle"
+                                : "ellipse-outline"
+                            }
+                            size={16}
+                            color={item.ok ? "#16a34a" : "#999"}
+                          />
+
+                          <Text
+                            style={{
+                              marginLeft: 7,
+                              color: item.ok ? "#16a34a" : "#777",
+                              fontSize: 12,
+                              fontWeight: "600",
+                            }}
+                          >
+                            {item.label}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+
+                  <Pressable
+                    onPress={handleLogin}
+                    disabled={loading}
+                    style={{
+                      height: 58,
+                      borderRadius: 18,
+                      backgroundColor: "#111",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginTop: 22,
+                      opacity: loading ? 0.7 : 1,
+                    }}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text
+                        style={{
+                          color: "#fff",
+                          fontWeight: "900",
+                          fontSize: 16,
+                        }}
+                      >
+                        Sign In
+                      </Text>
+                    )}
+                  </Pressable>
+
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "center",
+                      marginTop: 18,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#666",
+                        fontSize: 14,
+                      }}
+                    >
+                      Don’t have an account?
+                    </Text>
+
+                    <Pressable onPress={() => router.push("/register")}>
+                      <Text
+                        style={{
+                          marginLeft: 6,
+                          color: "#0f9d91",
+                          fontWeight: "800",
+                          fontSize: 14,
+                        }}
+                      >
+                        Create Account
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginTop: 22,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                        height: 1,
+                        backgroundColor: "#e5e7eb",
+                      }}
+                    />
+
+                    <Text
+                      style={{
+                        marginHorizontal: 10,
+                        color: "#777",
+                        fontWeight: "700",
+                      }}
+                    >
+                      OR
+                    </Text>
+
+                    <View
+                      style={{
+                        flex: 1,
+                        height: 1,
+                        backgroundColor: "#e5e7eb",
+                      }}
+                    />
+                  </View>
+
+                  <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+                    <Pressable
+                      onPress={() =>
+                        Alert.alert("Google Login", "Coming soon.")
+                      }
+                      style={{
+                        flex: 1,
+                        height: 54,
+                        borderRadius: 18,
+                        backgroundColor: "#f5f6f8",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexDirection: "row",
+                      }}
+                    >
+                      <Ionicons
+                        name="logo-google"
+                        size={20}
+                        color="#111"
+                      />
+                      <Text
+                        style={{
+                          marginLeft: 8,
+                          fontWeight: "800",
+                          color: "#111",
+                        }}
+                      >
+                        Google
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() =>
+                        Alert.alert("Apple Login", "Coming soon.")
+                      }
+                      style={{
+                        flex: 1,
+                        height: 54,
+                        borderRadius: 18,
+                        backgroundColor: "#f5f6f8",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexDirection: "row",
+                      }}
+                    >
+                      <Ionicons
+                        name="logo-apple"
+                        size={20}
+                        color="#111"
+                      />
+                      <Text
+                        style={{
+                          marginLeft: 8,
+                          fontWeight: "800",
+                          color: "#111",
+                        }}
+                      >
+                        Apple
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <Pressable
+                    onPress={() =>
+                      Alert.alert(
+                        "Create Business",
+                        "Business onboarding flow will be connected next."
+                      )
+                    }
+                    style={{
+                      marginTop: 18,
+                      height: 54,
+                      borderRadius: 18,
+                      backgroundColor: "#ede9fe",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#5b21b6",
+                        fontWeight: "900",
+                        fontSize: 15,
+                      }}
+                    >
+                      Add Your Business
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => router.replace("/(tabs)/explore")}
+                    style={{
+                      marginTop: 18,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#666",
+                        fontWeight: "700",
+                      }}
+                    >
+                      Continue as guest
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
+    </ImageBackground>
   );
 }
-
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f5f5f5",
-  },
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 20,
-    backgroundColor: "#f5f5f5",
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "800",
-    marginBottom: 24,
-    textAlign: "center",
-  },
-  input: {
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    paddingHorizontal: 12,
-    marginBottom: 12,
-    backgroundColor: "#fafafa",
-  },
-  button: {
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: "#007AFF",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  infoText: {
-    marginTop: 16,
-    fontSize: 13,
-    textAlign: "center",
-    color: "#666",
-  },
-});

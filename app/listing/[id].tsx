@@ -235,7 +235,17 @@ const isOwner =
       <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40, }}>
         <TouchableOpacity
   onPress={() => {
-    router.push(`/profile/${(listing as any)?.user?.id ?? (listing as any)?.user_id?? (listing as any)?.owner_id}`);
+    router.push({
+  pathname: "/profile/v2",
+  params: {
+    id: String(
+      (listing as any)?.user?.id ??
+      (listing as any)?.user_id ??
+      (listing as any)?.owner_id ??
+      ""
+    ),
+  },
+})
   }}
 >
   <Text style={{ fontSize: 24,lineHeight: 30, fontWeight: "800" }}>

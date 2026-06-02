@@ -1,350 +1,786 @@
-// app/(tabs)/mylistings.tsx
-import React, { useState, useCallback } from "react";
-import { View, Text, FlatList, ActivityIndicator, Alert, Image, TouchableOpacity,StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
-import authStorage from "../utils/authStorage";
-import { Pressable } from "react-native";
-import {API} from "../../lib/api"
-import { useFocusEffect } from "@react-navigation/native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import React, { useMemo, useState } from "react";
+import {
+  Alert,
+  Image,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "expo-router";
 
+const colors = {
+  bg: "#F7F5F0",
+  card: "#FFFFFF",
+  text: "#111111",
+  muted: "#6B7280",
+  border: "#E5E0D8",
+  teal: "#0D9488",
+  tealSoft: "rgba(13,148,136,0.10)",
+  gold: "#E6C27A",
+  danger: "#DC2626",
+  success: "#16A34A",
+  warning: "#F59E0B",
+};
 
+type ListingStatus = "active" | "pending" | "draft" | "archived";
 
-// مثل همون login، همین IP رو نگه دار
-const BASE_URL = "https://community-app-backend-production.up.railway.app/api"
+type ListingItem = {
+  id: string;
+  title: string;
+  category: string;
+  city: string;
+  image: string;
+  status: ListingStatus;
+  views: number;
+  favorites: number;
+  messages: number;
+  updatedAt: string;
+};
 
-// اگر endpoint شما فرق داشت، فقط همین یک خط رو عوض می‌کنیم
-const MY_LISTINGS_URL = `${BASE_URL}/api/my-listing/`;
-const LISTINGS_URL = '${BASE_URL}/api/listings/';
+const sampleListings: ListingItem[] = [
+  {
+    id: "1",
+    title: "Fair Auto",
+    category: "Auto Repair",
+    city: "San Diego, CA",
+    image:
+      "https://images.unsplash.com/photo-1487754180451-c456f719a1fc?q=80&w=1200&auto=format&fit=crop",
+    status: "active",
+    views: 342,
+    favorites: 18,
+    messages: 7,
+    updatedAt: "Updated today",
+  },
+  {
+    id: "2",
+    title: "Tahchin Corner",
+    category: "Persian Food",
+    city: "San Diego, CA",
+    image:
+      "https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=1200&auto=format&fit=crop",
+    status: "pending",
+    views: 128,
+    favorites: 12,
+    messages: 3,
+    updatedAt: "Submitted yesterday",
+  },
+  {
+    id: "3",
+    title: "Luxury Home Developments",
+    category: "Real Estate",
+    city: "San Diego, CA",
+    image:
+      "https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1200&auto=format&fit=crop",
+    status: "draft",
+    views: 0,
+    favorites: 0,
+    messages: 0,
+    updatedAt: "Draft saved",
+  },
+];
 
 export default function MyListingsScreen() {
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const isEmpty = !loading && (!items || items.length === 0);
+  const [activeFilter, setActiveFilter] = useState<"all" | ListingStatus>("all");
+  const [listings, setListings] = useState<ListingItem[]>([]);
 
-  const fetchData = useCallback(async () => {
-  const tokens = await authStorage.getTokens();
-  const access = tokens?.access;
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadListings = async () => {
+        try {
+          const rawProfile = await AsyncStorage.getItem("user_profile_v2");
 
-  const ok = !!access && authStorage.isJwtNotExpired(access);
+          if (!rawProfile) {
+            setListings([]);
+            return;
+          }
 
-  
+          const profile = JSON.parse(rawProfile);
 
-  try {
-    setLoading(true);
-    const tokens = await authStorage.getTokens();
-const access = tokens?.access;
+          const storageKey = `my_listings_${profile.username || profile.email}`;
 
-if (!access || !authStorage.isJwtNotExpired(access)) {
-  await authStorage.clearTokens();
-  setItems([]);
-  return;
-}
-    const data = await API.getMyListings();
-    setItems(data);
-  } catch (err: any) {
-    console.log("MYLISTINGS fetch error:", err?.response?.status, err?.response?.data);
-    Alert.alert("Error", "Failed to load listings");
-  } finally {
-    setLoading(false);
-  }
-}, [router]);
+          const rawListings = await AsyncStorage.getItem(storageKey);
 
-useFocusEffect(
-  useCallback(() => {
-    fetchData();
-  }, [fetchData])
-);
+          if (rawListings) {
+            setListings(JSON.parse(rawListings));
+          } else {
+            setListings([]);
+          }
+        } catch (error) {
+          console.log("Failed to load listings", error);
+        }
+      };
 
-
-//1.ADD DeleteListing
-
- const deleteListing = async (id: number) => {
-  console.log("DELETE CLICKED ID =", id);
-
-  try {
-    const res = await API.deleteListing(id);
-    console.log("DELETE RES =", res);
-
-    setItems(prev => prev.filter(item => item.id !== id));
-    console.log("DELETE SUCCESS");
-  } catch (err: any) {
-    console.log("DELETE ERROR STATUS =", err?.response?.status);
-    console.log("DELETE ERROR DATA =", err?.response?.data);
-    console.log("DELETE ERROR URL =", err?.config?.url);
-    Alert.alert("Error", "Delete failed");
-  }
-};
-
-// 1.5 ADD EditListing  👈 فقط یک کامنت برای نظم
-const editListing = (item: any) => {
-  router.push({
-    pathname: "/(tabs)/create",
-    params: { editId: String(item.id) },
-  });
-};
-
-
-
-
-  // 2.confirmDelete
-  const confirmDelete = (id: number) => {
-  Alert.alert(
-    "Delete listing",
-    "Are you sure you want to delete this listing?",
-    [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteListing(id) },
-    ]
+      loadListings();
+    }, [])
   );
-};
 
-  
+  const filteredListings = useMemo(() => {
+    if (activeFilter === "all") {
+      return listings;
+    }
 
+    return listings.filter((item) => item.status === activeFilter);
+  }, [activeFilter, listings]);
 
-//3.renderItem
+  const stats = useMemo(() => {
+    return {
+      active: listings.filter((item) => item.status === "active").length,
+      pending: listings.filter((item) => item.status === "pending").length,
+      drafts: listings.filter((item) => item.status === "draft").length,
+      views: listings.reduce((sum, item) => sum + item.views, 0),
+      favorites: listings.reduce((sum, item) => sum + item.favorites, 0),
+    };
+  }, [listings]);
 
-    const renderItem = ({ item }: { item: any }) => {
-   const img =
-  item?.image_url ||
-  item?.image ||
-  (item?.images && item.images.length > 0
-    ? item.images[item.images.length - 1].image_url
-    : null);
+  const statusColor = (status: ListingStatus) => {
+    if (status === "active") return colors.success;
+    if (status === "pending") return colors.warning;
+    if (status === "draft") return colors.muted;
+    return colors.danger;
+  };
 
-      console.log("MYLIST item.images:", item?.images);
-      console.log("MYLIST img", img);
+  const statusLabel = (status: ListingStatus) => {
+    if (status === "active") return "Active";
+    if (status === "pending") return "Pending";
+    if (status === "draft") return "Draft";
+    return "Archived";
+  };
 
-    return (
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => router.push({
-          pathname: "/(tabs)/create",
-          params: {editId: String(item.id)},
-        })
-      }
-        activeOpacity={0.85}
-      >
-        <View style={styles.cardRow}>
-          {img ? (
-            <Image source={{ uri: img }} style={styles.cardImage} />
-          ) : (
-            <View style={styles.imagePlaceholder}>
-              <Text style={styles.imagePlaceholderText}>No Image</Text>
-            </View>
-            
-          )}
+  const goAddListing = () => {
+    router.push("/create");
+  };
 
-          <View style={styles.cardBody}>
-            <Text style={styles.title} numberOfLines={1}>
-              {item?.title || "Untitled"}
-            </Text>
+  const goEditListing = (id: string) => {
+    router.push({
+      pathname: "/create",
+      params: { editId: id },
+    });
+  };
 
-            <Text style={styles.location} numberOfLines={1}>
-              {(item?.city || "") + (item?.state ? `, ${item.state}` : "")}
-            </Text>
+  const goListingDetails = (id: string) => {
+    router.push({
+      pathname: "/listing/[id]",
+      params: { id },
+    });
+  };
 
-            <View style={styles.metaRow}>
-              {item?.price ? (
-                <Text style={styles.price}>${item.price}</Text>
-              ) : (
-                <Text style={styles.price}> </Text>
-              )}
+  const confirmDelete = (item: ListingItem) => {
+    Alert.alert(
+      "Delete listing",
+      `Are you sure you want to delete ${item.title}?`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const rawProfile = await AsyncStorage.getItem("user_profile_v2");
+              const profile = rawProfile ? JSON.parse(rawProfile) : {};
 
-              {typeof item?.posted_days_ago === "number" ? (
-                <Text style={styles.age}>Posted {item.posted_days_ago}d ago</Text>
-              ) : (
-                <Text style={styles.age}> </Text>
-              )}
-            </View>
+              const storageKey = `my_listings_${profile.username || profile.email || "default"}`;
 
-            <View style={styles.actionsRow}>
-  <TouchableOpacity
-    style={styles.editBtn}
-    onPress={() => router.push(`/listing/edit?id=${item.id}`)}
-  >
-    <Text style={styles.editBtnText}>Edit</Text>
-  </TouchableOpacity>
+              const existing = await AsyncStorage.getItem(storageKey);
 
-  <TouchableOpacity
-    style={styles.deleteBtn}
-    onPress={() => confirmDelete(item.id)}
-  >
-    <Text style={styles.deleteBtnText}>Delete</Text>
-  </TouchableOpacity>
-</View>
+              const parsedListings = existing ? JSON.parse(existing) : [];
 
-          </View>
-        </View>
-      </TouchableOpacity>
+              const updatedListings = parsedListings.filter(
+                (listing: ListingItem) => listing.id !== item.id
+              );
+
+              await AsyncStorage.setItem(
+                storageKey,
+                JSON.stringify(updatedListings)
+              );
+
+              setListings(updatedListings);
+
+              Alert.alert("Deleted", "Listing removed successfully.");
+            } catch (error) {
+              Alert.alert("Error", "Could not delete listing.");
+            }
+          }
+        },
+      ]
     );
   };
 
-
-  
-    
-    const load = async () => {
-      try {
-        const tokens = await authStorage.getTokens();
-        const access = tokens?.access;
-
-        console.log("MYLISTINGS tokens:", tokens);
-
-        if (!access) {
-          console.log("MYLISTINGS -> NO ACCESS -> redirect /login");
-          router.replace("/login");
-          return;
-        }
-
-        console.log("MYLISTINGS fetching:", MY_LISTINGS_URL);
-
-        console.log("MYLISTINGS fetching via API.getMyListings()");
-
-        const data = await API.getMyListings();
-
-        console.log("MYLISTINGS data:", data);
-
-         const list = Array.isArray(data) ? data : (data?.results ?? []);
-         setItems(Array.isArray(list) ? list : []);
- 
-      } catch (e: any) {
-        console.log("MYLISTINGS exception:", e);
-        Alert.alert("Error", "Network error loading your listings.");
-        setItems([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-   
-
-  
-  
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" />
-        <Text style={{ marginTop: 10 }}>Loading your listings...</Text>
+  const StatCard = ({
+    icon,
+    value,
+    label,
+    subtitle,
+    color,
+  }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    value: string;
+    label: string;
+    subtitle: string;
+    color: string;
+  }) => (
+    <View
+      style={{
+        flex: 1,
+        minHeight: 118,
+        backgroundColor: colors.card,
+        borderRadius: 22,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: colors.border,
+        shadowColor: "#000",
+        shadowOpacity: 0.06,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 3,
+      }}
+    >
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 19,
+          backgroundColor: `${color}18`,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name={icon} size={20} color={color} />
       </View>
-    );
-  }
 
-  const isLoggedIn = true;
-  return (
-    <SafeAreaView style={{ flex: 1, padding: 16, paddingTop: insets.top + 8 }}>
-      <Text style={{ fontSize: 22, fontWeight: "800", marginBottom: 12 }}>My Listings</Text>
-      
-      {!isLoggedIn && (
-        <Text style={{ marginBottom: 10, color: "#666", fontSize: 14}}>
-          Log in to post and manage your listings.
+      <Text
+        style={{
+          marginTop: 14,
+          fontSize: 25,
+          fontWeight: "900",
+          color,
+        }}
+      >
+        {value}
+      </Text>
+
+      <Text
+        style={{
+          marginTop: 3,
+          fontSize: 13,
+          fontWeight: "900",
+          color: colors.text,
+        }}
+      >
+        {label}
+      </Text>
+
+      <Text
+        style={{
+          marginTop: 3,
+          fontSize: 12,
+          color: colors.muted,
+          fontWeight: "600",
+        }}
+      >
+        {subtitle}
+      </Text>
+    </View>
+  ); const FilterButton = ({
+    value,
+    label,
+  }: {
+    value: "all" | ListingStatus;
+    label: string;
+  }) => {
+    const active = activeFilter === value;
+
+    return (
+      <Pressable
+        onPress={() => setActiveFilter(value)}
+        style={{
+          flex: 1,
+          height: 44,
+          borderRadius: 16,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: active ? colors.teal : "transparent",
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 13,
+            fontWeight: "900",
+            color: active ? "#FFFFFF" : colors.muted,
+          }}
+        >
+          {label}
         </Text>
-      )}
+      </Pressable>
+    );
+  };
 
-      {items.length === 0 ? (
-        <Text>No listings yet.</Text>
-      ) : (
+  const SmallMetric = ({
+    icon,
+    value,
+    label,
+  }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    value: number;
+    label: string;
+  }) => (
+    <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+      <Ionicons name={icon} size={18} color={colors.muted} />
 
-  <FlatList
-    data={items}
-    keyExtractor={(item) => String(item.id)}
-    renderItem={renderItem}
-    contentContainerStyle={{ paddingBottom: 24 }}
-  />
-)}
+      <View style={{ marginLeft: 6 }}>
+        <Text
+          style={{
+            color: colors.text,
+            fontSize: 13,
+            fontWeight: "900",
+          }}
+        >
+          {String(value)}
+        </Text>
 
-  </SafeAreaView>
+        <Text
+          style={{
+            color: colors.muted,
+            fontSize: 11,
+            fontWeight: "600",
+          }}
+        >
+          {label}
+        </Text>
+      </View>
+    </View>
+  );
+
+  const ListingCard = ({ item }: { item: ListingItem }) => (
+    <Pressable
+      onPress={() => goListingDetails(item.id)}
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: 26,
+        padding: 12,
+        marginTop: 14,
+        borderWidth: 1,
+        borderColor: colors.border,
+        shadowColor: "#000",
+        shadowOpacity: 0.06,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 3,
+      }}
+    >
+      <View style={{ flexDirection: "row" }}>
+        <Image
+          source={{ uri: item.image }}
+          style={{
+            width: 106,
+            height: 106,
+            borderRadius: 20,
+            backgroundColor: "#E5E7EB",
+          }}
+          resizeMode="cover"
+        />
+
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+            <View style={{ flex: 1 }}>
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontSize: 18,
+                  fontWeight: "900",
+                  color: colors.text,
+                }}
+              >
+                {item.title}
+              </Text>
+
+              <Text
+                numberOfLines={1}
+                style={{
+                  marginTop: 4,
+                  color: colors.muted,
+                  fontWeight: "700",
+                  fontSize: 13,
+                }}
+              >
+                {item.category}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                backgroundColor: `${statusColor(item.status)}18`,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 999,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "900",
+                  color: statusColor(item.status),
+                }}
+              >
+                {statusLabel(item.status)}
+              </Text>
+            </View>
+          </View>          <Text
+            numberOfLines={1}
+            style={{
+              marginTop: 8,
+              color: colors.muted,
+              fontSize: 12,
+              fontWeight: "600",
+            }}
+          >
+            {item.city}
+          </Text>
+
+          <Text
+            numberOfLines={1}
+            style={{
+              marginTop: 4,
+              color: colors.muted,
+              fontSize: 12,
+              fontWeight: "600",
+            }}
+          >
+            {item.updatedAt}
+          </Text>
+
+          <View
+            style={{
+              flexDirection: "row",
+              marginTop: 12,
+            }}
+          >
+            <SmallMetric icon="eye-outline" value={item.views} label="Views" />
+            <SmallMetric icon="heart-outline" value={item.favorites} label="Saves" />
+            <SmallMetric icon="chatbubble-outline" value={item.messages} label="Msgs" />
+          </View>
+        </View>
+      </View>
+
+      <View
+        style={{
+          flexDirection: "row",
+          marginTop: 14,
+        }}
+      >
+        <Pressable
+          onPress={() => goEditListing(item.id)}
+          style={{
+            flex: 1,
+            height: 44,
+            borderRadius: 16,
+            backgroundColor: colors.tealSoft,
+            alignItems: "center",
+            justifyContent: "center",
+            flexDirection: "row",
+            marginRight: 8,
+          }}
+        >
+          <Ionicons name="create-outline" size={18} color={colors.teal} />
+          <Text
+            style={{
+              marginLeft: 6,
+              color: colors.teal,
+              fontWeight: "900",
+            }}
+          >
+            Edit
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => Alert.alert("Promote", "Promotion tools will be connected later.")}
+          style={{
+            flex: 1,
+            height: 44,
+            borderRadius: 16,
+            backgroundColor: "rgba(230,194,122,0.22)",
+            alignItems: "center",
+            justifyContent: "center",
+            flexDirection: "row",
+            marginRight: 8,
+          }}
+        >
+          <Ionicons name="trending-up-outline" size={18} color="#9A6B10" />
+          <Text
+            style={{
+              marginLeft: 6,
+              color: "#9A6B10",
+              fontWeight: "900",
+            }}
+          >
+            Promote
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => confirmDelete(item)}
+          style={{
+            width: 48,
+            height: 44,
+            borderRadius: 16,
+            backgroundColor: "rgba(220,38,38,0.10)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="trash-outline" size={19} color={colors.danger} />
+        </Pressable>
+      </View>
+    </Pressable>
+  ); return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 110 }}
+      >
+        <View
+          style={{
+            backgroundColor: colors.teal,
+            paddingHorizontal: 20,
+            paddingTop: 22,
+            paddingBottom: 70,
+            borderBottomLeftRadius: 36,
+            borderBottomRightRadius: 36,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: 32,
+                  fontWeight: "900",
+                }}
+              >
+                My Listings
+              </Text>
+
+              <Text
+                style={{
+                  marginTop: 6,
+                  color: "rgba(255,255,255,0.84)",
+                  fontSize: 15,
+                  fontWeight: "600",
+                }}
+              >
+                Manage, edit, promote, and track your business posts.
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={goAddListing}
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 24,
+                backgroundColor: "rgba(255,255,255,0.18)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="add" size={28} color="#FFFFFF" />
+            </Pressable>
+          </View>
+        </View>
+
+        <View
+          style={{
+            marginHorizontal: 18,
+            marginTop: -48,
+            backgroundColor: colors.card,
+            borderRadius: 30,
+            padding: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            shadowColor: "#000",
+            shadowOpacity: 0.1,
+            shadowRadius: 20,
+            shadowOffset: { width: 0, height: 10 },
+            elevation: 6,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 22,
+              fontWeight: "900",
+              color: colors.text,
+              marginBottom: 14,
+            }}
+          >
+            Dashboard
+          </Text>
+
+          <View style={{ flexDirection: "row" }}>
+            <StatCard
+              icon="checkmark-circle-outline"
+              value={String(stats.active)}
+              label="Active"
+              subtitle="Live listings"
+              color={colors.success}
+            />
+
+            <View style={{ width: 10 }} />
+
+            <StatCard
+              icon="eye-outline"
+              value={String(stats.views)}
+              label="Views"
+              subtitle="Total reach"
+              color={colors.teal}
+            />
+          </View>
+
+          <View style={{ height: 10 }} />
+
+          <View style={{ flexDirection: "row" }}>
+            <StatCard
+              icon="heart-outline"
+              value={String(stats.favorites)}
+              label="Saves"
+              subtitle="User interest"
+              color={colors.gold}
+            />
+
+            <View style={{ width: 10 }} />
+
+            <StatCard
+              icon="time-outline"
+              value={String(stats.pending)}
+              label="Pending"
+              subtitle="Needs review"
+              color={colors.warning}
+            />
+          </View>
+        </View>        <View
+          style={{
+            marginHorizontal: 18,
+            marginTop: 18,
+            backgroundColor: colors.card,
+            borderRadius: 28,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: colors.border,
+            shadowColor: "#000",
+            shadowOpacity: 0.06,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 3,
+          }}
+        >
+          <Pressable
+            onPress={goAddListing}
+            style={{
+              height: 58,
+              borderRadius: 20,
+              backgroundColor: colors.teal,
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+            }}
+          >
+            <Ionicons name="add-circle-outline" size={22} color="#FFFFFF" />
+
+            <Text
+              style={{
+                marginLeft: 8,
+                color: "#FFFFFF",
+                fontSize: 16,
+                fontWeight: "900",
+              }}
+            >
+              Add New Listing
+            </Text>
+          </Pressable>
+
+          <Text
+            style={{
+              marginTop: 12,
+              color: colors.muted,
+              textAlign: "center",
+              fontSize: 13,
+              fontWeight: "600",
+            }}
+          >
+            Create a new business post, event, service, or promotion.
+          </Text>
+        </View>
+
+        <View
+          style={{
+            marginHorizontal: 18,
+            marginTop: 18,
+            backgroundColor: colors.card,
+            borderRadius: 24,
+            padding: 6,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <View style={{ flexDirection: "row" }}>
+            <FilterButton value="all" label="All" />
+            <FilterButton value="active" label="Active" />
+            <FilterButton value="pending" label="Pending" />
+            <FilterButton value="draft" label="Drafts" />
+          </View>
+        </View>
+
+        <View style={{ paddingHorizontal: 18, marginTop: 8 }}>
+          {filteredListings.length > 0 ? (
+            filteredListings.map((item) => (
+              <ListingCard key={item.id} item={item} />
+            ))
+          ) : (
+            <View
+              style={{
+                marginTop: 22,
+                backgroundColor: colors.card,
+                borderRadius: 28,
+                padding: 24,
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              <Ionicons name="file-tray-outline" size={42} color={colors.teal} />
+
+              <Text
+                style={{
+                  marginTop: 14,
+                  fontSize: 20,
+                  fontWeight: "900",
+                  color: colors.text,
+                }}
+              >
+                No listings found
+              </Text>
+
+              <Text
+                style={{
+                  marginTop: 7,
+                  color: colors.muted,
+                  textAlign: "center",
+                  lineHeight: 22,
+                }}
+              >
+                Try another filter or create your first listing.
+              </Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
-
-//stale sheet Aib&b
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-
-  header: { fontSize: 22, fontWeight: "800", marginBottom: 12 },
-
-  card: {
-  backgroundColor: "#fff",
-  borderRadius: 16,
-  padding: 14,
-  marginBottom: 14,
-
-  borderWidth: 1,
-  borderColor: "#f1f1f1",
-
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.04,
-  shadowRadius: 6,
-  elevation: 2,
-},
-
-  cardRow: { flexDirection: "row", gap: 12 },
-
-  cardImage: {
-    width: 86,
-    height: 86,
-    borderRadius: 12,
-    backgroundColor: "#f2f2f2",
-  },
-
-  imagePlaceholder: {
-    width: 86,
-    height: 86,
-    borderRadius: 12,
-    backgroundColor: "#f2f2f2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  imagePlaceholderText: { color: "#666", fontSize: 12 },
-
-  cardBody: { flex: 1 },
-
-  title: { fontSize: 16, fontWeight: "700" },
-
-  location: { marginTop: 4, color: "#666", fontSize: 13 },
-
-  metaRow: {
-    marginTop: 6,
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-
-  price: { fontWeight: "700", fontSize: 14 },
-
-  age: { color: "#666", fontSize: 12 },
-actionsRow: {
-  flexDirection: "row",
-  gap: 10,
-  marginTop: 10,
-},
-
-editBtn: {
-  paddingVertical: 8,
-  paddingHorizontal: 12,
-  borderRadius: 10,
-  backgroundColor: "#f1f5f9",
-},
-
-editBtnText: {
-  fontWeight: "700",
-},
-
-deleteBtn: {
-  paddingVertical: 8,
-  paddingHorizontal: 12,
-  borderRadius: 10,
-  backgroundColor: "#fee2e2",
-},
-
-deleteBtnText: {
-  fontWeight: "700",
-},
-
-
-
-});
-

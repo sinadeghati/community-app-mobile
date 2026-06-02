@@ -89,41 +89,7 @@ const guardTab = (target: string) => async (e: any) => {
          }}
       />
 
-      <Tabs.Screen
-        name="create"
-        options={{ title: "Post",
-         
-          tabBarButton: (props) => (
-            <TouchableOpacity
-              onPress={props.onPress}
-              accessibilityRole={props.accessibilityRole}
-              accessibilityState={props.accessibilityState}
-              accessibilityLabel={props.accessibilityLabel}
-              testID={props.testID}
-            style={{
-              top: -10,
-              width: 64,
-              height: 64,
-              borderRadius: 32,
-              backgroundColor: theme.colors.primary,
-              alignItems: "center",
-              justifyContent: "center"
-             // shadowColor: "#000",
-              //shadowOpacity: 0.25,
-              //shadowRadius: 4,
-              //shadowOffset: { width: 0, height: 4},
-              //elevation: 6,
-            }}
-            >
-              <Ionicons name="add" size={32} color="#fff" />
-              </TouchableOpacity>
-          ),
-
-         }}
-        listeners={{ tabPress: guardTab("/(tabs)/create")
-
-         }}
-      />
+     
 
       <Tabs.Screen
         name="explore"
@@ -141,7 +107,37 @@ const guardTab = (target: string) => async (e: any) => {
         }}
         />
 
-      
+      <Tabs.Screen
+  name="create"
+  options={{
+    href: null,
+  }}
+/>
+
+<Tabs.Screen
+  name="profile-v2-clean"
+  options={{
+    href: null,
+  }}
+/>
+
+<Tabs.Screen
+  name="explore-v2"
+  options={{
+    href: null,
+  }}
+/>
+
+<Tabs.Screen
+  name="favorites"
+  options={{
+    title: "Favorites",
+    tabBarIcon: ({ color, size }) => (
+      <Ionicons name="heart-outline" size={size} color={color} />
+    ),
+  }}
+/>
+
 
       <Tabs.Screen
         name="profile"
