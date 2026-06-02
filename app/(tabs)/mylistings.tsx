@@ -432,7 +432,8 @@ export default function MyListingsScreen() {
                 {statusLabel(item.status)}
               </Text>
             </View>
-          </View>          <Text
+          </View>
+          <Text
             numberOfLines={1}
             style={{
               marginTop: 8,
@@ -664,7 +665,8 @@ export default function MyListingsScreen() {
               color={colors.warning}
             />
           </View>
-        </View>        <View
+        </View>
+        <View
           style={{
             marginHorizontal: 18,
             marginTop: 18,
