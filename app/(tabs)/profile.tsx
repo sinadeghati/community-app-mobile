@@ -499,7 +499,8 @@ export default function ProfileV2Clean() {
               <Ionicons name="pencil" size={18} color={theme.colors.turquoise} />
             </Pressable>
           </View>
-        </View>        <View
+        </View>
+        <View
           style={{
             flexDirection: "row",
             marginTop: 18,
@@ -730,8 +731,6 @@ export default function ProfileV2Clean() {
             Account
           </Text>
 
-
-
           <MenuItem
             icon="shield-checkmark-outline"
             title="Verification"
@@ -740,8 +739,6 @@ export default function ProfileV2Clean() {
               go("/profile/verification")
             }
           />
-
-
 
           <MenuItem
             icon="log-out-outline"
