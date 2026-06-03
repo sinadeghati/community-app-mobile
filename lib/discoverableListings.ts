@@ -29,6 +29,8 @@ export type DiscoverableListing = {
   is_featured?: boolean;
   rating?: number;
   reviews?: number;
+  business_updates?: unknown;
+  businessUpdates?: unknown;
 };
 
 export const getListingId = (item: DiscoverableListing) => String(item?.id || "");

@@ -510,10 +510,20 @@ export default function BusinessProfileV2() {
     loadBusiness();
   }, [profileId]);
 
+  const focusUpdates = String(params?.focus || "") === "updates";
+
+  useEffect(() => {
+    if (!focusUpdates || loading) return;
+    setActiveTab("Services");
+  }, [focusUpdates, loading, profileId]);
+
   useFocusEffect(
     React.useCallback(() => {
       getCurrentReviewer().then(setCurrentReviewer);
-    }, [])
+      if (String(params?.focus || "") === "updates") {
+        setActiveTab("Services");
+      }
+    }, [params?.focus])
   );
 
   useEffect(() => {

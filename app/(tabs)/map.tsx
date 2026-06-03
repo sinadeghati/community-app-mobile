@@ -48,12 +48,23 @@ import {
   type EventMapItem,
   type EventTimeFilter,
 } from "../../lib/mapEvents";
+import {
+  getEventCover,
+  getEventTitle,
+  saveMapEventSnapshot,
+} from "../../lib/mapEventDetails";
 import { getItemHoursDisplay } from "../../lib/businessHours";
 import {
   formatMapPreviewReviewText,
   getBusinessReviewSummary,
   type BusinessReviewSummary,
 } from "../../lib/businessReviews";
+import {
+  getBusinessUpdateTypeLabel,
+  getBusinessUpdates,
+  getPrimaryActiveBusinessUpdate,
+  type BusinessUpdate,
+} from "../../lib/businessUpdates";
 import { theme } from "../../lib/theme";
 
 type MapItem = {
@@ -84,6 +95,8 @@ type MapItem = {
   business_hours?: unknown;
   businessHours?: unknown;
   hours_configured?: boolean;
+  business_updates?: unknown;
+  businessUpdates?: unknown;
   event_date?: string;
   eventDate?: string;
   starts_at?: string;
@@ -139,6 +152,9 @@ const demoEvents: MapItem[] = [
     longitude: -117.15,
     image:
       "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=1200",
+    description:
+      "An evening of live Persian music, community, and culture in the heart of San Diego.",
+    organizer: "Persian Cultural Center",
     rating: 4.8,
     reviews: 24,
     is_featured: true,
@@ -154,6 +170,9 @@ const demoEvents: MapItem[] = [
     longitude: -117.0231,
     image:
       "https://images.unsplash.com/photo-1511578314322-379afb4768f1?q=80&w=1200",
+    description:
+      "Meet neighbors, share stories, and connect with the local Persian community.",
+    organizer: "Iranian Community Network",
   },
   {
     id: "event-food-festival",
@@ -243,6 +262,194 @@ const getPhone = (item: MapItem) => item?.phone || item?.contact_info || "";
 const hoursStatusColor = (tone: "open" | "closed" | "neutral") =>
   tone === "open" ? theme.colors.success : theme.colors.muted;
 
+const MapActiveUpdateLabel = ({
+  update,
+  compact = false,
+  onPress,
+}: {
+  update: BusinessUpdate;
+  compact?: boolean;
+  onPress?: () => void;
+}) => {
+  const label = (
+    <Text
+      numberOfLines={1}
+      style={{
+        marginTop: compact ? 2 : 3,
+        fontSize: compact ? 11 : 12,
+      }}
+    >
+      <Text
+        style={{
+          fontWeight: "800",
+          color: "#B8860B",
+          letterSpacing: 0.3,
+        }}
+      >
+        {getBusinessUpdateTypeLabel(update.type).toUpperCase()}
+      </Text>
+      <Text style={{ color: theme.colors.muted }}> · </Text>
+      <Text style={{ fontWeight: "600", color: theme.colors.charcoal }}>
+        {update.title}
+      </Text>
+    </Text>
+  );
+
+  if (!onPress) return label;
+
+  return (
+    <Pressable onPress={onPress} hitSlop={8}>
+      {label}
+    </Pressable>
+  );
+};
+
+function MapEventPreviewCard({
+  event,
+  onOpenDetails,
+  onDirections,
+}: {
+  event: MapItem;
+  onOpenDetails: () => void;
+  onDirections: () => void;
+}) {
+  const visual = getEventMarkerVisual(event as EventMapItem);
+
+  return (
+    <View
+      style={{
+        position: "absolute",
+        left: 16,
+        right: 16,
+        bottom: 100,
+        zIndex: 20,
+      }}
+    >
+      <Pressable
+        onPress={onOpenDetails}
+        style={{
+          backgroundColor: "rgba(255,255,255,0.98)",
+          borderRadius: 18,
+          padding: 12,
+          borderWidth: 1,
+          borderColor: "rgba(124,58,237,0.28)",
+          shadowColor: "#000",
+          shadowOpacity: 0.1,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 3 },
+          elevation: 6,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Image
+            source={{ uri: getEventCover(event as EventMapItem) }}
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: 12,
+              backgroundColor: "#eee",
+            }}
+            resizeMode="cover"
+          />
+
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                fontSize: 11,
+                fontWeight: "800",
+                color: theme.colors.eventPurple,
+                letterSpacing: 0.3,
+              }}
+            >
+              {getCategory(event).toUpperCase()}
+            </Text>
+            <Text
+              numberOfLines={2}
+              style={{
+                marginTop: 4,
+                fontSize: 16,
+                fontWeight: "800",
+                color: theme.colors.charcoal,
+              }}
+            >
+              {getEventTitle(event as EventMapItem)}
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                color: theme.colors.muted,
+                fontWeight: "600",
+              }}
+            >
+              {formatEventDateTime(event as EventMapItem)}
+            </Text>
+          </View>
+
+          <Pressable onPress={onOpenDetails} hitSlop={8}>
+            <Ionicons
+              name="chevron-forward"
+              size={22}
+              color={theme.colors.eventPurple}
+            />
+          </Pressable>
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+          <Pressable
+            onPress={onDirections}
+            style={{
+              flex: 1,
+              height: 36,
+              borderRadius: 10,
+              backgroundColor: theme.colors.turquoise,
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+            }}
+          >
+            <Ionicons name="navigate" size={15} color="#fff" />
+            <Text
+              style={{
+                marginLeft: 4,
+                color: "#fff",
+                fontWeight: "700",
+                fontSize: 12,
+              }}
+            >
+              Directions
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={onOpenDetails}
+            style={{
+              flex: 1,
+              height: 36,
+              borderRadius: 10,
+              backgroundColor: "rgba(124,58,237,0.1)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text
+              style={{
+                color: visual.accent,
+                fontWeight: "800",
+                fontSize: 12,
+              }}
+            >
+              View details
+            </Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
 const MapPreviewStatusLine = ({
   item,
   reviewSummary,
@@ -317,6 +524,93 @@ const SHEET_SNAP = {
 const MAP_CONTROL_GAP = 10;
 const MAP_CHIP_ROW_TOP = 10;
 
+type MapSheetSnap = "collapsed" | "half" | "expanded";
+
+const snapKindFromHeight = (height: number): MapSheetSnap => {
+  if (height <= SHEET_SNAP.collapsed + 24) return "collapsed";
+  if (height <= SHEET_SNAP.half + 40) return "half";
+  return "expanded";
+};
+
+const regionsAreSimilar = (a: Region, b: Region) =>
+  Math.abs(a.latitude - b.latitude) < 0.0001 &&
+  Math.abs(a.longitude - b.longitude) < 0.0001 &&
+  Math.abs(a.latitudeDelta - b.latitudeDelta) < 0.0001 &&
+  Math.abs(a.longitudeDelta - b.longitudeDelta) < 0.0001;
+
+function useMapBottomSheet(initialHeight: number) {
+  const sheetHeight = useRef(new Animated.Value(initialHeight)).current;
+  const dragStartHeight = useRef(initialHeight);
+  const [sheetSnap, setSheetSnap] = useState<MapSheetSnap>(
+    snapKindFromHeight(initialHeight)
+  );
+
+  const snapTo = useCallback(
+    (height: number) => {
+      setSheetSnap(snapKindFromHeight(height));
+      Animated.spring(sheetHeight, {
+        toValue: height,
+        useNativeDriver: false,
+        friction: 8,
+        tension: 68,
+      }).start();
+    },
+    [sheetHeight]
+  );
+
+  const snapToNearest = useCallback(
+    (height: number, velocityY = 0) => {
+      const snaps = [SHEET_SNAP.collapsed, SHEET_SNAP.half, SHEET_SNAP.expanded];
+      let nearestIndex = snaps.reduce(
+        (bestIdx, curr, idx) =>
+          Math.abs(curr - height) < Math.abs(snaps[bestIdx] - height) ? idx : bestIdx,
+        0
+      );
+
+      if (velocityY < -0.35) {
+        nearestIndex = Math.min(snaps.length - 1, nearestIndex + 1);
+      } else if (velocityY > 0.35) {
+        nearestIndex = Math.max(0, nearestIndex - 1);
+      }
+
+      snapTo(snaps[nearestIndex]);
+    },
+    [snapTo]
+  );
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 6,
+      onPanResponderGrant: () => {
+        sheetHeight.stopAnimation((value) => {
+          dragStartHeight.current = value;
+        });
+      },
+      onPanResponderMove: (_, gesture) => {
+        const next = Math.min(
+          SHEET_SNAP.expanded,
+          Math.max(SHEET_SNAP.collapsed, dragStartHeight.current - gesture.dy)
+        );
+        sheetHeight.setValue(next);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        const projected = dragStartHeight.current - gesture.dy;
+        snapToNearest(projected, gesture.vy);
+      },
+    })
+  ).current;
+
+  const listCanScroll = sheetSnap === "expanded" || sheetSnap === "half";
+
+  return {
+    sheetHeight,
+    sheetSnap,
+    snapTo,
+    panResponder,
+    listCanScroll,
+  };
+}
+
 function MarkerPulseRing({
   active,
   color,
@@ -385,7 +679,18 @@ export default function MapScreenV25() {
   const [locating, setLocating] = useState(false);
   const mapRef = useRef<MapView>(null);
   const [mapRegion, setMapRegion] = useState<Region>(SAN_DIEGO_REGION);
+  const mapRegionRef = useRef<Region>(SAN_DIEGO_REGION);
   const suppressMapDeselectRef = useRef(false);
+  const insets = useSafeAreaInsets();
+  const {
+    sheetHeight: resultSheetHeight,
+    sheetSnap: resultSheetSnap,
+    snapTo: snapResultSheet,
+    panResponder: resultSheetPanResponder,
+    listCanScroll: resultListCanScroll,
+  } = useMapBottomSheet(SHEET_SNAP.collapsed);
+  const [eventTimeFilter, setEventTimeFilter] = useState<EventTimeFilter>("all");
+  const lastDiscoverySheetMode = useRef<boolean | null>(null);
 
   const dismissKeyboard = () => {
     Keyboard.dismiss();
@@ -447,11 +752,12 @@ export default function MapScreenV25() {
     setFilterVisible(false);
   };
 
-  const openEventDetails = (event: MapItem) => {
+  const openEventDetails = async (event: MapItem) => {
     dismissKeyboard();
     const id = getId(event);
+    if (!id) return;
 
-    if (id && !id.startsWith("event-")) {
+    if (!id.startsWith("event-")) {
       router.push({
         pathname: "/listing/[id]",
         params: { id },
@@ -459,7 +765,11 @@ export default function MapScreenV25() {
       return;
     }
 
-    Alert.alert("Event details", "Event details coming soon.");
+    await saveMapEventSnapshot(event as EventMapItem);
+    router.push({
+      pathname: "/event/[id]",
+      params: { id },
+    });
   };
 
   const allMapEvents = useMemo(
@@ -482,12 +792,59 @@ export default function MapScreenV25() {
     loadMapItems();
   }, []);
 
+  const enrichMapItemsWithProfileUpdates = async (
+    list: MapItem[]
+  ): Promise<MapItem[]> => {
+    const businessIds = list
+      .filter((item) => !isMapEvent(item))
+      .map((item) => getId(item))
+      .filter(Boolean);
+
+    if (!businessIds.length) return list;
+
+    const profilePairs = await AsyncStorage.multiGet(
+      businessIds.map((id) => `profile_v2_${id}`)
+    );
+
+    const profileById = new Map<string, MapItem>();
+    profilePairs.forEach(([key, value]) => {
+      if (!value) return;
+      const id = key.replace("profile_v2_", "");
+      try {
+        profileById.set(id, JSON.parse(value) as MapItem);
+      } catch {
+        // skip invalid profile payload
+      }
+    });
+
+    return list.map((item) => {
+      if (isMapEvent(item)) return item;
+
+      const id = getId(item);
+      const profile = profileById.get(id);
+      const itemUpdates = getBusinessUpdates(item);
+      const profileUpdates = profile ? getBusinessUpdates(profile) : [];
+
+      if (itemUpdates.length > 0) return item;
+      if (!profileUpdates.length) return item;
+
+      return {
+        ...item,
+        business_updates:
+          profile?.business_updates ?? profile?.businessUpdates ?? profileUpdates,
+      };
+    });
+  };
+
   const loadMapItems = async () => {
     try {
       setLoading(true);
 
       const data = await loadDiscoverableListings();
-      const merged = [...data, ...demoEvents];
+      const merged = await enrichMapItemsWithProfileUpdates([
+        ...data,
+        ...demoEvents,
+      ]);
 
       setItems(merged);
 
@@ -560,6 +917,19 @@ export default function MapScreenV25() {
     [mapPoints]
   );
 
+  const activeUpdatesById = useMemo(() => {
+    const map: Record<string, BusinessUpdate | null> = {};
+
+    items.forEach((item) => {
+      if (isMapEvent(item)) return;
+      const id = getId(item);
+      if (!id) return;
+      map[id] = getPrimaryActiveBusinessUpdate(item);
+    });
+
+    return map;
+  }, [items]);
+
   const hasVisibleBusinesses = nearbyBusinesses.length > 0;
 
   const syncReviewSummaries = useCallback(async (businessIds: string[]) => {
@@ -581,6 +951,11 @@ export default function MapScreenV25() {
 
   const isDiscoveryActive =
     search.trim() !== "" || selectedCategory !== "All";
+
+  const handleMapRegionChangeComplete = useCallback((region: Region) => {
+    mapRegionRef.current = region;
+    setMapRegion((prev) => (regionsAreSimilar(prev, region) ? prev : region));
+  }, []);
 
   const discoveryResults = useMemo(() => {
     if (!isDiscoveryActive) return [];
@@ -624,6 +999,31 @@ export default function MapScreenV25() {
     useCallback(() => {
       syncReviewSummaries(previewBusinessIds);
     }, [previewBusinessIds, syncReviewSummaries])
+  );
+
+  useEffect(() => {
+    if (lastDiscoverySheetMode.current === isDiscoveryActive) return;
+    lastDiscoverySheetMode.current = isDiscoveryActive;
+    snapResultSheet(
+      isDiscoveryActive ? SHEET_SNAP.half : SHEET_SNAP.collapsed
+    );
+  }, [isDiscoveryActive, snapResultSheet]);
+
+  const displayedEvents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return sortEventsByDate(
+      allMapEvents.filter((event) => {
+        if (q && !matchesListingSearch(event, q)) return false;
+        return matchesEventTimeFilter(event as EventMapItem, eventTimeFilter);
+      })
+    );
+  }, [eventTimeFilter, search, allMapEvents]);
+
+  const discoveryTitle = getDiscoveryTitle(
+    discoveryResults.length,
+    search,
+    selectedCategory
   );
 
   const focusOnMapItem = (
@@ -702,12 +1102,112 @@ export default function MapScreenV25() {
     }
   };
 
-  const openProfile = (item: MapItem) => {
+  const openProfile = (
+    item: MapItem,
+    options?: { focusUpdates?: boolean }
+  ) => {
     dismissKeyboard();
     router.push({
       pathname: "/profile/v2",
-      params: { id: getId(item) },
+      params: {
+        id: getId(item),
+        ...(options?.focusUpdates ? { focus: "updates" } : {}),
+      },
     });
+  };
+
+  const openProfileUpdates = (item: MapItem) => {
+    openProfile(item, { focusUpdates: true });
+  };
+
+  const renderDiscoveryRow = (entry: {
+    item: MapItem;
+    point: ResolvedMapPoint;
+  }) => {
+    const { item } = entry;
+    const active = selectedItem && getId(selectedItem) === getId(item);
+    const eventItem = isMapEvent(item);
+
+    return (
+      <Pressable
+        key={`discovery-${getId(item)}`}
+        onPress={() => {
+          if (eventItem) {
+            openEventDetails(item);
+            return;
+          }
+          selectMapItem(item, { focus: true, animate: true });
+        }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          minHeight: 76,
+          paddingVertical: 12,
+          paddingHorizontal: 16,
+          borderBottomWidth: 1,
+          borderBottomColor: theme.colors.border,
+          backgroundColor: active ? "rgba(13,148,136,0.06)" : "#FFFFFF",
+        }}
+      >
+        <Image
+          source={{ uri: getImage(item) }}
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 12,
+            backgroundColor: "#eee",
+          }}
+          resizeMode="cover"
+        />
+        <View style={{ flex: 1, marginLeft: 12, marginRight: 8 }}>
+          <Text
+            numberOfLines={1}
+            style={{
+              fontSize: 15,
+              fontWeight: "800",
+              color: theme.colors.charcoal,
+            }}
+          >
+            {getTitle(item)}
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={{
+              marginTop: 3,
+              fontSize: 12,
+              color: theme.colors.muted,
+            }}
+          >
+            {getCategory(item)}
+          </Text>
+          {!eventItem && activeUpdatesById[getId(item)] ? (
+            <MapActiveUpdateLabel
+              update={activeUpdatesById[getId(item)]!}
+              compact
+              onPress={() => openProfileUpdates(item)}
+            />
+          ) : null}
+          {!eventItem ? (
+            <MapPreviewStatusLine
+              item={item}
+              reviewSummary={reviewSummaries[getId(item)]}
+              compact
+            />
+          ) : null}
+          <Text
+            numberOfLines={1}
+            style={{
+              marginTop: 3,
+              fontSize: 12,
+              color: theme.colors.muted,
+            }}
+          >
+            {getCityLine(item)}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
+      </Pressable>
+    );
   };
 
   const openCall = (item: MapItem) => {
@@ -785,6 +1285,9 @@ export default function MapScreenV25() {
       : MARKER_VISUALS[kind];
     const pinSize = active ? 34 : 30;
     const iconSize = active ? 15 : 13;
+    const activeUpdate = isMapEvent(item)
+      ? null
+      : activeUpdatesById[getId(item)];
 
     return (
       <Marker
@@ -810,6 +1313,21 @@ export default function MapScreenV25() {
             color={active ? theme.colors.turquoise : visual.accent}
           />
 
+          {activeUpdate && !active ? (
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                width: pinSize + 10,
+                height: pinSize + 10,
+                borderRadius: (pinSize + 10) / 2,
+                borderWidth: 1,
+                borderColor: "rgba(196, 154, 58, 0.35)",
+                backgroundColor: "rgba(196, 154, 58, 0.06)",
+              }}
+            />
+          ) : null}
+
           <View
             style={{
               width: pinSize,
@@ -817,12 +1335,16 @@ export default function MapScreenV25() {
               borderRadius: pinSize / 2,
               backgroundColor: active ? theme.colors.turquoise : "#FFFFFF",
               borderWidth: active ? 2 : 1.5,
-              borderColor: active ? theme.colors.turquoise : visual.accent,
+              borderColor: active
+                ? theme.colors.turquoise
+                : activeUpdate
+                  ? "#C49A3A"
+                  : visual.accent,
               alignItems: "center",
               justifyContent: "center",
               shadowColor: "#000",
-              shadowOpacity: 0.1,
-              shadowRadius: 4,
+              shadowOpacity: activeUpdate ? 0.14 : 0.1,
+              shadowRadius: activeUpdate ? 5 : 4,
               shadowOffset: { width: 0, height: 2 },
               elevation: 3,
             }}
@@ -833,629 +1355,25 @@ export default function MapScreenV25() {
               color={active ? "#FFFFFF" : visual.accent}
             />
           </View>
+
+          {activeUpdate ? (
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                width: 7,
+                height: 7,
+                borderRadius: 3.5,
+                backgroundColor: "#C49A3A",
+                borderWidth: 1,
+                borderColor: "#FFFFFF",
+              }}
+            />
+          ) : null}
         </View>
       </Marker>
-    );
-  };
-
-  const EventsBottomSheet = () => {
-    const insets = useSafeAreaInsets();
-    const sheetHeight = useRef(new Animated.Value(SHEET_SNAP.collapsed)).current;
-    const dragStartHeight = useRef(SHEET_SNAP.collapsed);
-    const [sheetSnap, setSheetSnap] = useState<"collapsed" | "half" | "expanded">(
-      "collapsed"
-    );
-    const [eventTimeFilter, setEventTimeFilter] = useState<EventTimeFilter>("all");
-
-    const displayedEvents = useMemo(() => {
-      const q = search.trim().toLowerCase();
-
-      return sortEventsByDate(
-        allMapEvents.filter((event) => {
-          if (q && !matchesListingSearch(event, q)) return false;
-          return matchesEventTimeFilter(event as EventMapItem, eventTimeFilter);
-        })
-      );
-    }, [eventTimeFilter, search, allMapEvents]);
-
-    const snapTo = (height: number) => {
-      const snap =
-        height <= SHEET_SNAP.collapsed + 24
-          ? "collapsed"
-          : height <= SHEET_SNAP.half + 40
-            ? "half"
-            : "expanded";
-
-      setSheetSnap(snap);
-      Animated.spring(sheetHeight, {
-        toValue: height,
-        useNativeDriver: false,
-        friction: 8,
-        tension: 68,
-      }).start();
-    };
-
-    const snapToNearest = (height: number, velocityY = 0) => {
-      const snaps = [SHEET_SNAP.collapsed, SHEET_SNAP.half, SHEET_SNAP.expanded];
-      let nearestIndex = snaps.reduce(
-        (bestIdx, curr, idx) =>
-          Math.abs(curr - height) < Math.abs(snaps[bestIdx] - height)
-            ? idx
-            : bestIdx,
-        0
-      );
-
-      if (velocityY < -0.35) {
-        nearestIndex = Math.min(snaps.length - 1, nearestIndex + 1);
-      } else if (velocityY > 0.35) {
-        nearestIndex = Math.max(0, nearestIndex - 1);
-      }
-
-      snapTo(snaps[nearestIndex]);
-    };
-
-    const panResponder = useRef(
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 6,
-        onPanResponderGrant: () => {
-          sheetHeight.stopAnimation((value) => {
-            dragStartHeight.current = value;
-          });
-        },
-        onPanResponderMove: (_, gesture) => {
-          const next = Math.min(
-            SHEET_SNAP.expanded,
-            Math.max(SHEET_SNAP.collapsed, dragStartHeight.current - gesture.dy)
-          );
-          sheetHeight.setValue(next);
-        },
-        onPanResponderRelease: (_, gesture) => {
-          const projected = dragStartHeight.current - gesture.dy;
-          snapToNearest(projected, gesture.vy);
-        },
-      })
-    ).current;
-
-    const listCanScroll = sheetSnap === "expanded" || sheetSnap === "half";
-
-    return (
-      <Animated.View
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: sheetHeight,
-          backgroundColor: "rgba(255,255,255,0.97)",
-          borderTopLeftRadius: 22,
-          borderTopRightRadius: 22,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          shadowColor: "#000",
-          shadowOpacity: 0.12,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: -4 },
-          elevation: 12,
-          zIndex: 15,
-          overflow: "hidden",
-        }}
-      >
-        <View {...panResponder.panHandlers}>
-          <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 6 }}>
-            <View
-              style={{
-                width: 40,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: "#D1D5DB",
-              }}
-            />
-          </View>
-
-          <Pressable
-            onPress={() => {
-              dismissKeyboard();
-              if (sheetSnap === "collapsed") snapTo(SHEET_SNAP.half);
-              else if (sheetSnap === "half") snapTo(SHEET_SNAP.expanded);
-              else snapTo(SHEET_SNAP.collapsed);
-            }}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              paddingHorizontal: 16,
-              paddingBottom: 10,
-            }}
-          >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "rgba(13,148,136,0.12)",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 12,
-              }}
-            >
-              <Ionicons
-                name="musical-notes-outline"
-                size={20}
-                color={theme.colors.eventPurple}
-              />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "800",
-                  color: theme.colors.charcoal,
-                }}
-              >
-                Upcoming Persian Events
-              </Text>
-              <Text
-                style={{
-                  marginTop: 2,
-                  fontSize: 12,
-                  color: theme.colors.muted,
-                }}
-              >
-                {displayedEvents.length} upcoming event
-                {displayedEvents.length === 1 ? "" : "s"}
-              </Text>
-            </View>
-
-            <Ionicons
-              name={
-                sheetSnap === "expanded"
-                  ? "chevron-down"
-                  : "chevron-up"
-              }
-              size={20}
-              color={theme.colors.turquoise}
-            />
-          </Pressable>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingBottom: 10,
-            gap: 8,
-          }}
-        >
-          {EVENT_TIME_FILTERS.map((filter) => {
-            const active = eventTimeFilter === filter.key;
-
-            return (
-              <Pressable
-                key={filter.key}
-                onPress={() => setEventTimeFilter(filter.key)}
-                style={{
-                  height: 30,
-                  paddingHorizontal: 12,
-                  borderRadius: 999,
-                  backgroundColor: active
-                    ? theme.colors.eventPurple
-                    : "rgba(124,58,237,0.08)",
-                  borderWidth: 1,
-                  borderColor: active
-                    ? theme.colors.eventPurple
-                    : theme.colors.border,
-                  justifyContent: "center",
-                  marginRight: 8,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: "700",
-                    color: active ? "#fff" : theme.colors.charcoal,
-                  }}
-                >
-                  {filter.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          scrollEnabled={listCanScroll}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingBottom: insets.bottom + 88,
-          }}
-        >
-          {displayedEvents.length === 0 ? (
-            <Text
-              style={{
-                color: theme.colors.muted,
-                textAlign: "center",
-                paddingVertical: 16,
-              }}
-            >
-              No events found
-            </Text>
-          ) : (
-            displayedEvents.map((event) => (
-              <Pressable
-                key={`event-${getId(event)}`}
-                onPress={() => {
-                  selectMapItem(event, { focus: true, animate: true });
-                  snapTo(SHEET_SNAP.collapsed);
-                }}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingVertical: 10,
-                  borderBottomWidth: 1,
-                  borderBottomColor: theme.colors.border,
-                }}
-              >
-                <Image
-                  source={{ uri: getImage(event) }}
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 12,
-                    backgroundColor: "#eee",
-                  }}
-                  resizeMode="cover"
-                />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      fontSize: 15,
-                      fontWeight: "800",
-                      color: theme.colors.charcoal,
-                    }}
-                  >
-                    {getTitle(event)}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      marginTop: 3,
-                      fontSize: 12,
-                      color: theme.colors.muted,
-                    }}
-                  >
-                    {formatEventDateTime(event as EventMapItem)}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      marginTop: 3,
-                      fontSize: 12,
-                      color: theme.colors.muted,
-                    }}
-                  >
-                    {formatEventLocation(event as EventMapItem)}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => openEventDetails(event)}
-                  hitSlop={10}
-                  style={{ paddingLeft: 8 }}
-                >
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={theme.colors.muted}
-                  />
-                </Pressable>
-              </Pressable>
-            ))
-          )}
-        </ScrollView>
-      </Animated.View>
-    );
-  };
-
-  const DiscoveryResultSheet = () => {
-    const insets = useSafeAreaInsets();
-    const sheetHeight = useRef(new Animated.Value(SHEET_SNAP.collapsed)).current;
-    const dragStartHeight = useRef(SHEET_SNAP.collapsed);
-    const [sheetSnap, setSheetSnap] = useState<"collapsed" | "half" | "expanded">(
-      "collapsed"
-    );
-
-    const discoveryTitle = getDiscoveryTitle(
-      discoveryResults.length,
-      search,
-      selectedCategory
-    );
-
-    const snapTo = (height: number) => {
-      const snap =
-        height <= SHEET_SNAP.collapsed + 24
-          ? "collapsed"
-          : height <= SHEET_SNAP.half + 40
-            ? "half"
-            : "expanded";
-
-      setSheetSnap(snap);
-      Animated.spring(sheetHeight, {
-        toValue: height,
-        useNativeDriver: false,
-        friction: 8,
-        tension: 68,
-      }).start();
-    };
-
-    const snapToNearest = (height: number, velocityY = 0) => {
-      const snaps = [SHEET_SNAP.collapsed, SHEET_SNAP.half, SHEET_SNAP.expanded];
-      let nearestIndex = snaps.reduce(
-        (bestIdx, curr, idx) =>
-          Math.abs(curr - height) < Math.abs(snaps[bestIdx] - height)
-            ? idx
-            : bestIdx,
-        0
-      );
-
-      if (velocityY < -0.35) {
-        nearestIndex = Math.min(snaps.length - 1, nearestIndex + 1);
-      } else if (velocityY > 0.35) {
-        nearestIndex = Math.max(0, nearestIndex - 1);
-      }
-
-      snapTo(snaps[nearestIndex]);
-    };
-
-    const panResponder = useRef(
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 6,
-        onPanResponderGrant: () => {
-          sheetHeight.stopAnimation((value) => {
-            dragStartHeight.current = value;
-          });
-        },
-        onPanResponderMove: (_, gesture) => {
-          const next = Math.min(
-            SHEET_SNAP.expanded,
-            Math.max(SHEET_SNAP.collapsed, dragStartHeight.current - gesture.dy)
-          );
-          sheetHeight.setValue(next);
-        },
-        onPanResponderRelease: (_, gesture) => {
-          const projected = dragStartHeight.current - gesture.dy;
-          snapToNearest(projected, gesture.vy);
-        },
-      })
-    ).current;
-
-    useEffect(() => {
-      snapTo(SHEET_SNAP.half);
-    }, [isDiscoveryActive]);
-
-    const listCanScroll = sheetSnap === "expanded" || sheetSnap === "half";
-
-    const renderDiscoveryRow = (entry: {
-      item: MapItem;
-      point: ResolvedMapPoint;
-    }) => {
-      const { item } = entry;
-      const active = selectedItem && getId(selectedItem) === getId(item);
-      const eventItem = isMapEvent(item);
-
-      return (
-        <Pressable
-          key={`discovery-${getId(item)}`}
-          onPress={() => {
-            selectMapItem(item, { focus: true, animate: true });
-            if (eventItem) {
-              snapTo(SHEET_SNAP.collapsed);
-            }
-          }}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            minHeight: 76,
-            paddingVertical: 12,
-            paddingHorizontal: 16,
-            borderBottomWidth: 1,
-            borderBottomColor: theme.colors.border,
-            backgroundColor: active ? "rgba(13,148,136,0.06)" : "#FFFFFF",
-          }}
-        >
-          <Image
-            source={{ uri: getImage(item) }}
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 12,
-              backgroundColor: "#eee",
-            }}
-            resizeMode="cover"
-          />
-          <View style={{ flex: 1, marginLeft: 12, marginRight: 8 }}>
-            <Text
-              numberOfLines={1}
-              style={{
-                fontSize: 15,
-                fontWeight: "800",
-                color: theme.colors.charcoal,
-              }}
-            >
-              {getTitle(item)}
-            </Text>
-            <Text
-              numberOfLines={1}
-              style={{
-                marginTop: 3,
-                fontSize: 12,
-                color: theme.colors.muted,
-              }}
-            >
-              {getCategory(item)}
-            </Text>
-            {!eventItem ? (
-              <MapPreviewStatusLine
-                item={item}
-                reviewSummary={reviewSummaries[getId(item)]}
-                compact
-              />
-            ) : null}
-            <Text
-              numberOfLines={1}
-              style={{
-                marginTop: 3,
-                fontSize: 12,
-                color: theme.colors.muted,
-              }}
-            >
-              {getCityLine(item)}
-            </Text>
-          </View>
-          <Ionicons
-            name="chevron-forward"
-            size={18}
-            color={theme.colors.muted}
-          />
-        </Pressable>
-      );
-    };
-
-    return (
-      <Animated.View
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: sheetHeight,
-          backgroundColor: "rgba(255,255,255,0.97)",
-          borderTopLeftRadius: 22,
-          borderTopRightRadius: 22,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          shadowColor: "#000",
-          shadowOpacity: 0.12,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: -4 },
-          elevation: 12,
-          zIndex: 15,
-          overflow: "hidden",
-        }}
-      >
-        <View {...panResponder.panHandlers}>
-          <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 6 }}>
-            <View
-              style={{
-                width: 40,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: "#D1D5DB",
-              }}
-            />
-          </View>
-
-          <Pressable
-            onPress={() => {
-              dismissKeyboard();
-              if (sheetSnap === "collapsed") snapTo(SHEET_SNAP.half);
-              else if (sheetSnap === "half") snapTo(SHEET_SNAP.expanded);
-              else snapTo(SHEET_SNAP.collapsed);
-            }}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              paddingHorizontal: 16,
-              paddingBottom: 10,
-            }}
-          >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "rgba(13,148,136,0.12)",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 12,
-              }}
-            >
-              <Ionicons
-                name="search-outline"
-                size={20}
-                color={theme.colors.turquoise}
-              />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "800",
-                  color: theme.colors.charcoal,
-                }}
-              >
-                {discoveryTitle}
-              </Text>
-              <Text
-                style={{
-                  marginTop: 2,
-                  fontSize: 12,
-                  color: theme.colors.muted,
-                }}
-              >
-                Tap a result to view it on the map
-              </Text>
-            </View>
-
-            <Ionicons
-              name={sheetSnap === "expanded" ? "chevron-down" : "chevron-up"}
-              size={20}
-              color={theme.colors.turquoise}
-            />
-          </Pressable>
-        </View>
-
-        {discoveryResults.length === 0 ? (
-          <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 88 }}>
-            <Text
-              style={{
-                color: theme.colors.muted,
-                textAlign: "center",
-                paddingVertical: 20,
-                fontSize: 14,
-                fontWeight: "600",
-              }}
-            >
-              No results found
-            </Text>
-            <Text
-              style={{
-                color: theme.colors.muted,
-                textAlign: "center",
-                fontSize: 12,
-              }}
-            >
-              Try another keyword or category.
-            </Text>
-          </View>
-        ) : (
-          <ScrollView
-            style={{ flex: 1 }}
-            showsVerticalScrollIndicator={false}
-            scrollEnabled={listCanScroll}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{
-              paddingBottom: insets.bottom + 88,
-            }}
-          >
-            {discoveryResults.map((entry) => renderDiscoveryRow(entry))}
-          </ScrollView>
-        )}
-      </Animated.View>
     );
   };
 
@@ -1593,6 +1511,13 @@ export default function MapScreenV25() {
                   >
                     {getCategory(item)}
                   </Text>
+
+                  {activeUpdatesById[id] ? (
+                    <MapActiveUpdateLabel
+                      update={activeUpdatesById[id]!}
+                      onPress={() => openProfileUpdates(item)}
+                    />
+                  ) : null}
 
                   <MapPreviewStatusLine
                     item={item}
@@ -1819,7 +1744,7 @@ export default function MapScreenV25() {
         initialRegion={SAN_DIEGO_REGION}
         showsUserLocation
         showsMyLocationButton={false}
-        onRegionChangeComplete={setMapRegion}
+        onRegionChangeComplete={handleMapRegionChangeComplete}
         onPress={(e) => handleMapBackgroundPress(e.nativeEvent?.action)}
       >
         {mapDisplay.map((entry) =>
@@ -2140,10 +2065,309 @@ export default function MapScreenV25() {
 
       {selectedItem && !isMapEvent(selectedItem) ? (
         <BusinessPreviewCarousel />
-      ) : isDiscoveryActive ? (
-        <DiscoveryResultSheet />
+      ) : selectedItem && isMapEvent(selectedItem) ? (
+        <MapEventPreviewCard
+          event={selectedItem}
+          onOpenDetails={() => openEventDetails(selectedItem)}
+          onDirections={() => {
+            const point =
+              mapPoints.find((p) => getId(p.item) === getId(selectedItem)) ??
+              resolveMapPoints([selectedItem])[0];
+            if (point) openDirections(point);
+          }}
+        />
       ) : (
-        <EventsBottomSheet />
+        <Animated.View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: resultSheetHeight,
+            backgroundColor: "rgba(255,255,255,0.97)",
+            borderTopLeftRadius: 22,
+            borderTopRightRadius: 22,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            shadowColor: "#000",
+            shadowOpacity: 0.12,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: -4 },
+            elevation: 12,
+            zIndex: 15,
+            overflow: "hidden",
+          }}
+        >
+          <View {...resultSheetPanResponder.panHandlers}>
+            <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 6 }}>
+              <View
+                style={{
+                  width: 40,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: "#D1D5DB",
+                }}
+              />
+            </View>
+
+            <Pressable
+              onPress={() => {
+                dismissKeyboard();
+                if (resultSheetSnap === "collapsed") {
+                  snapResultSheet(SHEET_SNAP.half);
+                } else if (resultSheetSnap === "half") {
+                  snapResultSheet(SHEET_SNAP.expanded);
+                } else {
+                  snapResultSheet(SHEET_SNAP.collapsed);
+                }
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 16,
+                paddingBottom: 10,
+              }}
+            >
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: isDiscoveryActive
+                    ? "rgba(13,148,136,0.12)"
+                    : "rgba(13,148,136,0.12)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 12,
+                }}
+              >
+                <Ionicons
+                  name={
+                    isDiscoveryActive ? "search-outline" : "musical-notes-outline"
+                  }
+                  size={20}
+                  color={
+                    isDiscoveryActive
+                      ? theme.colors.turquoise
+                      : theme.colors.eventPurple
+                  }
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: "800",
+                    color: theme.colors.charcoal,
+                  }}
+                >
+                  {isDiscoveryActive
+                    ? discoveryTitle
+                    : "Upcoming Persian Events"}
+                </Text>
+                <Text
+                  style={{
+                    marginTop: 2,
+                    fontSize: 12,
+                    color: theme.colors.muted,
+                  }}
+                >
+                  {isDiscoveryActive
+                    ? "Tap a result to view it on the map"
+                    : `${displayedEvents.length} upcoming event${
+                        displayedEvents.length === 1 ? "" : "s"
+                      }`}
+                </Text>
+              </View>
+
+              <Ionicons
+                name={
+                  resultSheetSnap === "expanded" ? "chevron-down" : "chevron-up"
+                }
+                size={20}
+                color={theme.colors.turquoise}
+              />
+            </Pressable>
+          </View>
+
+          {!isDiscoveryActive ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingBottom: 10,
+                gap: 8,
+              }}
+            >
+              {EVENT_TIME_FILTERS.map((filter) => {
+                const active = eventTimeFilter === filter.key;
+
+                return (
+                  <Pressable
+                    key={filter.key}
+                    onPress={() => setEventTimeFilter(filter.key)}
+                    style={{
+                      height: 30,
+                      paddingHorizontal: 12,
+                      borderRadius: 999,
+                      backgroundColor: active
+                        ? theme.colors.eventPurple
+                        : "rgba(124,58,237,0.08)",
+                      borderWidth: 1,
+                      borderColor: active
+                        ? theme.colors.eventPurple
+                        : theme.colors.border,
+                      justifyContent: "center",
+                      marginRight: 8,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: "700",
+                        color: active ? "#fff" : theme.colors.charcoal,
+                      }}
+                    >
+                      {filter.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : null}
+
+          {isDiscoveryActive ? (
+            discoveryResults.length === 0 ? (
+              <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 88 }}>
+                <Text
+                  style={{
+                    color: theme.colors.muted,
+                    textAlign: "center",
+                    paddingVertical: 20,
+                    fontSize: 14,
+                    fontWeight: "600",
+                  }}
+                >
+                  No results found
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.muted,
+                    textAlign: "center",
+                    fontSize: 12,
+                  }}
+                >
+                  Try another keyword or category.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={{ flex: 1 }}
+                showsVerticalScrollIndicator={false}
+                scrollEnabled={resultListCanScroll}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{
+                  paddingBottom: insets.bottom + 88,
+                }}
+              >
+                {discoveryResults.map((entry) => renderDiscoveryRow(entry))}
+              </ScrollView>
+            )
+          ) : (
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              scrollEnabled={resultListCanScroll}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingBottom: insets.bottom + 88,
+              }}
+            >
+              {displayedEvents.length === 0 ? (
+                <Text
+                  style={{
+                    color: theme.colors.muted,
+                    textAlign: "center",
+                    paddingVertical: 16,
+                  }}
+                >
+                  No events found
+                </Text>
+              ) : (
+                displayedEvents.map((event) => (
+                  <Pressable
+                    key={`event-${getId(event)}`}
+                    onPress={() => openEventDetails(event)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingVertical: 10,
+                      borderBottomWidth: 1,
+                      borderBottomColor: theme.colors.border,
+                    }}
+                  >
+                    <Image
+                      source={{ uri: getImage(event) }}
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 12,
+                        backgroundColor: "#eee",
+                      }}
+                      resizeMode="cover"
+                    />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          fontSize: 15,
+                          fontWeight: "800",
+                          color: theme.colors.charcoal,
+                        }}
+                      >
+                        {getTitle(event)}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          marginTop: 3,
+                          fontSize: 12,
+                          color: theme.colors.muted,
+                        }}
+                      >
+                        {formatEventDateTime(event as EventMapItem)}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          marginTop: 3,
+                          fontSize: 12,
+                          color: theme.colors.muted,
+                        }}
+                      >
+                        {formatEventLocation(event as EventMapItem)}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => openEventDetails(event)}
+                      hitSlop={10}
+                      style={{ paddingLeft: 8 }}
+                    >
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={theme.colors.muted}
+                      />
+                    </Pressable>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          )}
+        </Animated.View>
       )}
     </View>
   );

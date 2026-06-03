@@ -132,6 +132,20 @@ export const getVisibleBusinessUpdates = (
 export const getBusinessUpdateTypeLabel = (type: BusinessUpdateType) =>
   BUSINESS_UPDATE_TYPES.find((entry) => entry.key === type)?.label ?? "Update";
 
+/** Newest non-expired update for map badges / preview labels */
+export const getPrimaryActiveBusinessUpdate = (
+  business?: { business_updates?: unknown; businessUpdates?: unknown } | null
+): BusinessUpdate | null => {
+  const visible = getVisibleBusinessUpdates(business);
+  return visible[0] ?? null;
+};
+
+/** e.g. SPECIAL · 20% off each Tuesday */
+export const formatMapActiveUpdateLabel = (update: BusinessUpdate): string => {
+  const typeLabel = getBusinessUpdateTypeLabel(update.type).toUpperCase();
+  return `${typeLabel} · ${update.title}`;
+};
+
 export const formatBusinessUpdateExpiration = (expiresAt?: string) => {
   if (!expiresAt) return null;
 
