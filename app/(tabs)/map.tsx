@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -28,7 +28,7 @@ import {
   type ResolvedMapPoint,
 } from "../../lib/mapCoordinates";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   getListingMarkerKind,
@@ -48,6 +48,12 @@ import {
   type EventMapItem,
   type EventTimeFilter,
 } from "../../lib/mapEvents";
+import { getItemHoursDisplay } from "../../lib/businessHours";
+import {
+  formatMapPreviewReviewText,
+  getBusinessReviewSummary,
+  type BusinessReviewSummary,
+} from "../../lib/businessReviews";
 import { theme } from "../../lib/theme";
 
 type MapItem = {
@@ -75,6 +81,9 @@ type MapItem = {
   is_featured?: boolean;
   rating?: number;
   reviews?: number;
+  business_hours?: unknown;
+  businessHours?: unknown;
+  hours_configured?: boolean;
   event_date?: string;
   eventDate?: string;
   starts_at?: string;
@@ -231,6 +240,56 @@ const getDiscoveryTitle = (count: number, searchQuery: string, categoryKey: stri
 
 const getPhone = (item: MapItem) => item?.phone || item?.contact_info || "";
 
+const hoursStatusColor = (tone: "open" | "closed" | "neutral") =>
+  tone === "open" ? theme.colors.success : theme.colors.muted;
+
+const MapPreviewStatusLine = ({
+  item,
+  reviewSummary,
+  compact = false,
+}: {
+  item: MapItem;
+  reviewSummary?: BusinessReviewSummary;
+  compact?: boolean;
+}) => {
+  if (isMapEvent(item)) return null;
+
+  const reviewText = formatMapPreviewReviewText(reviewSummary);
+  const hours = getItemHoursDisplay(item);
+  const hoursText = hours.primary;
+
+  if (!reviewText && !hoursText) return null;
+
+  return (
+    <Text
+      numberOfLines={1}
+      style={{
+        marginTop: compact ? 2 : 3,
+        fontSize: compact ? 11 : 12,
+      }}
+    >
+      {reviewText ? (
+        <Text style={{ fontWeight: "600", color: theme.colors.charcoal }}>
+          {reviewText}
+        </Text>
+      ) : null}
+      {reviewText && hoursText ? (
+        <Text style={{ color: theme.colors.muted }}> · </Text>
+      ) : null}
+      {hoursText ? (
+        <Text
+          style={{
+            fontWeight: "600",
+            color: hoursStatusColor(hours.tone),
+          }}
+        >
+          {hoursText}
+        </Text>
+      ) : null}
+    </Text>
+  );
+};
+
 const MARKER_VISUALS: Record<
   MapMarkerKind,
   { icon: keyof typeof Ionicons.glyphMap; accent: string }
@@ -319,6 +378,9 @@ export default function MapScreenV25() {
   const [selectedItem, setSelectedItem] = useState<MapItem | null>(null);
   const [search, setSearch] = useState("");
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
+  const [reviewSummaries, setReviewSummaries] = useState<
+    Record<string, BusinessReviewSummary>
+  >({});
   const [filterVisible, setFilterVisible] = useState(false);
   const [locating, setLocating] = useState(false);
   const mapRef = useRef<MapView>(null);
@@ -500,6 +562,23 @@ export default function MapScreenV25() {
 
   const hasVisibleBusinesses = nearbyBusinesses.length > 0;
 
+  const syncReviewSummaries = useCallback(async (businessIds: string[]) => {
+    const ids = [...new Set(businessIds.filter(Boolean))];
+    if (!ids.length) return;
+
+    const pairs = await Promise.all(
+      ids.map(async (id) => [id, await getBusinessReviewSummary(id)] as const)
+    );
+
+    setReviewSummaries((prev) => {
+      const next = { ...prev };
+      for (const [id, summary] of pairs) {
+        next[id] = summary;
+      }
+      return next;
+    });
+  }, []);
+
   const isDiscoveryActive =
     search.trim() !== "" || selectedCategory !== "All";
 
@@ -518,6 +597,34 @@ export default function MapScreenV25() {
       })
       .filter(Boolean) as { item: MapItem; point: ResolvedMapPoint }[];
   }, [isDiscoveryActive, filteredItems, mapPoints]);
+
+  const previewBusinessIds = useMemo(() => {
+    const ids: string[] = [];
+
+    if (isDiscoveryActive) {
+      discoveryResults
+        .filter((entry) => !isMapEvent(entry.item))
+        .forEach((entry) => ids.push(getId(entry.item)));
+    } else {
+      nearbyBusinesses.forEach((entry) => ids.push(getId(entry.item)));
+    }
+
+    if (selectedItem && !isMapEvent(selectedItem)) {
+      ids.push(getId(selectedItem));
+    }
+
+    return ids;
+  }, [isDiscoveryActive, discoveryResults, nearbyBusinesses, selectedItem]);
+
+  useEffect(() => {
+    syncReviewSummaries(previewBusinessIds);
+  }, [previewBusinessIds, syncReviewSummaries]);
+
+  useFocusEffect(
+    useCallback(() => {
+      syncReviewSummaries(previewBusinessIds);
+    }, [previewBusinessIds, syncReviewSummaries])
+  );
 
   const focusOnMapItem = (
     item: MapItem,
@@ -1190,6 +1297,13 @@ export default function MapScreenV25() {
             >
               {getCategory(item)}
             </Text>
+            {!eventItem ? (
+              <MapPreviewStatusLine
+                item={item}
+                reviewSummary={reviewSummaries[getId(item)]}
+                compact
+              />
+            ) : null}
             <Text
               numberOfLines={1}
               style={{
@@ -1479,6 +1593,11 @@ export default function MapScreenV25() {
                   >
                     {getCategory(item)}
                   </Text>
+
+                  <MapPreviewStatusLine
+                    item={item}
+                    reviewSummary={reviewSummaries[id]}
+                  />
 
                   <Text
                     numberOfLines={1}

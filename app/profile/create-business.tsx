@@ -7,10 +7,12 @@ import {
     Pressable,
     Alert,
     Modal,
+    Image,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as ImagePicker from "expo-image-picker";
 
 const CATEGORIES = [
     "Food",
@@ -37,6 +39,20 @@ export default function CreateBusiness() {
     const [website, setWebsite] = useState("");
     const [description, setDescription] = useState("");
     const [showCategories, setShowCategories] = useState(false);
+    const [logoImage, setLogoImage] = useState<string | null>(null);
+
+    const pickLogo = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.85,
+        });
+
+        if (!result.canceled) {
+            setLogoImage(result.assets[0].uri);
+        }
+    };
 
     const handleCreate = async () => {
         console.log("CREATE BUTTON PRESSED");
@@ -65,6 +81,9 @@ export default function CreateBusiness() {
             website,
             description,
             about: description,
+            logo: logoImage,
+            avatar: logoImage,
+            profile_image: logoImage,
             is_owner: true,
             owner_is_current_user: true,
             can_edit: true,
@@ -248,23 +267,37 @@ export default function CreateBusiness() {
                         justifyContent: "center",
                         backgroundColor: "#F8FEFD",
                     }}
-                    onPress={() => Alert.alert("Coming next", "Logo upload will be connected later.")}
+                    onPress={pickLogo}
                 >
-                    <View
-                        style={{
-                            width: 58,
-                            height: 58,
-                            borderRadius: 29,
-                            backgroundColor: "#E7F6F4",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            marginBottom: 10,
-                        }}
-                    >
-                        <Ionicons name="camera-outline" size={30} color="#11998E" />
-                    </View>
+                    {logoImage ? (
+                        <Image
+                            source={{ uri: logoImage }}
+                            style={{
+                                width: 88,
+                                height: 88,
+                                borderRadius: 44,
+                                marginBottom: 10,
+                                backgroundColor: "#E7F6F4",
+                            }}
+                            resizeMode="cover"
+                        />
+                    ) : (
+                        <View
+                            style={{
+                                width: 58,
+                                height: 58,
+                                borderRadius: 29,
+                                backgroundColor: "#E7F6F4",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                marginBottom: 10,
+                            }}
+                        >
+                            <Ionicons name="camera-outline" size={30} color="#11998E" />
+                        </View>
+                    )}
                     <Text style={{ fontSize: 16, fontWeight: "800", color: "#11998E" }}>
-                        Upload Logo
+                        {logoImage ? "Change Logo" : "Upload Logo"}
                     </Text>
                     <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
                         PNG or JPG, optional

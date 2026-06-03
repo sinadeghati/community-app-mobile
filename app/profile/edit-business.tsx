@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   View,
@@ -16,6 +17,23 @@ import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { API } from "@/lib/api";
+import {
+  createEmptyMenuItem,
+  sanitizeMenuItemsForSave,
+  normalizeMenuItems,
+  type BusinessMenuItem,
+} from "@/lib/businessMenuItems";
+import {
+  createDefaultBusinessHours,
+  formatTime12,
+  normalizeBusinessHours,
+  parseTimeInput,
+  sanitizeBusinessHoursForSave,
+  WEEKDAYS,
+  type BusinessDayHours,
+  type BusinessHours,
+  type WeekdayKey,
+} from "@/lib/businessHours";
 
 const TURQUOISE = "#11998E";
 const BG = "#F5F4F0";
@@ -45,7 +63,11 @@ export default function EditBusinessProfileScreen() {
   const [email, setEmail] = useState("");
   const [instagram, setInstagram] = useState("");
   const [category, setCategory] = useState("");
-  const [services, setServices] = useState("");
+  const [menuItems, setMenuItems] = useState<BusinessMenuItem[]>([]);
+  const [hoursEnabled, setHoursEnabled] = useState(false);
+  const [businessHours, setBusinessHours] = useState<BusinessHours>(
+    createDefaultBusinessHours()
+  );
 
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
@@ -67,7 +89,16 @@ export default function EditBusinessProfileScreen() {
     email: item?.email || "",
     instagram: item?.instagram || "",
     category: item?.category || "",
-    services: item?.services || "",
+    menu_items: sanitizeMenuItemsForSave(
+      normalizeMenuItems(item?.menu_items ?? item?.menuItems)
+    ),
+    business_hours: item?.hours_configured
+      ? sanitizeBusinessHoursForSave(
+          normalizeBusinessHours(item?.business_hours ?? item?.businessHours) ||
+            createDefaultBusinessHours()
+        )
+      : null,
+    hours_configured: Boolean(item?.hours_configured),
     cover_image: item?.cover_image || item?.coverImage || null,
     logo: item?.logo || item?.avatar || item?.profile_image || item?.logoImage || null,
     avatar: item?.avatar || item?.logo || item?.profile_image || item?.logoImage || null,
@@ -89,7 +120,12 @@ export default function EditBusinessProfileScreen() {
     setEmail(data.email);
     setInstagram(data.instagram);
     setCategory(data.category);
-    setServices(data.services);
+    setMenuItems(normalizeMenuItems(item?.menu_items ?? item?.menuItems));
+    setHoursEnabled(Boolean(item?.hours_configured));
+    setBusinessHours(
+      normalizeBusinessHours(item?.business_hours ?? item?.businessHours) ||
+        createDefaultBusinessHours()
+    );
     setCoverImage(data.cover_image || DEFAULT_COVER);
     setLogoImage(data.logo || DEFAULT_LOGO);
   };
@@ -137,6 +173,52 @@ export default function EditBusinessProfileScreen() {
     loadBusiness();
   }, [businessId]);
 
+  const updateMenuItem = (
+    id: string,
+    patch: Partial<BusinessMenuItem>
+  ) => {
+    setMenuItems((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    );
+  };
+
+  const addMenuItem = () => {
+    setMenuItems((current) => [...current, createEmptyMenuItem()]);
+  };
+
+  const removeMenuItem = (id: string) => {
+    Alert.alert("Remove item", "Delete this service or menu item?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          setMenuItems((current) => current.filter((item) => item.id !== id));
+        },
+      },
+    ]);
+  };
+
+  const pickMenuItemImage = async (id: string) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+
+    if (!result.canceled) {
+      updateMenuItem(id, { image: result.assets[0].uri });
+    }
+  };
+
+  const updateDayHours = (key: WeekdayKey, patch: Partial<BusinessDayHours>) => {
+    setBusinessHours((current) => ({
+      ...current,
+      [key]: { ...current[key], ...patch },
+    }));
+  };
+
   const pickImage = async (type: "cover" | "logo") => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
@@ -158,6 +240,20 @@ export default function EditBusinessProfileScreen() {
     try {
       setSaving(true);
 
+      const itemsToSave = sanitizeMenuItemsForSave(menuItems);
+      const invalidDraft = menuItems.some(
+        (item) => !item.title.trim() && (item.description || item.price || item.image)
+      );
+
+      if (invalidDraft) {
+        Alert.alert(
+          "Title required",
+          "Each service or menu item needs a title before saving."
+        );
+        setSaving(false);
+        return;
+      }
+
       const updatedBusiness = normalizeBusiness({
         id: businessId,
         business_name: businessName,
@@ -173,7 +269,11 @@ export default function EditBusinessProfileScreen() {
         email,
         instagram,
         category,
-        services,
+        menu_items: itemsToSave,
+        business_hours: hoursEnabled
+          ? sanitizeBusinessHoursForSave(businessHours)
+          : null,
+        hours_configured: hoursEnabled,
         cover_image: coverImage,
         logo: logoImage,
         avatar: logoImage,
@@ -271,7 +371,237 @@ export default function EditBusinessProfileScreen() {
           <Field label="Email" value={email} setValue={setEmail} keyboardType="email-address" />
           <Field label="Instagram" value={instagram} setValue={setInstagram} />
           <Field label="Category" value={category} setValue={setCategory} />
-          <Field label="Business Services" value={services} setValue={setServices} multiline />
+
+          <Section title="Business Hours" />
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 14,
+              padding: 14,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: BORDER,
+              backgroundColor: CARD,
+            }}
+          >
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={{ fontSize: 15, fontWeight: "800", color: TEXT }}>
+                Set business hours
+              </Text>
+              <Text style={{ marginTop: 4, fontSize: 13, color: MUTED, lineHeight: 18 }}>
+                Show open/closed status on your profile.
+              </Text>
+            </View>
+            <Switch
+              value={hoursEnabled}
+              onValueChange={setHoursEnabled}
+              trackColor={{ false: "#D1D5DB", true: "rgba(17,153,142,0.45)" }}
+              thumbColor={hoursEnabled ? TURQUOISE : "#f4f4f5"}
+            />
+          </View>
+
+          {hoursEnabled
+            ? WEEKDAYS.map(({ key, label }) => {
+                const day = businessHours[key];
+
+                return (
+                  <View
+                    key={key}
+                    style={{
+                      marginBottom: 12,
+                      padding: 14,
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                      backgroundColor: CARD,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: day.closed ? 0 : 10,
+                      }}
+                    >
+                      <Text style={{ fontSize: 15, fontWeight: "800", color: TEXT }}>
+                        {label}
+                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Text style={{ marginRight: 8, fontSize: 13, color: MUTED }}>
+                          Closed
+                        </Text>
+                        <Switch
+                          value={day.closed}
+                          onValueChange={(closed) => updateDayHours(key, { closed })}
+                          trackColor={{
+                            false: "#D1D5DB",
+                            true: "rgba(17,153,142,0.45)",
+                          }}
+                          thumbColor={day.closed ? TURQUOISE : "#f4f4f5"}
+                        />
+                      </View>
+                    </View>
+
+                    {!day.closed ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={fieldLabelStyle}>Open</Text>
+                          <TextInput
+                            value={formatTime12(day.open)}
+                            onChangeText={(text) => {
+                              const parsed = parseTimeInput(text);
+                              if (parsed) updateDayHours(key, { open: parsed });
+                            }}
+                            placeholder="9:00 AM"
+                            style={timeInputStyle}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={fieldLabelStyle}>Close</Text>
+                          <TextInput
+                            value={formatTime12(day.close)}
+                            onChangeText={(text) => {
+                              const parsed = parseTimeInput(text);
+                              if (parsed) updateDayHours(key, { close: parsed });
+                            }}
+                            placeholder="6:00 PM"
+                            style={timeInputStyle}
+                          />
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })
+            : null}
+
+          <Section title="Services / Menu Items" />
+          <Text style={{ fontSize: 14, color: MUTED, marginBottom: 14, lineHeight: 20 }}>
+            Add services, menu items, or offerings customers can browse on your profile.
+          </Text>
+
+          {menuItems.map((item, index) => (
+            <View
+              key={item.id}
+              style={{
+                marginBottom: 16,
+                padding: 14,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: BORDER,
+                backgroundColor: CARD,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: "800", color: TEXT }}>
+                  Item {index + 1}
+                </Text>
+                <Pressable onPress={() => removeMenuItem(item.id)} hitSlop={8}>
+                  <Ionicons name="trash-outline" size={20} color="#DC2626" />
+                </Pressable>
+              </View>
+
+              <Field
+                label="Title *"
+                value={item.title}
+                setValue={(text) => updateMenuItem(item.id, { title: text })}
+              />
+              <Field
+                label="Description"
+                value={item.description || ""}
+                setValue={(text) => updateMenuItem(item.id, { description: text })}
+                multiline
+              />
+              <Field
+                label="Price"
+                value={item.price || ""}
+                setValue={(text) => updateMenuItem(item.id, { price: text })}
+                placeholder="e.g. $25 or Starting at $49"
+              />
+
+              <Text style={label}>Photo (optional)</Text>
+              <Pressable
+                onPress={() => pickMenuItemImage(item.id)}
+                style={{ marginBottom: 4 }}
+              >
+                {item.image ? (
+                  <Image
+                    source={{ uri: item.image }}
+                    style={{
+                      width: "100%",
+                      height: 120,
+                      borderRadius: 14,
+                      backgroundColor: BORDER,
+                    }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View
+                    style={{
+                      height: 88,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                      borderStyle: "dashed",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: BG,
+                    }}
+                  >
+                    <Ionicons name="image-outline" size={22} color={MUTED} />
+                    <Text style={{ marginTop: 6, color: MUTED, fontSize: 13 }}>
+                      Add photo
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+
+              {item.image ? (
+                <Pressable onPress={() => updateMenuItem(item.id, { image: "" })}>
+                  <Text style={{ color: MUTED, fontSize: 13, fontWeight: "700" }}>
+                    Remove photo
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ))}
+
+          <Pressable
+            onPress={addMenuItem}
+            style={{
+              height: 52,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: TURQUOISE,
+              backgroundColor: "rgba(17,153,142,0.08)",
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              marginBottom: 8,
+            }}
+          >
+            <Ionicons name="add-circle-outline" size={20} color={TURQUOISE} />
+            <Text
+              style={{
+                marginLeft: 8,
+                color: TURQUOISE,
+                fontSize: 15,
+                fontWeight: "800",
+              }}
+            >
+              Add service / menu item
+            </Text>
+          </Pressable>
 
           <Pressable
             onPress={() => {
@@ -312,12 +642,14 @@ function Field({
   setValue,
   multiline,
   keyboardType,
+  placeholder,
 }: {
   label: string;
   value: string;
   setValue: (text: string) => void;
   multiline?: boolean;
   keyboardType?: any;
+  placeholder?: string;
 }) {
   return (
     <View style={{ marginBottom: 16 }}>
@@ -325,7 +657,7 @@ function Field({
       <TextInput
         value={value}
         onChangeText={setValue}
-        placeholder={label}
+        placeholder={placeholder || label}
         keyboardType={keyboardType}
         multiline={multiline}
         textAlignVertical={multiline ? "top" : "center"}
@@ -349,6 +681,24 @@ const label = {
   marginBottom: 8,
   fontSize: 15,
   fontWeight: "800" as const,
+  color: TEXT,
+};
+
+const fieldLabelStyle = {
+  marginBottom: 6,
+  fontSize: 13,
+  fontWeight: "700" as const,
+  color: MUTED,
+};
+
+const timeInputStyle = {
+  height: 48,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderColor: BORDER,
+  backgroundColor: CARD,
+  paddingHorizontal: 12,
+  fontSize: 15,
   color: TEXT,
 };
 
