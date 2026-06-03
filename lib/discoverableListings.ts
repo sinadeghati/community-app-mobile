@@ -8,6 +8,8 @@ export type DiscoverableListing = {
   business_name?: string;
   category?: string;
   business_category?: string;
+  subcategory?: string;
+  business_subcategory?: string;
   city?: string;
   state?: string;
   address?: string;
@@ -34,7 +36,8 @@ export const getListingId = (item: DiscoverableListing) => String(item?.id || ""
 export const getListingCategory = (item: DiscoverableListing) =>
   item?.business_category || item?.category || "Local Business";
 
-export const getSearchHaystack = (item: DiscoverableListing) => {
+/** Searchable text from listing fields only (no synonym injection). */
+export const getBaseSearchHaystack = (item: DiscoverableListing) => {
   const keywords = item.keywords;
   const keywordsText = Array.isArray(keywords)
     ? keywords.join(" ")
@@ -48,6 +51,8 @@ export const getSearchHaystack = (item: DiscoverableListing) => {
     item.title,
     item.business_category,
     item.category,
+    item.subcategory,
+    item.business_subcategory,
     item.city,
     item.state,
     item.address,
@@ -62,20 +67,20 @@ export const getSearchHaystack = (item: DiscoverableListing) => {
     .join(" ");
 };
 
-export const matchesListingSearch = (item: DiscoverableListing, query: string) => {
-  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (!tokens.length) return true;
-
-  const haystack = getSearchHaystack(item);
-  return tokens.every((token) => haystack.includes(token));
-};
-
 export const isEventListing = (item: DiscoverableListing) => {
   const id = getListingId(item).toLowerCase();
   const category = getListingCategory(item).toLowerCase();
 
   if (id.startsWith("event-")) return true;
-  return /\bevents?\b/.test(category) || category.includes("concert");
+  return (
+    /\bevents?\b/.test(category) ||
+    category.includes("concert") ||
+    category.includes("festival") ||
+    category.includes("culture") ||
+    category.includes("gathering") ||
+    category.includes("party") ||
+    category.includes("music")
+  );
 };
 
 const matchesAuto = (category: string, haystack: string) => {
@@ -107,7 +112,9 @@ const matchesFood = (category: string, haystack: string) =>
   haystack.includes("persian food") ||
   haystack.includes("catering") ||
   haystack.includes("tahchin") ||
-  haystack.includes("home food");
+  haystack.includes("home food") ||
+  haystack.includes("kabob") ||
+  haystack.includes("kebab");
 
 const matchesCafe = (category: string, haystack: string) =>
   category.includes("cafe") ||
@@ -129,17 +136,28 @@ const matchesHealth = (category: string, haystack: string) =>
   category.includes("nurse") ||
   category.includes("clinic") ||
   category.includes("wellness") ||
+  category.includes("dental") ||
+  category.includes("dentist") ||
+  category.includes("doctor") ||
   haystack.includes("home nurse") ||
   haystack.includes("medical") ||
-  haystack.includes("health care");
+  haystack.includes("health care") ||
+  haystack.includes("dental") ||
+  haystack.includes("dentist") ||
+  haystack.includes("doctor");
 
 const matchesBeauty = (category: string, haystack: string) =>
   category.includes("beauty") ||
   category.includes("salon") ||
   category.includes("spa") ||
+  category.includes("hair") ||
+  category.includes("nails") ||
   haystack.includes("beauty") ||
   haystack.includes("salon") ||
-  haystack.includes("spa");
+  haystack.includes("spa") ||
+  haystack.includes("makeup") ||
+  haystack.includes("eyebrow") ||
+  haystack.includes("threading");
 
 const matchesRealEstate = (category: string, haystack: string) =>
   category.includes("real estate") ||
@@ -167,8 +185,163 @@ const matchesServices = (category: string, haystack: string) => {
     category.includes("professional") ||
     haystack.includes("home service") ||
     haystack.includes("legal") ||
-    haystack.includes("construction")
+    haystack.includes("construction") ||
+    haystack.includes("lawyer") ||
+    haystack.includes("attorney") ||
+    haystack.includes("immigration") ||
+    haystack.includes("handyman")
   );
+};
+
+const AUTO_SEARCH_ALIASES = [
+  "car",
+  "cars",
+  "mechanic",
+  "repair",
+  "auto repair",
+  "dealer",
+  "dealership",
+  "automotive",
+  "garage",
+];
+
+const FOOD_CAFE_SEARCH_ALIASES = [
+  "food",
+  "restaurant",
+  "catering",
+  "home food",
+  "tahchin",
+  "tah chin",
+  "kabob",
+  "kebab",
+  "koobideh",
+  "bakery",
+  "pastry",
+  "cake",
+  "dessert",
+  "cafe",
+  "coffee",
+];
+
+const EVENT_SEARCH_ALIASES = [
+  "music",
+  "concert",
+  "live music",
+  "party",
+  "festival",
+  "nowruz",
+  "yalda",
+  "event",
+  "events",
+  "gathering",
+  "celebration",
+];
+
+const BEAUTY_SEARCH_ALIASES = [
+  "beauty",
+  "hair",
+  "salon",
+  "makeup",
+  "eyebrow",
+  "threading",
+  "nails",
+  "spa",
+  "wax",
+];
+
+const HEALTH_SEARCH_ALIASES = [
+  "doctor",
+  "nurse",
+  "health",
+  "clinic",
+  "medical",
+  "dental",
+  "dentist",
+  "wellness",
+];
+
+const SERVICES_SEARCH_ALIASES = [
+  "lawyer",
+  "attorney",
+  "immigration",
+  "real estate",
+  "realtor",
+  "construction",
+  "handyman",
+  "legal",
+  "professional",
+  "home service",
+];
+
+const matchesEventDiscovery = (
+  category: string,
+  haystack: string,
+  item: DiscoverableListing
+) => {
+  if (isEventListing(item)) return true;
+
+  return (
+    /\b(events?|concert|live music|festival|nowruz|yalda|party|gathering|celebration)\b/.test(
+      haystack
+    ) || /\b(events?|concert|festival)\b/.test(category)
+  );
+};
+
+/** Category synonym terms injected per listing for intent-based search. */
+const getListingSearchAliasBlob = (item: DiscoverableListing) => {
+  const category = getListingCategory(item).toLowerCase();
+  const baseHaystack = getBaseSearchHaystack(item);
+  const aliases: string[] = [];
+
+  if (matchesEventDiscovery(category, baseHaystack, item)) {
+    aliases.push(...EVENT_SEARCH_ALIASES);
+  }
+  if (matchesAuto(category, baseHaystack)) {
+    aliases.push(...AUTO_SEARCH_ALIASES);
+  }
+  if (matchesFood(category, baseHaystack) || matchesCafe(category, baseHaystack)) {
+    aliases.push(...FOOD_CAFE_SEARCH_ALIASES);
+  }
+  if (matchesBeauty(category, baseHaystack)) {
+    aliases.push(...BEAUTY_SEARCH_ALIASES);
+  }
+  if (matchesHealth(category, baseHaystack)) {
+    aliases.push(...HEALTH_SEARCH_ALIASES);
+  }
+  if (
+    matchesServices(category, baseHaystack) ||
+    matchesRealEstate(category, baseHaystack)
+  ) {
+    aliases.push(...SERVICES_SEARCH_ALIASES);
+  }
+
+  return aliases.join(" ");
+};
+
+export const getSearchHaystack = (item: DiscoverableListing) => {
+  const base = getBaseSearchHaystack(item);
+  const aliases = getListingSearchAliasBlob(item);
+  return [base, aliases].filter(Boolean).join(" ");
+};
+
+const tokenMatchesHaystack = (token: string, haystack: string) => {
+  if (!token) return true;
+  if (haystack.includes(token)) return true;
+
+  if (token.length < 3) return false;
+
+  return haystack.split(/\s+/).some((word) => {
+    if (word.length < 2) return false;
+    return word.includes(token) || token.includes(word);
+  });
+};
+
+export const matchesListingSearch = (item: DiscoverableListing, query: string) => {
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return true;
+
+  const haystack = getSearchHaystack(item);
+  return tokens.every((token) => tokenMatchesHaystack(token, haystack));
 };
 
 export type MapMarkerKind =

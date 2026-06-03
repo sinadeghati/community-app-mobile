@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  FlatList,
   Image,
   Keyboard,
   Linking,
@@ -19,17 +20,34 @@ import {
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Region } from "react-native-maps";
+import {
+  buildMapDisplay,
+  regionForCluster,
+  resolveMapPoints,
+  type MapMarkerDisplay,
+  type ResolvedMapPoint,
+} from "../../lib/mapCoordinates";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   getListingMarkerKind,
-  isEventListing,
   loadDiscoverableListings,
   MapMarkerKind,
   matchesListingCategory,
   matchesListingSearch,
 } from "../../lib/discoverableListings";
+import {
+  formatEventDateTime,
+  formatEventLocation,
+  getEventMarkerVisual,
+  isMapEvent,
+  isUpcomingEvent,
+  matchesEventTimeFilter,
+  sortEventsByDate,
+  type EventMapItem,
+  type EventTimeFilter,
+} from "../../lib/mapEvents";
 import { theme } from "../../lib/theme";
 
 type MapItem = {
@@ -57,6 +75,12 @@ type MapItem = {
   is_featured?: boolean;
   rating?: number;
   reviews?: number;
+  event_date?: string;
+  eventDate?: string;
+  starts_at?: string;
+  start_date?: string;
+  date?: string;
+  datetime?: string;
 };
 
 const FALLBACK_IMAGE =
@@ -79,13 +103,29 @@ const categoryFilters = [
   { key: "Services", label: "Services", icon: "briefcase-outline" },
 ];
 
+const offsetEventDate = (days = 0, months = 0) => {
+  const date = new Date();
+  if (months) date.setMonth(date.getMonth() + months);
+  if (days) date.setDate(date.getDate() + days);
+  return date.toISOString();
+};
+
+const EVENT_TIME_FILTERS: { key: EventTimeFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "today", label: "Today" },
+  { key: "week", label: "This Week" },
+  { key: "month", label: "This Month" },
+  { key: "later", label: "Later" },
+];
+
 const demoEvents: MapItem[] = [
   {
-    id: "event-nowruz",
-    title: "Nowruz Community Event",
-    category: "Events",
+    id: "event-live-music-tonight",
+    title: "Persian Live Music Night",
+    category: "Concert",
     city: "San Diego",
     state: "CA",
+    event_date: offsetEventDate(0),
     latitude: 32.728,
     longitude: -117.15,
     image:
@@ -93,6 +133,54 @@ const demoEvents: MapItem[] = [
     rating: 4.8,
     reviews: 24,
     is_featured: true,
+  },
+  {
+    id: "event-community-meetup",
+    title: "Persian Community Meetup",
+    category: "Community Gathering",
+    city: "La Mesa",
+    state: "CA",
+    event_date: offsetEventDate(5),
+    latitude: 32.7678,
+    longitude: -117.0231,
+    image:
+      "https://images.unsplash.com/photo-1511578314322-379afb4768f1?q=80&w=1200",
+  },
+  {
+    id: "event-food-festival",
+    title: "Persian Food Festival",
+    category: "Festival",
+    city: "Chula Vista",
+    state: "CA",
+    event_date: offsetEventDate(18),
+    latitude: 32.64,
+    longitude: -117.0842,
+    image:
+      "https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=1200",
+  },
+  {
+    id: "event-nowruz",
+    title: "Nowruz Community Celebration",
+    category: "Persian Culture",
+    city: "Escondido",
+    state: "CA",
+    event_date: offsetEventDate(0, 3),
+    latitude: 33.1192,
+    longitude: -117.0864,
+    image:
+      "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200",
+  },
+  {
+    id: "event-yalda-concert",
+    title: "Yalda Night Concert",
+    category: "Concert",
+    city: "Carlsbad",
+    state: "CA",
+    event_date: offsetEventDate(0, 6),
+    latitude: 33.1581,
+    longitude: -117.3506,
+    image:
+      "https://images.unsplash.com/photo-1459749411177-041980c57401?q=80&w=1200",
   },
 ];
 
@@ -110,24 +198,38 @@ const getImage = (item: MapItem) =>
 const getAddress = (item: MapItem) =>
   item?.address || [item?.city, item?.state].filter(Boolean).join(", ") || "San Diego, CA";
 
+const getCityLine = (item: MapItem) => {
+  if (isMapEvent(item)) {
+    return formatEventLocation(item as EventMapItem);
+  }
+
+  const cityRaw = item.city ? String(item.city) : "";
+  const city =
+    cityRaw.includes(",") && cityRaw.length > 40
+      ? cityRaw.split(",")[0]
+      : cityRaw;
+  const state = item.state ? String(item.state) : "";
+
+  return [city, state].filter(Boolean).join(", ") || "San Diego area";
+};
+
+const getDiscoveryFilterLabel = (searchQuery: string, categoryKey: string) => {
+  if (searchQuery.trim()) {
+    const q = searchQuery.trim();
+    return q.charAt(0).toUpperCase() + q.slice(1);
+  }
+
+  const chip = categoryFilters.find((filter) => filter.key === categoryKey);
+  return chip?.label || categoryKey;
+};
+
+const getDiscoveryTitle = (count: number, searchQuery: string, categoryKey: string) => {
+  const label = getDiscoveryFilterLabel(searchQuery, categoryKey);
+  const word = count === 1 ? "result" : "results";
+  return `${count} ${word} for ${label}`;
+};
+
 const getPhone = (item: MapItem) => item?.phone || item?.contact_info || "";
-
-const getLat = (item: MapItem) => {
-  const raw = item.latitude || item.lat;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : null;
-};
-
-const getLng = (item: MapItem) => {
-  const raw = item.longitude || item.lng;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : null;
-};
-
-const fallbackCoordinate = (index: number) => ({
-  latitude: SAN_DIEGO_REGION.latitude + (index % 4) * 0.025 - 0.035,
-  longitude: SAN_DIEGO_REGION.longitude + (index % 5) * 0.025 - 0.04,
-});
 
 const MARKER_VISUALS: Record<
   MapMarkerKind,
@@ -142,7 +244,10 @@ const MARKER_VISUALS: Record<
   services: { icon: "briefcase-outline", accent: "#0F4C5C" },
 };
 
+const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
+const PREVIEW_CARD_WIDTH = SCREEN_WIDTH - 32;
+const PREVIEW_CARD_GAP = 12;
 
 const SHEET_SNAP = {
   collapsed: 96,
@@ -150,19 +255,62 @@ const SHEET_SNAP = {
   expanded: Math.round(SCREEN_HEIGHT * 0.58),
 };
 
-const getCoordinate = (item: MapItem, index: number) => {
-  const lat = getLat(item);
-  const lng = getLng(item);
-
-  if (lat && lng) {
-    return { latitude: lat, longitude: lng };
-  }
-
-  return fallbackCoordinate(index);
-};
-
 const MAP_CONTROL_GAP = 10;
 const MAP_CHIP_ROW_TOP = 10;
+
+function MarkerPulseRing({
+  active,
+  color,
+}: {
+  active: boolean;
+  color: string;
+}) {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!active) return;
+
+    const anim = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 1100,
+        useNativeDriver: true,
+      })
+    );
+
+    pulse.setValue(0);
+    anim.start();
+
+    return () => anim.stop();
+  }, [active, pulse]);
+
+  if (!active) return null;
+
+  const scale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.5],
+  });
+  const opacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.32, 0.06],
+  });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        width: 46,
+        height: 46,
+        borderRadius: 23,
+        borderWidth: 2,
+        borderColor: color,
+        opacity,
+        transform: [{ scale }],
+      }}
+    />
+  );
+}
 
 export default function MapScreenV25() {
   const [items, setItems] = useState<MapItem[]>([]);
@@ -174,6 +322,7 @@ export default function MapScreenV25() {
   const [filterVisible, setFilterVisible] = useState(false);
   const [locating, setLocating] = useState(false);
   const mapRef = useRef<MapView>(null);
+  const [mapRegion, setMapRegion] = useState<Region>(SAN_DIEGO_REGION);
   const suppressMapDeselectRef = useRef(false);
 
   const dismissKeyboard = () => {
@@ -236,14 +385,28 @@ export default function MapScreenV25() {
     setFilterVisible(false);
   };
 
-  const selectMapItem = (item: MapItem) => {
+  const openEventDetails = (event: MapItem) => {
     dismissKeyboard();
-    suppressMapDeselectRef.current = true;
-    setSelectedItem(item);
-    requestAnimationFrame(() => {
-      suppressMapDeselectRef.current = false;
-    });
+    const id = getId(event);
+
+    if (id && !id.startsWith("event-")) {
+      router.push({
+        pathname: "/listing/[id]",
+        params: { id },
+      });
+      return;
+    }
+
+    Alert.alert("Event details", "Event details coming soon.");
   };
+
+  const allMapEvents = useMemo(
+    () =>
+      items.filter(
+        (item) => isMapEvent(item) && isUpcomingEvent(item as EventMapItem)
+      ),
+    [items]
+  );
 
   const handleMapBackgroundPress = (action?: string) => {
     dismissKeyboard();
@@ -266,9 +429,7 @@ export default function MapScreenV25() {
 
       setItems(merged);
 
-      if (merged.length > 0) {
-        setSelectedItem(merged[0]);
-      }
+      setSelectedItem(null);
 
       const keys = await AsyncStorage.getAllKeys();
       const favoriteKeys = keys.filter((key) =>
@@ -313,9 +474,96 @@ export default function MapScreenV25() {
     );
 
     if (!stillVisible) {
-      setSelectedItem(filteredItems[0] ?? null);
+      const nextBusiness =
+        filteredItems.find((item) => !isMapEvent(item)) ?? null;
+      setSelectedItem(nextBusiness);
     }
-  }, [filteredItems, selectedCategory]);
+  }, [filteredItems, selectedItem]);
+
+  const mapPoints = useMemo(
+    () => resolveMapPoints(filteredItems),
+    [filteredItems]
+  );
+
+  const mapDisplay = useMemo(
+    () => buildMapDisplay(mapPoints, mapRegion),
+    [mapPoints, mapRegion]
+  );
+
+  const nearbyBusinesses = useMemo(
+    () =>
+      mapPoints
+        .filter((point) => !isMapEvent(point.item))
+        .map((point) => ({ item: point.item as MapItem, point })),
+    [mapPoints]
+  );
+
+  const hasVisibleBusinesses = nearbyBusinesses.length > 0;
+
+  const isDiscoveryActive =
+    search.trim() !== "" || selectedCategory !== "All";
+
+  const discoveryResults = useMemo(() => {
+    if (!isDiscoveryActive) return [];
+
+    return filteredItems
+      .map((item) => {
+        const point =
+          mapPoints.find((p) => getId(p.item) === getId(item)) ??
+          resolveMapPoints([item])[0];
+
+        if (!point) return null;
+
+        return { item, point };
+      })
+      .filter(Boolean) as { item: MapItem; point: ResolvedMapPoint }[];
+  }, [isDiscoveryActive, filteredItems, mapPoints]);
+
+  const focusOnMapItem = (
+    item: MapItem,
+    options?: { animate?: boolean }
+  ) => {
+    const point =
+      mapPoints.find((p) => getId(p.item) === getId(item)) ??
+      resolveMapPoints([item])[0];
+
+    if (!point) return;
+
+    const latOffset = isMapEvent(item) ? 0.006 : 0.012;
+    const region: Region = {
+      latitude: point.latitude - latOffset,
+      longitude: point.longitude,
+      latitudeDelta: 0.055,
+      longitudeDelta: 0.055,
+    };
+
+    const duration = options?.animate === false ? 1 : 420;
+    mapRef.current?.animateToRegion(region, duration);
+  };
+
+  const selectMapItem = (
+    item: MapItem,
+    options?: { focus?: boolean; animate?: boolean }
+  ) => {
+    dismissKeyboard();
+    suppressMapDeselectRef.current = true;
+    setSelectedItem(item);
+
+    if (options?.focus !== false) {
+      focusOnMapItem(item, { animate: options?.animate !== false });
+    }
+
+    requestAnimationFrame(() => {
+      suppressMapDeselectRef.current = false;
+    });
+  };
+
+  const zoomToCluster = (cluster: Extract<MapMarkerDisplay, { type: "cluster" }>) => {
+    dismissKeyboard();
+    const nextRegion = regionForCluster(cluster);
+    setMapRegion(nextRegion);
+    mapRef.current?.animateToRegion(nextRegion, 450);
+  };
 
   const toggleFavorite = async (item: MapItem) => {
     dismissKeyboard();
@@ -364,37 +612,84 @@ export default function MapScreenV25() {
     Linking.openURL(`tel:${phone}`);
   };
 
-  const openDirections = (item: MapItem, index = 0) => {
+  const openDirections = (point: ResolvedMapPoint) => {
     dismissKeyboard();
-    const coordinate = getCoordinate(item, index);
-    const label = encodeURIComponent(getTitle(item));
+    const label = encodeURIComponent(getTitle(point.item));
 
-    const url = `https://www.google.com/maps/search/?api=1&query=${coordinate.latitude},${coordinate.longitude}&query_place_id=${label}`;
+    const url = `https://www.google.com/maps/search/?api=1&query=${point.latitude},${point.longitude}&query_place_id=${label}`;
 
     Linking.openURL(url);
   };
 
-  const MarkerBubble = ({
-    item,
-    index,
+  const ClusterBubble = ({
+    cluster,
   }: {
-    item: MapItem;
-    index: number;
-  }) => {
+    cluster: Extract<MapMarkerDisplay, { type: "cluster" }>;
+  }) => (
+    <Marker
+      coordinate={{
+        latitude: cluster.latitude,
+        longitude: cluster.longitude,
+      }}
+      onPress={(e) => {
+        e.stopPropagation?.();
+        zoomToCluster(cluster);
+      }}
+      tracksViewChanges={false}
+    >
+      <View
+        pointerEvents="none"
+        style={{
+          minWidth: 30,
+          height: 30,
+          paddingHorizontal: 6,
+          borderRadius: 15,
+          backgroundColor: "#FFFFFF",
+          borderWidth: 1.5,
+          borderColor: theme.colors.turquoise,
+          alignItems: "center",
+          justifyContent: "center",
+          shadowColor: "#000",
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 3,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: "800",
+            color: theme.colors.turquoise,
+          }}
+        >
+          {cluster.count}
+        </Text>
+      </View>
+    </Marker>
+  );
+
+  const MarkerBubble = ({ point }: { point: ResolvedMapPoint }) => {
+    const item = point.item;
     const active = selectedItem && getId(selectedItem) === getId(item);
     const kind = getListingMarkerKind(item);
-    const visual = MARKER_VISUALS[kind];
+    const visual = isMapEvent(item)
+      ? getEventMarkerVisual(item as EventMapItem)
+      : MARKER_VISUALS[kind];
     const pinSize = active ? 34 : 30;
     const iconSize = active ? 15 : 13;
 
     return (
       <Marker
-        coordinate={getCoordinate(item, index)}
+        coordinate={{
+          latitude: point.latitude,
+          longitude: point.longitude,
+        }}
         onPress={(e) => {
           e.stopPropagation?.();
-          selectMapItem(item);
+          selectMapItem(item, { focus: true, animate: true });
         }}
-        tracksViewChanges={false}
+        tracksViewChanges={Boolean(active)}
       >
         <View
           pointerEvents="none"
@@ -403,19 +698,10 @@ export default function MapScreenV25() {
             justifyContent: "center",
           }}
         >
-          {active ? (
-            <View
-              style={{
-                position: "absolute",
-                width: 42,
-                height: 42,
-                borderRadius: 21,
-                borderWidth: 2,
-                borderColor: "rgba(13,148,136,0.32)",
-                backgroundColor: "rgba(13,148,136,0.08)",
-              }}
-            />
-          ) : null}
+          <MarkerPulseRing
+            active={Boolean(active)}
+            color={active ? theme.colors.turquoise : visual.accent}
+          />
 
           <View
             style={{
@@ -445,14 +731,6 @@ export default function MapScreenV25() {
     );
   };
 
-  const eventListings = useMemo(
-    () =>
-      filteredItems.filter(
-        (item) => isEventListing(item) || getListingMarkerKind(item) === "events"
-      ),
-    [filteredItems]
-  );
-
   const EventsBottomSheet = () => {
     const insets = useSafeAreaInsets();
     const sheetHeight = useRef(new Animated.Value(SHEET_SNAP.collapsed)).current;
@@ -460,6 +738,18 @@ export default function MapScreenV25() {
     const [sheetSnap, setSheetSnap] = useState<"collapsed" | "half" | "expanded">(
       "collapsed"
     );
+    const [eventTimeFilter, setEventTimeFilter] = useState<EventTimeFilter>("all");
+
+    const displayedEvents = useMemo(() => {
+      const q = search.trim().toLowerCase();
+
+      return sortEventsByDate(
+        allMapEvents.filter((event) => {
+          if (q && !matchesListingSearch(event, q)) return false;
+          return matchesEventTimeFilter(event as EventMapItem, eventTimeFilter);
+        })
+      );
+    }, [eventTimeFilter, search, allMapEvents]);
 
     const snapTo = (height: number) => {
       const snap =
@@ -473,17 +763,28 @@ export default function MapScreenV25() {
       Animated.spring(sheetHeight, {
         toValue: height,
         useNativeDriver: false,
-        friction: 9,
-        tension: 72,
+        friction: 8,
+        tension: 68,
       }).start();
     };
 
-    const snapToNearest = (height: number) => {
+    const snapToNearest = (height: number, velocityY = 0) => {
       const snaps = [SHEET_SNAP.collapsed, SHEET_SNAP.half, SHEET_SNAP.expanded];
-      const nearest = snaps.reduce((prev, curr) =>
-        Math.abs(curr - height) < Math.abs(prev - height) ? curr : prev
+      let nearestIndex = snaps.reduce(
+        (bestIdx, curr, idx) =>
+          Math.abs(curr - height) < Math.abs(snaps[bestIdx] - height)
+            ? idx
+            : bestIdx,
+        0
       );
-      snapTo(nearest);
+
+      if (velocityY < -0.35) {
+        nearestIndex = Math.min(snaps.length - 1, nearestIndex + 1);
+      } else if (velocityY > 0.35) {
+        nearestIndex = Math.max(0, nearestIndex - 1);
+      }
+
+      snapTo(snaps[nearestIndex]);
     };
 
     const panResponder = useRef(
@@ -503,7 +804,7 @@ export default function MapScreenV25() {
         },
         onPanResponderRelease: (_, gesture) => {
           const projected = dragStartHeight.current - gesture.dy;
-          snapToNearest(projected);
+          snapToNearest(projected, gesture.vy);
         },
       })
     ).current;
@@ -518,7 +819,7 @@ export default function MapScreenV25() {
           right: 0,
           bottom: 0,
           height: sheetHeight,
-          backgroundColor: theme.colors.card,
+          backgroundColor: "rgba(255,255,255,0.97)",
           borderTopLeftRadius: 22,
           borderTopRightRadius: 22,
           borderWidth: 1,
@@ -570,9 +871,9 @@ export default function MapScreenV25() {
               }}
             >
               <Ionicons
-                name="calendar-outline"
+                name="musical-notes-outline"
                 size={20}
-                color={theme.colors.turquoise}
+                color={theme.colors.eventPurple}
               />
             </View>
 
@@ -584,7 +885,7 @@ export default function MapScreenV25() {
                   color: theme.colors.charcoal,
                 }}
               >
-                Tonight & upcoming events
+                Upcoming Persian Events
               </Text>
               <Text
                 style={{
@@ -593,7 +894,8 @@ export default function MapScreenV25() {
                   color: theme.colors.muted,
                 }}
               >
-                {eventListings.length} event{eventListings.length === 1 ? "" : "s"} nearby
+                {displayedEvents.length} upcoming event
+                {displayedEvents.length === 1 ? "" : "s"}
               </Text>
             </View>
 
@@ -610,6 +912,52 @@ export default function MapScreenV25() {
         </View>
 
         <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingBottom: 10,
+            gap: 8,
+          }}
+        >
+          {EVENT_TIME_FILTERS.map((filter) => {
+            const active = eventTimeFilter === filter.key;
+
+            return (
+              <Pressable
+                key={filter.key}
+                onPress={() => setEventTimeFilter(filter.key)}
+                style={{
+                  height: 30,
+                  paddingHorizontal: 12,
+                  borderRadius: 999,
+                  backgroundColor: active
+                    ? theme.colors.eventPurple
+                    : "rgba(124,58,237,0.08)",
+                  borderWidth: 1,
+                  borderColor: active
+                    ? theme.colors.eventPurple
+                    : theme.colors.border,
+                  justifyContent: "center",
+                  marginRight: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "700",
+                    color: active ? "#fff" : theme.colors.charcoal,
+                  }}
+                >
+                  {filter.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <ScrollView
           showsVerticalScrollIndicator={false}
           scrollEnabled={listCanScroll}
           keyboardShouldPersistTaps="handled"
@@ -618,7 +966,7 @@ export default function MapScreenV25() {
             paddingBottom: insets.bottom + 88,
           }}
         >
-          {eventListings.length === 0 ? (
+          {displayedEvents.length === 0 ? (
             <Text
               style={{
                 color: theme.colors.muted,
@@ -626,15 +974,14 @@ export default function MapScreenV25() {
                 paddingVertical: 16,
               }}
             >
-              No upcoming events match your filters.
+              No events found
             </Text>
           ) : (
-            eventListings.map((event) => (
+            displayedEvents.map((event) => (
               <Pressable
                 key={`event-${getId(event)}`}
                 onPress={() => {
-                  dismissKeyboard();
-                  selectMapItem(event);
+                  selectMapItem(event, { focus: true, animate: true });
                   snapTo(SHEET_SNAP.collapsed);
                 }}
                 style={{
@@ -674,23 +1021,611 @@ export default function MapScreenV25() {
                       color: theme.colors.muted,
                     }}
                   >
-                    {getCategory(event)} · {getAddress(event)}
+                    {formatEventDateTime(event as EventMapItem)}
                   </Text>
                   <Text
+                    numberOfLines={1}
                     style={{
-                      marginTop: 4,
+                      marginTop: 3,
                       fontSize: 12,
-                      fontWeight: "700",
-                      color: theme.colors.turquoise,
+                      color: theme.colors.muted,
                     }}
                   >
-                    View on map
+                    {formatEventLocation(event as EventMapItem)}
                   </Text>
                 </View>
+                <Pressable
+                  onPress={() => openEventDetails(event)}
+                  hitSlop={10}
+                  style={{ paddingLeft: 8 }}
+                >
+                  <Ionicons
+                    name="chevron-forward"
+                    size={18}
+                    color={theme.colors.muted}
+                  />
+                </Pressable>
               </Pressable>
             ))
           )}
         </ScrollView>
+      </Animated.View>
+    );
+  };
+
+  const DiscoveryResultSheet = () => {
+    const insets = useSafeAreaInsets();
+    const sheetHeight = useRef(new Animated.Value(SHEET_SNAP.collapsed)).current;
+    const dragStartHeight = useRef(SHEET_SNAP.collapsed);
+    const [sheetSnap, setSheetSnap] = useState<"collapsed" | "half" | "expanded">(
+      "collapsed"
+    );
+
+    const discoveryTitle = getDiscoveryTitle(
+      discoveryResults.length,
+      search,
+      selectedCategory
+    );
+
+    const snapTo = (height: number) => {
+      const snap =
+        height <= SHEET_SNAP.collapsed + 24
+          ? "collapsed"
+          : height <= SHEET_SNAP.half + 40
+            ? "half"
+            : "expanded";
+
+      setSheetSnap(snap);
+      Animated.spring(sheetHeight, {
+        toValue: height,
+        useNativeDriver: false,
+        friction: 8,
+        tension: 68,
+      }).start();
+    };
+
+    const snapToNearest = (height: number, velocityY = 0) => {
+      const snaps = [SHEET_SNAP.collapsed, SHEET_SNAP.half, SHEET_SNAP.expanded];
+      let nearestIndex = snaps.reduce(
+        (bestIdx, curr, idx) =>
+          Math.abs(curr - height) < Math.abs(snaps[bestIdx] - height)
+            ? idx
+            : bestIdx,
+        0
+      );
+
+      if (velocityY < -0.35) {
+        nearestIndex = Math.min(snaps.length - 1, nearestIndex + 1);
+      } else if (velocityY > 0.35) {
+        nearestIndex = Math.max(0, nearestIndex - 1);
+      }
+
+      snapTo(snaps[nearestIndex]);
+    };
+
+    const panResponder = useRef(
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 6,
+        onPanResponderGrant: () => {
+          sheetHeight.stopAnimation((value) => {
+            dragStartHeight.current = value;
+          });
+        },
+        onPanResponderMove: (_, gesture) => {
+          const next = Math.min(
+            SHEET_SNAP.expanded,
+            Math.max(SHEET_SNAP.collapsed, dragStartHeight.current - gesture.dy)
+          );
+          sheetHeight.setValue(next);
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const projected = dragStartHeight.current - gesture.dy;
+          snapToNearest(projected, gesture.vy);
+        },
+      })
+    ).current;
+
+    useEffect(() => {
+      snapTo(SHEET_SNAP.half);
+    }, [isDiscoveryActive]);
+
+    const listCanScroll = sheetSnap === "expanded" || sheetSnap === "half";
+
+    const renderDiscoveryRow = (entry: {
+      item: MapItem;
+      point: ResolvedMapPoint;
+    }) => {
+      const { item } = entry;
+      const active = selectedItem && getId(selectedItem) === getId(item);
+      const eventItem = isMapEvent(item);
+
+      return (
+        <Pressable
+          key={`discovery-${getId(item)}`}
+          onPress={() => {
+            selectMapItem(item, { focus: true, animate: true });
+            if (eventItem) {
+              snapTo(SHEET_SNAP.collapsed);
+            }
+          }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            minHeight: 76,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.colors.border,
+            backgroundColor: active ? "rgba(13,148,136,0.06)" : "#FFFFFF",
+          }}
+        >
+          <Image
+            source={{ uri: getImage(item) }}
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 12,
+              backgroundColor: "#eee",
+            }}
+            resizeMode="cover"
+          />
+          <View style={{ flex: 1, marginLeft: 12, marginRight: 8 }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                fontSize: 15,
+                fontWeight: "800",
+                color: theme.colors.charcoal,
+              }}
+            >
+              {getTitle(item)}
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={{
+                marginTop: 3,
+                fontSize: 12,
+                color: theme.colors.muted,
+              }}
+            >
+              {getCategory(item)}
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={{
+                marginTop: 3,
+                fontSize: 12,
+                color: theme.colors.muted,
+              }}
+            >
+              {getCityLine(item)}
+            </Text>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={18}
+            color={theme.colors.muted}
+          />
+        </Pressable>
+      );
+    };
+
+    return (
+      <Animated.View
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: sheetHeight,
+          backgroundColor: "rgba(255,255,255,0.97)",
+          borderTopLeftRadius: 22,
+          borderTopRightRadius: 22,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          shadowColor: "#000",
+          shadowOpacity: 0.12,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: -4 },
+          elevation: 12,
+          zIndex: 15,
+          overflow: "hidden",
+        }}
+      >
+        <View {...panResponder.panHandlers}>
+          <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 6 }}>
+            <View
+              style={{
+                width: 40,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: "#D1D5DB",
+              }}
+            />
+          </View>
+
+          <Pressable
+            onPress={() => {
+              dismissKeyboard();
+              if (sheetSnap === "collapsed") snapTo(SHEET_SNAP.half);
+              else if (sheetSnap === "half") snapTo(SHEET_SNAP.expanded);
+              else snapTo(SHEET_SNAP.collapsed);
+            }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 16,
+              paddingBottom: 10,
+            }}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: "rgba(13,148,136,0.12)",
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 12,
+              }}
+            >
+              <Ionicons
+                name="search-outline"
+                size={20}
+                color={theme.colors.turquoise}
+              />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: "800",
+                  color: theme.colors.charcoal,
+                }}
+              >
+                {discoveryTitle}
+              </Text>
+              <Text
+                style={{
+                  marginTop: 2,
+                  fontSize: 12,
+                  color: theme.colors.muted,
+                }}
+              >
+                Tap a result to view it on the map
+              </Text>
+            </View>
+
+            <Ionicons
+              name={sheetSnap === "expanded" ? "chevron-down" : "chevron-up"}
+              size={20}
+              color={theme.colors.turquoise}
+            />
+          </Pressable>
+        </View>
+
+        {discoveryResults.length === 0 ? (
+          <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 88 }}>
+            <Text
+              style={{
+                color: theme.colors.muted,
+                textAlign: "center",
+                paddingVertical: 20,
+                fontSize: 14,
+                fontWeight: "600",
+              }}
+            >
+              No results found
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.muted,
+                textAlign: "center",
+                fontSize: 12,
+              }}
+            >
+              Try another keyword or category.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView
+            style={{ flex: 1 }}
+            showsVerticalScrollIndicator={false}
+            scrollEnabled={listCanScroll}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{
+              paddingBottom: insets.bottom + 88,
+            }}
+          >
+            {discoveryResults.map((entry) => renderDiscoveryRow(entry))}
+          </ScrollView>
+        )}
+      </Animated.View>
+    );
+  };
+
+  const BusinessPreviewCarousel = () => {
+    const listRef = useRef<FlatList<{ item: MapItem; point: ResolvedMapPoint }>>(
+      null
+    );
+    const enterAnim = useRef(new Animated.Value(0)).current;
+    const snapInterval = PREVIEW_CARD_WIDTH + PREVIEW_CARD_GAP;
+
+    const carouselData =
+      isDiscoveryActive && discoveryResults.some((e) => !isMapEvent(e.item))
+        ? discoveryResults.filter((e) => !isMapEvent(e.item))
+        : nearbyBusinesses.length > 0
+        ? nearbyBusinesses
+        : selectedItem
+          ? [
+              {
+                item: selectedItem,
+                point:
+                  mapPoints.find((p) => getId(p.item) === getId(selectedItem)) ??
+                  resolveMapPoints([selectedItem])[0],
+              },
+            ].filter((entry) => entry.point)
+          : [];
+
+    useEffect(() => {
+      if (!selectedItem || isMapEvent(selectedItem)) return;
+
+      const index = carouselData.findIndex(
+        (entry) => getId(entry.item) === getId(selectedItem)
+      );
+
+      if (index >= 0) {
+        requestAnimationFrame(() => {
+          listRef.current?.scrollToIndex({ index, animated: false });
+        });
+      }
+
+      enterAnim.setValue(0);
+      Animated.spring(enterAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 70,
+      }).start();
+    }, [getId(selectedItem ?? {})]);
+
+    if (!selectedItem || isMapEvent(selectedItem)) return null;
+
+    const translateY = enterAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [28, 0],
+    });
+
+    const renderPreviewCard = ({
+      item,
+      point,
+    }: {
+      item: MapItem;
+      point: ResolvedMapPoint;
+    }) => {
+      const id = getId(item);
+      const saved = favorites[id];
+      const active = getId(selectedItem) === id;
+
+      return (
+        <View
+          style={{
+            width: PREVIEW_CARD_WIDTH,
+            marginRight: PREVIEW_CARD_GAP,
+            opacity: active ? 1 : 0.94,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "rgba(255,255,255,0.98)",
+              borderRadius: 18,
+              padding: 11,
+              borderWidth: 1,
+              borderColor: active
+                ? "rgba(13,148,136,0.35)"
+                : theme.colors.border,
+              shadowColor: "#000",
+              shadowOpacity: 0.08,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 3 },
+              elevation: 5,
+            }}
+          >
+            <Pressable onPress={() => openProfile(item)}>
+              <View style={{ flexDirection: "row" }}>
+                <Image
+                  source={{ uri: getImage(item) }}
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 12,
+                    backgroundColor: "#eee",
+                  }}
+                  resizeMode="cover"
+                />
+
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        flex: 1,
+                        fontSize: 16,
+                        fontWeight: "800",
+                        color: theme.colors.charcoal,
+                      }}
+                    >
+                      {getTitle(item)}
+                    </Text>
+
+                    <Pressable onPress={() => toggleFavorite(item)} hitSlop={8}>
+                      <Ionicons
+                        name={saved ? "heart" : "heart-outline"}
+                        size={20}
+                        color={saved ? theme.colors.danger : theme.colors.charcoal}
+                      />
+                    </Pressable>
+                  </View>
+
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      marginTop: 2,
+                      color: theme.colors.muted,
+                      fontWeight: "600",
+                      fontSize: 12,
+                    }}
+                  >
+                    {getCategory(item)}
+                  </Text>
+
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      marginTop: 3,
+                      color: theme.colors.muted,
+                      fontSize: 11,
+                    }}
+                  >
+                    {getAddress(item)}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+
+            <View style={{ flexDirection: "row", gap: 6, marginTop: 8 }}>
+              <Pressable
+                onPress={() => openDirections(point)}
+                style={{
+                  flex: 1,
+                  height: 34,
+                  borderRadius: 10,
+                  backgroundColor: theme.colors.turquoise,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexDirection: "row",
+                }}
+              >
+                <Ionicons name="navigate" size={15} color="#fff" />
+                <Text
+                  style={{
+                    marginLeft: 4,
+                    color: "#fff",
+                    fontWeight: "700",
+                    fontSize: 12,
+                  }}
+                >
+                  Directions
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => openCall(item)}
+                style={{
+                  flex: 1,
+                  height: 34,
+                  borderRadius: 10,
+                  backgroundColor: "rgba(15,76,92,0.1)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexDirection: "row",
+                }}
+              >
+                <Ionicons name="call" size={15} color={theme.colors.deepTeal} />
+                <Text
+                  style={{
+                    marginLeft: 4,
+                    color: theme.colors.deepTeal,
+                    fontWeight: "700",
+                    fontSize: 12,
+                  }}
+                >
+                  Call
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => openProfile(item)}
+                style={{
+                  flex: 1,
+                  height: 34,
+                  borderRadius: 10,
+                  backgroundColor: "rgba(13,148,136,0.1)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.turquoise,
+                    fontWeight: "700",
+                    fontSize: 12,
+                  }}
+                >
+                  Profile
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      );
+    };
+
+    return (
+      <Animated.View
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 84,
+          zIndex: 20,
+          opacity: enterAnim,
+          transform: [{ translateY }],
+        }}
+      >
+        {carouselData.length > 1 ? (
+          <Text
+            style={{
+              textAlign: "center",
+              fontSize: 11,
+              fontWeight: "600",
+              color: theme.colors.muted,
+              marginBottom: 6,
+            }}
+          >
+            Swipe for nearby businesses
+          </Text>
+        ) : null}
+
+        <FlatList
+          ref={listRef}
+          horizontal
+          data={carouselData}
+          keyExtractor={(entry) => `preview-${getId(entry.item)}`}
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          snapToInterval={snapInterval}
+          disableIntervalMomentum
+          contentContainerStyle={{ paddingHorizontal: 16 }}
+          getItemLayout={(_, index) => ({
+            length: snapInterval,
+            offset: snapInterval * index,
+            index,
+          })}
+          onScrollToIndexFailed={() => {}}
+          onMomentumScrollEnd={(event) => {
+            const index = Math.round(
+              event.nativeEvent.contentOffset.x / snapInterval
+            );
+            const next = carouselData[index]?.item;
+
+            if (next && getId(next) !== getId(selectedItem)) {
+              selectMapItem(next, { focus: true, animate: false });
+            }
+          }}
+          renderItem={({ item: entry }) => renderPreviewCard(entry)}
+        />
       </Animated.View>
     );
   };
@@ -742,176 +1677,6 @@ export default function MapScreenV25() {
     );
   };
 
-  const BusinessCard = ({ item }: { item: MapItem }) => {
-    const id = getId(item);
-    const saved = favorites[id];
-
-    return (
-      <View
-        onTouchStart={dismissKeyboard}
-        style={{
-          position: "absolute",
-          left: 16,
-          right: 16,
-          bottom: 88,
-          zIndex: 20,
-          elevation: 20,
-        }}
-      >
-        <View
-          style={{
-            backgroundColor: theme.colors.card,
-            borderRadius: 20,
-            padding: 12,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            shadowColor: "#000",
-            shadowOpacity: 0.1,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 4 },
-            elevation: 6,
-          }}
-        >
-        <Pressable onPress={() => openProfile(item)}>
-          <View style={{ flexDirection: "row" }}>
-            <Image
-              source={{ uri: getImage(item) }}
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: 14,
-                backgroundColor: "#eee",
-              }}
-              resizeMode="cover"
-            />
-
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    flex: 1,
-                    fontSize: 17,
-                    fontWeight: "800",
-                    color: theme.colors.charcoal,
-                  }}
-                >
-                  {getTitle(item)}
-                </Text>
-
-                <Pressable onPress={() => toggleFavorite(item)}>
-                  <Ionicons
-                    name={saved ? "heart" : "heart-outline"}
-                    size={22}
-                    color={saved ? theme.colors.danger : theme.colors.charcoal}
-                  />
-                </Pressable>
-              </View>
-
-              <Text
-                numberOfLines={1}
-                style={{
-                  marginTop: 3,
-                  color: theme.colors.muted,
-                  fontWeight: "600",
-                  fontSize: 13,
-                }}
-              >
-                {getCategory(item)}
-              </Text>
-
-              <Text
-                style={{
-                  marginTop: 4,
-                  color: "#C49A3A",
-                  fontWeight: "700",
-                  fontSize: 12,
-                }}
-              >
-                ⭐ {item.rating || "4.8"} · {item.reviews || 24} reviews
-              </Text>
-
-              <Text
-                numberOfLines={1}
-                style={{
-                  marginTop: 4,
-                  color: theme.colors.muted,
-                  fontSize: 12,
-                }}
-              >
-                {getAddress(item)}
-              </Text>
-            </View>
-          </View>
-        </Pressable>
-
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-          <Pressable
-            onPress={() => openDirections(item)}
-            style={{
-              flex: 1,
-              height: 38,
-              borderRadius: 12,
-              backgroundColor: theme.colors.turquoise,
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "row",
-            }}
-          >
-            <Ionicons name="navigate" size={16} color="#fff" />
-            <Text style={{ marginLeft: 5, color: "#fff", fontWeight: "700", fontSize: 13 }}>
-              Directions
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => openCall(item)}
-            style={{
-              flex: 1,
-              height: 38,
-              borderRadius: 12,
-              backgroundColor: theme.colors.deepTeal,
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "row",
-            }}
-          >
-            <Ionicons name="call" size={16} color="#fff" />
-            <Text style={{ marginLeft: 5, color: "#fff", fontWeight: "700", fontSize: 13 }}>
-              Call
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => openProfile(item)}
-            style={{
-              flex: 1,
-              height: 38,
-              borderRadius: 12,
-              backgroundColor: "rgba(13,148,136,0.1)",
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "row",
-            }}
-          >
-            <Ionicons name="person" size={17} color={theme.colors.turquoise} />
-            <Text
-              style={{
-                marginLeft: 5,
-                color: theme.colors.turquoise,
-                fontWeight: "700",
-                fontSize: 13,
-              }}
-            >
-              View Profile
-            </Text>
-          </Pressable>
-        </View>
-        </View>
-      </View>
-    );
-  };
-
   if (loading) {
     return (
       <SafeAreaView
@@ -935,11 +1700,19 @@ export default function MapScreenV25() {
         initialRegion={SAN_DIEGO_REGION}
         showsUserLocation
         showsMyLocationButton={false}
+        onRegionChangeComplete={setMapRegion}
         onPress={(e) => handleMapBackgroundPress(e.nativeEvent?.action)}
       >
-        {filteredItems.map((item, index) => (
-          <MarkerBubble key={`${getId(item)}-${index}`} item={item} index={index} />
-        ))}
+        {mapDisplay.map((entry) =>
+          entry.type === "cluster" ? (
+            <ClusterBubble key={`cluster-${entry.id}`} cluster={entry} />
+          ) : (
+            <MarkerBubble
+              key={`marker-${getId(entry.point.item)}-${entry.point.index}`}
+              point={entry.point}
+            />
+          )
+        )}
       </MapView>
 
       <SafeAreaView
@@ -1208,8 +1981,48 @@ export default function MapScreenV25() {
         </View>
       </Modal>
 
-      {selectedItem ? (
-        <BusinessCard item={selectedItem} />
+      {!hasVisibleBusinesses &&
+      !isDiscoveryActive &&
+      selectedCategory !== "Events" &&
+      (!selectedItem || isMapEvent(selectedItem)) ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: 16,
+            right: 16,
+            bottom: 112,
+            zIndex: 12,
+            alignItems: "center",
+          }}
+        >
+          <View
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 999,
+              backgroundColor: "rgba(255,255,255,0.94)",
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: "600",
+                color: theme.colors.muted,
+              }}
+            >
+              No businesses nearby
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {selectedItem && !isMapEvent(selectedItem) ? (
+        <BusinessPreviewCarousel />
+      ) : isDiscoveryActive ? (
+        <DiscoveryResultSheet />
       ) : (
         <EventsBottomSheet />
       )}
