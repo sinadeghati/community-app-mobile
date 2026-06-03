@@ -32,7 +32,18 @@ const colors = {
 export default function CreateListingFinal() {
   const router = useRouter();
 
-  const { editId } = useLocalSearchParams();
+  const { editId, returnTo } = useLocalSearchParams<{
+    editId?: string;
+    returnTo?: string;
+  }>();
+
+  const handleBack = () => {
+    if (returnTo === "mylistings") {
+      router.replace("/mylistings");
+      return;
+    }
+    router.back();
+  };
 
   const [loading, setLoading] = useState(false);
 
@@ -50,6 +61,22 @@ export default function CreateListingFinal() {
   const [coverImage, setCoverImage] = useState<string | null>(null);
 
   const [gallery, setGallery] = useState<string[]>([]);
+  const [localBusinesses, setLocalBusinesses] = useState<any[]>([]);
+  const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadBusinesses = async () => {
+      try {
+        const raw = await AsyncStorage.getItem("my_local_businesses");
+        const list = raw ? JSON.parse(raw) : [];
+        setLocalBusinesses(Array.isArray(list) ? list : []);
+      } catch (error) {
+        console.log("Failed to load local businesses", error);
+      }
+    };
+
+    loadBusinesses();
+  }, []);
 
   useEffect(() => {
     const loadEditListing = async () => {
@@ -89,6 +116,9 @@ export default function CreateListingFinal() {
         setAddress(listing.address || "");
         setCoverImage(listing.image || null);
         setGallery(listing.gallery || []);
+        setSelectedBusinessId(
+          listing.businessId ? String(listing.businessId) : null
+        );
       } catch (error) {
         console.log("Failed to load listing for edit", error);
       }
@@ -165,7 +195,13 @@ export default function CreateListingFinal() {
       const existing = await AsyncStorage.getItem(storageKey);
       const parsedListings = existing ? JSON.parse(existing) : [];
 
-      const newListing = {
+      const linkedBusiness = selectedBusinessId
+        ? localBusinesses.find(
+            (biz: any) => String(biz.id) === String(selectedBusinessId)
+          )
+        : null;
+
+      const newListing: Record<string, unknown> = {
         id: Date.now().toString(),
         title,
         category,
@@ -184,19 +220,35 @@ export default function CreateListingFinal() {
         gallery,
         ownerUsername: profile.username || "",
         ownerEmail: profile.email || "",
-        businessId: profile.selectedBusinessId || "home-nurse",
-        businessName: profile.selectedBusinessName || "Home Nurse",
         businessCategory: category,
       };
+
+      if (linkedBusiness) {
+        newListing.businessId = String(linkedBusiness.id);
+        newListing.businessName =
+          linkedBusiness.name || linkedBusiness.business_name || "";
+      }
 
       let updatedListings;
 
       if (editId) {
-        updatedListings = parsedListings.map((item: any) =>
-          item.id === String(editId)
-            ? { ...item, ...newListing, id: item.id, updatedAt: "Updated just now" }
-            : item
-        );
+        updatedListings = parsedListings.map((item: any) => {
+          if (item.id !== String(editId)) return item;
+
+          const updated: any = {
+            ...item,
+            ...newListing,
+            id: item.id,
+            updatedAt: "Updated just now",
+          };
+
+          if (!linkedBusiness) {
+            delete updated.businessId;
+            delete updated.businessName;
+          }
+
+          return updated;
+        });
       } else {
         updatedListings = [newListing, ...parsedListings];
       }
@@ -259,7 +311,7 @@ export default function CreateListingFinal() {
               }}
             >
               <Pressable
-                onPress={() => router.back()}
+                onPress={handleBack}
                 style={{
                   width: 42,
                   height: 42,
@@ -310,7 +362,8 @@ export default function CreateListingFinal() {
                 </Text>
               </Pressable>
             </View>
-          </View>          <View
+          </View>
+          <View
             style={{
               marginTop: 20,
               marginHorizontal: 18,
@@ -558,7 +611,8 @@ export default function CreateListingFinal() {
                   );
                 })}
               </View>
-            </View>            <View
+            </View>
+            <View
               style={{
                 marginTop: 30,
               }}
@@ -583,11 +637,85 @@ export default function CreateListingFinal() {
                 Add your public business details and contact information.
               </Text>
 
+              {localBusinesses.length > 0 ? (
+                <View style={{ marginTop: 18 }}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: "800",
+                      color: colors.text,
+                      marginBottom: 10,
+                    }}
+                  >
+                    Connected business profile
+                  </Text>
+
+                  <Pressable
+                    onPress={() => setSelectedBusinessId(null)}
+                    style={{
+                      alignSelf: "flex-start",
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 999,
+                      marginBottom: 8,
+                      backgroundColor:
+                        selectedBusinessId === null ? colors.teal : "#F3F4F6",
+                      borderWidth: 1,
+                      borderColor:
+                        selectedBusinessId === null ? colors.teal : colors.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          selectedBusinessId === null ? "#fff" : colors.text,
+                        fontWeight: "800",
+                        fontSize: 13,
+                      }}
+                    >
+                      No business linked
+                    </Text>
+                  </Pressable>
+
+                  {localBusinesses.map((biz: any) => {
+                    const bizId = String(biz.id);
+                    const bizName = biz.name || biz.business_name || "Business";
+                    const selected = selectedBusinessId === bizId;
+
+                    return (
+                      <Pressable
+                        key={bizId}
+                        onPress={() => setSelectedBusinessId(bizId)}
+                        style={{
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          borderRadius: 16,
+                          marginBottom: 8,
+                          backgroundColor: selected ? colors.teal : "#F3F4F6",
+                          borderWidth: 1,
+                          borderColor: selected ? colors.teal : colors.border,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: selected ? "#fff" : colors.text,
+                            fontWeight: "800",
+                            fontSize: 14,
+                          }}
+                        >
+                          {bizName}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+
               <InputField
-                label="Business Name"
+                label="Listing Title"
                 value={title}
                 onChangeText={setTitle}
-                placeholder="Example: Fair Auto"
+                placeholder="Example: Tahchin Corner"
                 icon="business-outline"
               />
 
@@ -687,7 +815,8 @@ export default function CreateListingFinal() {
                   Public users can only view your business profile.
                 </Text>
               </View>
-            </View>            <View
+            </View>
+            <View
               style={{
                 marginTop: 30,
               }}

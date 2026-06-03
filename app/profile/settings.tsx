@@ -6,11 +6,15 @@ import {
     Text,
     Pressable,
     Switch,
-    Alert
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { showComingSoon } from "./comingSoon";
+import {
+    AppLanguage,
+    loadUserSettings,
+    saveUserSettings,
+} from "./settingsStorage";
 
 const BG = "#F6F5F2";
 const CARD = "#FFFFFF";
@@ -23,43 +27,36 @@ const SOFT = "#E7F6F4";
 export default function SettingsScreen() {
     const [notifications, setNotifications] = useState(true);
     const [locationVisibility, setLocationVisibility] = useState(true);
+    const [language, setLanguage] = useState<AppLanguage>("en");
 
     useEffect(() => {
         const loadSettings = async () => {
-            try {
-                const raw = await AsyncStorage.getItem("user_settings_v1");
-
-                if (!raw) return;
-
-                const saved = JSON.parse(raw);
-
-                setNotifications(saved.notifications ?? true);
-                setLocationVisibility(saved.locationVisibility ?? true);
-            } catch (error) {
-                console.log("SETTINGS LOAD ERROR:", error);
-            }
+            const saved = await loadUserSettings();
+            setNotifications(saved.notifications ?? true);
+            setLocationVisibility(saved.locationVisibility ?? true);
+            setLanguage(saved.language === "fa-preview" ? "fa-preview" : "en");
         };
 
         loadSettings();
     }, []);
 
-    const saveSetting = async (key: string, value: boolean) => {
-        try {
-            const raw = await AsyncStorage.getItem("user_settings_v1");
-            const current = raw ? JSON.parse(raw) : {};
+    const persist = async (partial: Parameters<typeof saveUserSettings>[0]) => {
+        await saveUserSettings(partial);
+    };
 
-            const updated = {
-                ...current,
-                [key]: value,
-            };
-
-            await AsyncStorage.setItem(
-                "user_settings_v1",
-                JSON.stringify(updated)
+    const selectLanguage = async (next: AppLanguage) => {
+        if (next === "fa-preview") {
+            showComingSoon(
+                "Persian language",
+                "Persian (Farsi) is in preview. Your preference will be saved, and the app will continue in English until this feature launches."
             );
-        } catch (error) {
-            console.log("SETTINGS SAVE ERROR:", error);
+            setLanguage("fa-preview");
+            await persist({ language: "fa-preview" });
+            return;
         }
+
+        setLanguage("en");
+        await persist({ language: "en" });
     };
 
     return (
@@ -123,8 +120,10 @@ export default function SettingsScreen() {
                                 value={notifications}
                                 onValueChange={(value) => {
                                     setNotifications(value);
-                                    saveSetting("notifications", value);
+                                    persist({ notifications: value });
                                 }}
+                                trackColor={{ true: "#BFE8E3", false: "#DDD" }}
+                                thumbColor={notifications ? TURQUOISE : "#FFF"}
                             />
                         }
                     />
@@ -134,61 +133,67 @@ export default function SettingsScreen() {
                     <SettingRow
                         icon="location-outline"
                         title="Location Visibility"
-                        subtitle="Control how your city or area appears"
+                        subtitle={
+                            locationVisibility
+                                ? "Your city may appear on your profile"
+                                : "City hidden from your public profile"
+                        }
                         right={
                             <Switch
                                 value={locationVisibility}
-
                                 onValueChange={(value) => {
                                     setLocationVisibility(value);
-                                    saveSetting("locationVisibility", value);
+                                    persist({ locationVisibility: value });
                                 }}
-
                                 trackColor={{ true: "#BFE8E3", false: "#DDD" }}
                                 thumbColor={locationVisibility ? TURQUOISE : "#FFF"}
                             />
                         }
                     />
+                </View>
 
-                    <Divider />
+                <Text style={sectionLabelStyle}>Language</Text>
 
-                    <SettingRow
-                        icon="language-outline"
-                        title="Language"
-                        subtitle="English now, Persian support later"
-
-                        onPress={() =>
-                            Alert.alert(
-                                "Language",
-                                "English is active now. Persian support will be added in the next version."
-                            )
-                        }
-                        right={<Chevron />}
+                <View style={cardStyle}>
+                    <LanguageRow
+                        label="English"
+                        subtitle="Active · app UI in English"
+                        selected={language === "en"}
+                        onPress={() => selectLanguage("en")}
                     />
-
                     <Divider />
+                    <LanguageRow
+                        label="Persian (Farsi)"
+                        subtitle="Preview · Coming soon"
+                        selected={language === "fa-preview"}
+                        comingSoon
+                        onPress={() => selectLanguage("fa-preview")}
+                    />
+                </View>
 
+                <Text style={sectionLabelStyle}>Privacy</Text>
+
+                <View style={cardStyle}>
                     <SettingRow
                         icon="shield-checkmark-outline"
                         title="Privacy & Safety"
-                        subtitle="Blocked users, reports, and visibility"
-
+                        subtitle="Visibility, blocked users, and reports"
                         onPress={() => router.push("/profile/privacy")}
-
-
                         right={<Chevron />}
                     />
                 </View>
+
+                <Text style={sectionLabelStyle}>Business</Text>
 
                 <View style={cardStyle}>
                     <SettingRow
                         icon="business-outline"
                         title="Business Tools"
-                        subtitle="Verification, visibility, ads, and performance"
+                        subtitle="Verification, visibility, and insights"
                         onPress={() =>
-                            Alert.alert(
+                            showComingSoon(
                                 "Business Tools",
-                                "Business tools will include verification, profile visibility, featured placement, ads, and performance insights."
+                                "Verification, featured placement, ads, and performance insights are on the roadmap for business owners."
                             )
                         }
                         right={<Chevron />}
@@ -199,24 +204,25 @@ export default function SettingsScreen() {
                     <SettingRow
                         icon="card-outline"
                         title="Billing & Plans"
-                        subtitle="Future subscriptions and promotions"
+                        subtitle="Subscriptions and promotions"
                         onPress={() =>
-                            Alert.alert(
+                            showComingSoon(
                                 "Billing & Plans",
-                                "Premium subscriptions, featured ads, and business promotion tools will be available in future updates."
+                                "Premium subscriptions and business promotion tools will be available in a future release."
                             )
                         }
                         right={<Chevron />}
                     />
                 </View>
 
+                <Text style={sectionLabelStyle}>Account</Text>
+
                 <View style={cardStyle}>
                     <SettingRow
                         icon="person-circle-outline"
                         title="Account"
                         subtitle="Profile, security, and login settings"
-                        onPress={() =>
-                            router.push("/profile/account")}
+                        onPress={() => router.push("/profile/account")}
                         right={<Chevron />}
                     />
 
@@ -225,18 +231,90 @@ export default function SettingsScreen() {
                     <SettingRow
                         icon="information-circle-outline"
                         title="About IranianApp"
-                        subtitle="Version, support, and legal information"
-                        onPress={() =>
-                            Alert.alert(
-                                "About IranianApp",
-                                "IranianApp is a Persian community platform focused on businesses, events, services, and local discovery."
-                            )
-                        }
+                        subtitle="Version, mission, and support"
+                        onPress={() => router.push("/profile/about")}
                         right={<Chevron />}
                     />
                 </View>
             </ScrollView>
         </SafeAreaView>
+    );
+}
+
+function LanguageRow({
+    label,
+    subtitle,
+    selected,
+    comingSoon,
+    onPress,
+}: {
+    label: string;
+    subtitle: string;
+    selected: boolean;
+    comingSoon?: boolean;
+    onPress: () => void;
+}) {
+    return (
+        <Pressable
+            onPress={onPress}
+            style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 14,
+            }}
+        >
+            <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "800", color: TEXT }}>
+                        {label}
+                    </Text>
+                    {comingSoon ? (
+                        <View
+                            style={{
+                                backgroundColor: SOFT,
+                                paddingHorizontal: 8,
+                                paddingVertical: 3,
+                                borderRadius: 999,
+                            }}
+                        >
+                            <Text
+                                style={{
+                                    fontSize: 10,
+                                    fontWeight: "800",
+                                    color: TURQUOISE,
+                                }}
+                            >
+                                COMING SOON
+                            </Text>
+                        </View>
+                    ) : null}
+                </View>
+                <Text
+                    style={{
+                        fontSize: 13.5,
+                        lineHeight: 19,
+                        color: MUTED,
+                        marginTop: 3,
+                    }}
+                >
+                    {subtitle}
+                </Text>
+            </View>
+
+            {selected ? (
+                <Ionicons name="checkmark-circle" size={24} color={TURQUOISE} />
+            ) : (
+                <View
+                    style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 11,
+                        borderWidth: 2,
+                        borderColor: BORDER,
+                    }}
+                />
+            )}
+        </Pressable>
     );
 }
 
@@ -250,6 +328,7 @@ function SettingRow({
     return (
         <Pressable
             onPress={onPress}
+            disabled={!onPress && !right}
             style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -322,4 +401,14 @@ const cardStyle = {
     borderWidth: 1,
     borderColor: BORDER,
     marginBottom: 18,
+};
+
+const sectionLabelStyle = {
+    fontSize: 13,
+    fontWeight: "800" as const,
+    color: MUTED,
+    letterSpacing: 0.6,
+    textTransform: "uppercase" as const,
+    marginBottom: 10,
+    marginLeft: 4,
 };

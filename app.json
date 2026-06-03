@@ -39,7 +39,13 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "PersianMap uses your location to center the map near you."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

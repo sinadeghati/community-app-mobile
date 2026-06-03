@@ -300,11 +300,7 @@ const heroImageUrl = useMemo(() => {
     },
   ]}
 >
- 
-
-  
-      
-<View
+      <View
   style={{
     backgroundColor: "#fff",
     borderRadius: 28,
@@ -352,10 +348,7 @@ const heroImageUrl = useMemo(() => {
     backgroundColor: "rgba(0,0,0,0.3)",
     
   }}
-
-
-/>    
-   
+/>
   <View
   style={{
     position: "absolute",
@@ -572,7 +565,6 @@ const heroImageUrl = useMemo(() => {
     <Text style={{ color: "#2563eb", fontSize: 13, fontWeight: "700" }}>📍 Escondido, CA</Text>
   </View>
 </View>
- 
 </View>
 <View
  style={{
@@ -955,10 +947,7 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
     Customers love the service, honesty, and professional work.
   </Text>
 </View>
-
-
-
- {isLoggedIn === true && 
+ {isLoggedIn === true &&
    currentUserId !== null &&
    currentUserId !== "" &&
    currentUserId !== "null" &&

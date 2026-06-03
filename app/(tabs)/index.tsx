@@ -97,12 +97,10 @@ export default function HomeLoginV2() {
 
   const loadAuthState = async () => {
     const tokens = await authStorage.getTokens();
-    const access = tokens?.access;
-    const ok = !!access && authStorage.isJwtNotExpired(access);
 
-    setIsLoggedIn(ok);
+    if (tokens?.access) {
+      setIsLoggedIn(true);
 
-    if (ok) {
       try {
         const raw = await AsyncStorage.getItem("user_profile_v2");
         if (raw) {
@@ -114,6 +112,8 @@ export default function HomeLoginV2() {
       } catch {
         // keep default display name
       }
+    } else {
+      setIsLoggedIn(false);
     }
 
     setAuthChecked(true);

@@ -136,9 +136,7 @@ export default function BusinessProfileV2() {
         const list = Array.isArray(response) ? response : response?.results || [];
 
         data =
-          list.find((item: Business) => String(item?.id) === profileId) ||
-          list[0] ||
-          null;
+          list.find((item: Business) => String(item?.id) === profileId) || null;
       }
 
       setBusiness(data);
@@ -646,7 +644,8 @@ export default function BusinessProfileV2() {
                 </Text>
               </Pressable>
             ) : null}
-          </ImageBackground>          <View
+          </ImageBackground>
+          <View
             style={{
               position: "absolute",
               left: 18,
@@ -821,7 +820,8 @@ export default function BusinessProfileV2() {
           <ActionButton icon="navigate" label="Directions" onPress={openDirections} />
           <ActionButton icon="logo-instagram" label="Instagram" onPress={openInstagram} />
 
-        </View>        <View
+        </View>
+        <View
           style={{
             flexDirection: "row",
             marginTop: 24,
@@ -951,7 +951,8 @@ export default function BusinessProfileV2() {
               </ScrollView>
             </Section>
           </>
-        ) : null}        {activeTab === "Photos" ? (
+        ) : null}
+        {activeTab === "Photos" ? (
           <Section title="Photos & Gallery" action="Open gallery" onActionPress={openGallery}>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
               {photos.map((uri, index) => (

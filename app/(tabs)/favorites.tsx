@@ -70,7 +70,7 @@ export default function FavoritesScreen() {
   };
 
   const removeFavorite = async (id: string) => {
-    await AsyncStorage.setItem(`favorite-business-${id}`, "false");
+    await AsyncStorage.removeItem(`favorite-business-${id}`);
     await AsyncStorage.removeItem(`favorite-business-data-${id}`);
     setItems((prev) => prev.filter((item) => item.id !== id));
   };

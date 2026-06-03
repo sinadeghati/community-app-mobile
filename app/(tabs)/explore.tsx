@@ -12,9 +12,13 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { API } from "../../lib/api";
+import {
+  loadDiscoverableListings,
+  matchesListingCategory,
+  matchesListingSearch,
+} from "../../lib/discoverableListings";
 import { theme } from "../../lib/theme";
 
 type Listing = {
@@ -89,29 +93,49 @@ export default function ExploreScreen() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
 
+  const loadFavorites = async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const favoriteKeys = keys.filter(
+        (key) =>
+          key.startsWith("favorite-business-") && !key.includes("data")
+      );
+
+      if (favoriteKeys.length === 0) {
+        setFavorites({});
+        return;
+      }
+
+      const result = await AsyncStorage.multiGet(favoriteKeys);
+      const favMap: Record<string, boolean> = {};
+
+      result.forEach(([key, value]) => {
+        const id = key.replace("favorite-business-", "");
+        favMap[id] = value === "true";
+      });
+
+      setFavorites(favMap);
+    } catch (e) {
+      console.log("Explore favorites load error:", e);
+    }
+  };
+
   useEffect(() => {
     loadListings();
   }, []);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      loadFavorites();
+    }, [])
+  );
+
   const loadListings = async () => {
     try {
       setLoading(true);
-
-      const response = await API.getListings();
-      const data = Array.isArray(response) ? response : response?.results || [];
-
+      const data = await loadDiscoverableListings();
       setListings(data);
-
-      const keys = await AsyncStorage.getAllKeys();
-      const favoriteKeys = keys.filter((key) => key.startsWith("favorite-business-"));
-
-      const favMap: Record<string, boolean> = {};
-      favoriteKeys.forEach((key) => {
-        const id = key.replace("favorite-business-", "");
-        if (!key.includes("data")) favMap[id] = true;
-      });
-
-      setFavorites(favMap);
+      await loadFavorites();
     } catch (e) {
       console.log("Explore V2.5 load error:", e);
     } finally {
@@ -152,21 +176,12 @@ export default function ExploreScreen() {
     const q = search.trim().toLowerCase();
 
     return listings.filter((item) => {
-      const title = getTitle(item).toLowerCase();
-      const category = getCategory(item).toLowerCase();
-      const city = String(item.city || "").toLowerCase();
-      const description = String(item.description || "").toLowerCase();
-
-      const matchesSearch =
-        !q ||
-        title.includes(q) ||
-        category.includes(q) ||
-        city.includes(q) ||
-        description.includes(q);
-
-      const matchesCategory =
-        selectedCategory === "All" ||
-        category.includes(selectedCategory.toLowerCase());
+      const matchesSearch = matchesListingSearch(item, q);
+      const matchesCategory = matchesListingCategory(
+        item,
+        selectedCategory,
+        search
+      );
 
       return matchesSearch && matchesCategory;
     });

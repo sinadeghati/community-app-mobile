@@ -27,15 +27,21 @@ export default function ProfileV2Clean() {
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [eventsCount, setEventsCount] = useState(0);
 
+  const loadLocalBusinesses = async () => {
+    try {
+      const localRaw = await AsyncStorage.getItem("my_local_businesses");
+      const localList = localRaw ? JSON.parse(localRaw) : [];
+      setLocalBusinesses(Array.isArray(localList) ? localList : []);
+    } catch (error) {
+      console.log("LOCAL BUSINESSES LOAD ERROR:", error);
+    }
+  };
+
   useFocusEffect(
     React.useCallback(() => {
       const loadSavedProfile = async () => {
         try {
           const raw = await AsyncStorage.getItem("user_profile_v2");
-
-          if (!raw) return;
-
-          const saved = JSON.parse(raw);
 
           const favoritesRaw = await AsyncStorage.getItem("favorites");
           const favoritesList = favoritesRaw ? JSON.parse(favoritesRaw) : [];
@@ -43,6 +49,12 @@ export default function ProfileV2Clean() {
           setFavoritesCount(
             Array.isArray(favoritesList) ? favoritesList.length : 0
           );
+
+          await loadLocalBusinesses();
+
+          if (!raw) return;
+
+          const saved = JSON.parse(raw);
 
           if (saved?.profileImage || saved?.profile_image) {
             setProfileImage(saved.profileImage || saved.profile_image);
@@ -87,6 +99,8 @@ export default function ProfileV2Clean() {
           await AsyncStorage.setItem("is_logged_in", "true");
           setIsLoggedIn(true);
 
+          await loadLocalBusinesses();
+
           try {
             const cachedRaw = await AsyncStorage.getItem("user_profile_v2");
 
@@ -117,6 +131,7 @@ export default function ProfileV2Clean() {
             const data = await res.json();
             if (!res.ok || data?.code === "token_not_valid") {
               console.log("PROFILE API INVALID, USING LOCAL CACHE:", data);
+              await loadLocalBusinesses();
               return;
             }
             const mergedProfile = {
@@ -137,10 +152,8 @@ export default function ProfileV2Clean() {
               "user_profile_v2",
               JSON.stringify(mergedProfile)
             );
-            const localRaw = await AsyncStorage.getItem("my_local_businesses");
-            const localList = localRaw ? JSON.parse(localRaw) : [];
 
-            setLocalBusinesses(localList);
+            await loadLocalBusinesses();
 
             console.log("PROFILE RESPONSE:", data);
 
@@ -149,6 +162,7 @@ export default function ProfileV2Clean() {
             }
           } catch (e) {
             console.log("PROFILE LOAD ERROR:", e);
+            await loadLocalBusinesses();
           }
         } else {
           // No tokens = guest UI. Keep user_profile_v2 in storage for the next login.
@@ -169,11 +183,13 @@ export default function ProfileV2Clean() {
     title,
     subtitle,
     onPress,
+    isLast,
   }: {
     icon: keyof typeof Ionicons.glyphMap;
     title: string;
     subtitle: string;
     onPress: () => void;
+    isLast?: boolean;
   }) => (
     <Pressable
       onPress={onPress}
@@ -181,7 +197,7 @@ export default function ProfileV2Clean() {
         flexDirection: "row",
         alignItems: "center",
         paddingVertical: 15,
-        borderBottomWidth: 1,
+        borderBottomWidth: isLast ? 0 : 1,
         borderBottomColor: theme.colors.border,
       }}
     >
@@ -223,7 +239,9 @@ export default function ProfileV2Clean() {
 
       <Ionicons name="chevron-forward" size={21} color={theme.colors.muted} />
     </Pressable>
-  ); const StatBox = ({
+  );
+
+  const StatBox = ({
     value,
     label,
   }: {
@@ -343,7 +361,9 @@ export default function ProfileV2Clean() {
         </View>
       </SafeAreaView>
     );
-  } return (
+  }
+
+  return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -517,47 +537,14 @@ export default function ProfileV2Clean() {
           <StatBox value={String(eventsCount)} label="Events" />
         </View>
 
-        <View
-          style={{
-            marginHorizontal: 18,
-            marginTop: 18,
-            backgroundColor: theme.colors.card,
-            borderRadius: 30,
-            padding: 18,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            ...theme.shadow.soft,
-          }}
-        >
-          {profile?.bio ? (
-            <View
-              style={{
-                backgroundColor: "#fff",
-                marginHorizontal: 18,
-                marginTop: 14,
-                marginBottom: 12,
-                borderRadius: 22,
-                padding: 14,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                ...theme.shadow.medium,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "800",
-                  color: theme.colors.charcoal,
-                  marginBottom: 8,
-                }}
-              >
-                About
-              </Text>
-
+        {profile?.bio ? (
+          <>
+            <Text style={sectionLabelStyle}>About</Text>
+            <View style={sectionCardStyle}>
               <Text
                 style={{
                   fontSize: 14,
-                  lineHeight: 20,
+                  lineHeight: 22,
                   color: theme.colors.muted,
                   fontWeight: "500",
                 }}
@@ -565,18 +552,11 @@ export default function ProfileV2Clean() {
                 {profile.bio}
               </Text>
             </View>
-          ) : null}
-          <Text
-            style={{
-              fontSize: 23,
-              fontWeight: "900",
-              color: theme.colors.charcoal,
-              marginBottom: 12,
-            }}
-          >
-            Quick Access
-          </Text>
+          </>
+        ) : null}
 
+        <Text style={sectionLabelStyle}>Business</Text>
+        <View style={sectionCardStyle}>
           <MenuItem
             icon="briefcase-outline"
             title="Add Business Profile"
@@ -584,20 +564,20 @@ export default function ProfileV2Clean() {
             onPress={() => router.push("/profile/create-business")}
           />
 
-          {localBusinesses.length > 0 && (
+          {localBusinesses.length > 0 ? (
             <View
               style={{
-                backgroundColor: "#fff",
-                borderRadius: 22,
-                padding: 16,
-                marginBottom: 18,
+                borderTopWidth: 1,
+                borderTopColor: theme.colors.border,
+                paddingTop: 14,
+                paddingBottom: 4,
               }}
             >
               <Text
                 style={{
-                  fontSize: 22,
+                  fontSize: 15,
                   fontWeight: "800",
-                  marginBottom: 14,
+                  marginBottom: 12,
                   color: theme.colors.charcoal,
                 }}
               >
@@ -616,7 +596,7 @@ export default function ProfileV2Clean() {
                     backgroundColor: "#F7F4EE",
                     borderRadius: 18,
                     padding: 14,
-                    marginBottom: 12,
+                    marginBottom: index === localBusinesses.length - 1 ? 8 : 12,
                   }}
                 >
                   <View
@@ -645,7 +625,7 @@ export default function ProfileV2Clean() {
                         color: theme.colors.charcoal,
                       }}
                     >
-                      {biz.name}
+                      {biz.name || biz.business_name || "Business"}
                     </Text>
 
                     <Text
@@ -655,7 +635,9 @@ export default function ProfileV2Clean() {
                         marginTop: 3,
                       }}
                     >
-                      {biz.category} • {biz.city}
+                      {[biz.category || biz.business_category, biz.city]
+                        .filter(Boolean)
+                        .join(" • ") || "View business"}
                     </Text>
                   </View>
 
@@ -667,17 +649,19 @@ export default function ProfileV2Clean() {
                 </Pressable>
               ))}
             </View>
-          )}
-
-          {isLoggedIn ? (
-            <MenuItem
-              icon="grid-outline"
-              title="My Listings"
-              subtitle="Manage your business listings"
-              onPress={() => go("/mylistings")}
-            />
           ) : null}
 
+          <MenuItem
+            icon="grid-outline"
+            title="My Listings"
+            subtitle="Manage your business listings"
+            onPress={() => go("/mylistings")}
+            isLast
+          />
+        </View>
+
+        <Text style={sectionLabelStyle}>Community</Text>
+        <View style={sectionCardStyle}>
           <MenuItem
             icon="heart-outline"
             title="Favorites"
@@ -703,41 +687,25 @@ export default function ProfileV2Clean() {
             icon="calendar-outline"
             title="Events"
             subtitle="Community events and gatherings"
-            onPress={() => go("/profile/events")
-            }
+            onPress={() => go("/profile/events")}
+            isLast
           />
         </View>
 
-        <View
-          style={{
-            marginHorizontal: 18,
-            marginTop: 18,
-            backgroundColor: theme.colors.card,
-            borderRadius: 30,
-            padding: 18,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            ...theme.shadow.soft,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 23,
-              fontWeight: "900",
-              color: theme.colors.charcoal,
-              marginBottom: 12,
-            }}
-          >
-            Account
-          </Text>
-
+        <Text style={sectionLabelStyle}>Account</Text>
+        <View style={[sectionCardStyle, { marginBottom: 24 }]}>
           <MenuItem
             icon="shield-checkmark-outline"
             title="Verification"
             subtitle="Get verified as a trusted member"
-            onPress={() =>
-              go("/profile/verification")
-            }
+            onPress={() => go("/profile/verification")}
+          />
+
+          <MenuItem
+            icon="settings-outline"
+            title="Settings"
+            subtitle="Notifications, privacy, and preferences"
+            onPress={() => go("/profile/settings")}
           />
 
           <MenuItem
@@ -761,10 +729,32 @@ export default function ProfileV2Clean() {
                 ]
               );
             }}
-
+            isLast
           />
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+const sectionLabelStyle = {
+  fontSize: 13,
+  fontWeight: "800" as const,
+  color: theme.colors.muted,
+  letterSpacing: 0.6,
+  textTransform: "uppercase" as const,
+  marginTop: 18,
+  marginBottom: 10,
+  marginLeft: 22,
+};
+
+const sectionCardStyle = {
+  marginHorizontal: 18,
+  backgroundColor: theme.colors.card,
+  borderRadius: 30,
+  paddingHorizontal: 18,
+  paddingVertical: 8,
+  borderWidth: 1,
+  borderColor: theme.colors.border,
+  ...theme.shadow.soft,
+};

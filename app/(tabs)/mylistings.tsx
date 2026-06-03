@@ -101,7 +101,7 @@ export default function MyListingsScreen() {
 
           const profile = JSON.parse(rawProfile);
 
-          const storageKey = `my_listings_${profile.username || profile.email}`;
+          const storageKey = `my_listings_${profile.username || profile.email || "default"}`;
 
           const rawListings = await AsyncStorage.getItem(storageKey);
 
@@ -152,13 +152,16 @@ export default function MyListingsScreen() {
   };
 
   const goAddListing = () => {
-    router.push("/create");
+    router.push({
+      pathname: "/create",
+      params: { returnTo: "mylistings" },
+    });
   };
 
   const goEditListing = (id: string) => {
     router.push({
       pathname: "/create",
-      params: { editId: id },
+      params: { editId: id, returnTo: "mylistings" },
     });
   };
 

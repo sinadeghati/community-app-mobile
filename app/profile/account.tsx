@@ -5,10 +5,10 @@ import {
   Text,
   View,
   Pressable,
-  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { showComingSoon } from "./comingSoon";
 
 const BG = "#F6F5F2";
 const CARD = "#FFFFFF";
@@ -94,9 +94,9 @@ export default function AccountScreen() {
             title="Email Address"
             subtitle="Email management and verification"
             onPress={() =>
-              Alert.alert(
-                "Email",
-                "Email management will be available soon."
+              showComingSoon(
+                "Email management",
+                "You'll be able to update and verify your email address from this screen in a future release."
               )
             }
           />
@@ -108,9 +108,9 @@ export default function AccountScreen() {
             title="Change Password"
             subtitle="Update and secure your password"
             onPress={() =>
-              Alert.alert(
+              showComingSoon(
                 "Change Password",
-                "Password management will be connected soon."
+                "Secure password updates will be available here soon. For now, use the sign-in screen if you need to access your account."
               )
             }
           />
@@ -123,9 +123,9 @@ export default function AccountScreen() {
             title="Login & Security"
             subtitle="Device sessions and account protection"
             onPress={() =>
-              Alert.alert(
+              showComingSoon(
                 "Login & Security",
-                "Advanced security tools will be added later."
+                "Session management, two-factor authentication, and device controls are planned for a future release."
               )
             }
           />
@@ -137,9 +137,9 @@ export default function AccountScreen() {
             title="Delete Account"
             subtitle="Permanently remove your account"
             onPress={() =>
-              Alert.alert(
+              showComingSoon(
                 "Delete Account",
-                "Account deletion will require confirmation and verification."
+                "Permanent account deletion will require confirmation and verification. This feature is not yet available in the MVP."
               )
             }
           />
