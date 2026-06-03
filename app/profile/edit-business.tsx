@@ -34,6 +34,16 @@ import {
   type BusinessHours,
   type WeekdayKey,
 } from "@/lib/businessHours";
+import {
+  BUSINESS_UPDATE_TYPES,
+  createEmptyBusinessUpdate,
+  formatExpirationDateInput,
+  normalizeBusinessUpdates,
+  parseExpirationDateInput,
+  sanitizeBusinessUpdatesForSave,
+  type BusinessUpdate,
+  type BusinessUpdateType,
+} from "@/lib/businessUpdates";
 
 const TURQUOISE = "#11998E";
 const BG = "#F5F4F0";
@@ -64,6 +74,7 @@ export default function EditBusinessProfileScreen() {
   const [instagram, setInstagram] = useState("");
   const [category, setCategory] = useState("");
   const [menuItems, setMenuItems] = useState<BusinessMenuItem[]>([]);
+  const [businessUpdates, setBusinessUpdates] = useState<BusinessUpdate[]>([]);
   const [hoursEnabled, setHoursEnabled] = useState(false);
   const [businessHours, setBusinessHours] = useState<BusinessHours>(
     createDefaultBusinessHours()
@@ -91,6 +102,9 @@ export default function EditBusinessProfileScreen() {
     category: item?.category || "",
     menu_items: sanitizeMenuItemsForSave(
       normalizeMenuItems(item?.menu_items ?? item?.menuItems)
+    ),
+    business_updates: sanitizeBusinessUpdatesForSave(
+      normalizeBusinessUpdates(item?.business_updates ?? item?.businessUpdates)
     ),
     business_hours: item?.hours_configured
       ? sanitizeBusinessHoursForSave(
@@ -121,6 +135,9 @@ export default function EditBusinessProfileScreen() {
     setInstagram(data.instagram);
     setCategory(data.category);
     setMenuItems(normalizeMenuItems(item?.menu_items ?? item?.menuItems));
+    setBusinessUpdates(
+      normalizeBusinessUpdates(item?.business_updates ?? item?.businessUpdates)
+    );
     setHoursEnabled(Boolean(item?.hours_configured));
     setBusinessHours(
       normalizeBusinessHours(item?.business_hours ?? item?.businessHours) ||
@@ -186,6 +203,47 @@ export default function EditBusinessProfileScreen() {
     setMenuItems((current) => [...current, createEmptyMenuItem()]);
   };
 
+  const updateBusinessUpdate = (
+    id: string,
+    patch: Partial<BusinessUpdate>
+  ) => {
+    setBusinessUpdates((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    );
+  };
+
+  const addBusinessUpdate = () => {
+    setBusinessUpdates((current) => [...current, createEmptyBusinessUpdate()]);
+  };
+
+  const removeBusinessUpdate = (id: string) => {
+    Alert.alert("Remove update", "Delete this business update?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          setBusinessUpdates((current) =>
+            current.filter((item) => item.id !== id)
+          );
+        },
+      },
+    ]);
+  };
+
+  const pickUpdateImage = async (id: string) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.85,
+    });
+
+    if (!result.canceled) {
+      updateBusinessUpdate(id, { image: result.assets[0].uri });
+    }
+  };
+
   const removeMenuItem = (id: string) => {
     Alert.alert("Remove item", "Delete this service or menu item?", [
       { text: "Cancel", style: "cancel" },
@@ -241,14 +299,42 @@ export default function EditBusinessProfileScreen() {
       setSaving(true);
 
       const itemsToSave = sanitizeMenuItemsForSave(menuItems);
-      const invalidDraft = menuItems.some(
+      const updatesToSave = sanitizeBusinessUpdatesForSave(
+        businessUpdates.map((item) => {
+          const exp = item.expiresAt?.trim();
+          if (!exp) return { ...item, expiresAt: undefined };
+
+          const iso =
+            parseExpirationDateInput(formatExpirationDateInput(exp) || exp) ||
+            parseExpirationDateInput(exp);
+
+          return { ...item, expiresAt: iso };
+        })
+      );
+
+      const invalidMenuDraft = menuItems.some(
         (item) => !item.title.trim() && (item.description || item.price || item.image)
       );
 
-      if (invalidDraft) {
+      if (invalidMenuDraft) {
         Alert.alert(
           "Title required",
           "Each service or menu item needs a title before saving."
+        );
+        setSaving(false);
+        return;
+      }
+
+      const invalidUpdateDraft = businessUpdates.some(
+        (item) =>
+          !item.title.trim() &&
+          (item.description || item.image || item.expiresAt)
+      );
+
+      if (invalidUpdateDraft) {
+        Alert.alert(
+          "Title required",
+          "Each business update needs a title before saving."
         );
         setSaving(false);
         return;
@@ -270,6 +356,7 @@ export default function EditBusinessProfileScreen() {
         instagram,
         category,
         menu_items: itemsToSave,
+        business_updates: updatesToSave,
         business_hours: hoursEnabled
           ? sanitizeBusinessHoursForSave(businessHours)
           : null,
@@ -477,6 +564,187 @@ export default function EditBusinessProfileScreen() {
                 );
               })
             : null}
+
+          <Section title="Business Updates" />
+          <Text style={{ fontSize: 14, color: MUTED, marginBottom: 14, lineHeight: 20 }}>
+            Share specials, offers, events, and announcements with your community.
+          </Text>
+
+          {businessUpdates.map((update, index) => (
+            <View
+              key={update.id}
+              style={{
+                marginBottom: 16,
+                padding: 14,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: BORDER,
+                backgroundColor: CARD,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: "800", color: TEXT }}>
+                  Update {index + 1}
+                </Text>
+                <Pressable onPress={() => removeBusinessUpdate(update.id)} hitSlop={8}>
+                  <Ionicons name="trash-outline" size={20} color="#DC2626" />
+                </Pressable>
+              </View>
+
+              <Text style={fieldLabelStyle}>Type</Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginBottom: 14,
+                }}
+              >
+                {BUSINESS_UPDATE_TYPES.map((entry) => {
+                  const active = update.type === entry.key;
+
+                  return (
+                    <Pressable
+                      key={entry.key}
+                      onPress={() =>
+                        updateBusinessUpdate(update.id, {
+                          type: entry.key as BusinessUpdateType,
+                        })
+                      }
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: active ? TURQUOISE : BORDER,
+                        backgroundColor: active
+                          ? "rgba(17,153,142,0.12)"
+                          : CARD,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "700",
+                          color: active ? TURQUOISE : MUTED,
+                        }}
+                      >
+                        {entry.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Field
+                label="Title *"
+                value={update.title}
+                setValue={(text) => updateBusinessUpdate(update.id, { title: text })}
+              />
+              <Field
+                label="Description"
+                value={update.description || ""}
+                setValue={(text) =>
+                  updateBusinessUpdate(update.id, { description: text })
+                }
+                multiline
+              />
+              <Field
+                label="Expiration date"
+                value={formatExpirationDateInput(update.expiresAt)}
+                setValue={(text) => {
+                  const trimmed = text.trim();
+                  updateBusinessUpdate(update.id, {
+                    expiresAt: trimmed
+                      ? parseExpirationDateInput(trimmed) || trimmed
+                      : undefined,
+                  });
+                }}
+                placeholder="YYYY-MM-DD (optional)"
+              />
+
+              <Text style={label}>Image (optional)</Text>
+              <Pressable
+                onPress={() => pickUpdateImage(update.id)}
+                style={{ marginBottom: 4 }}
+              >
+                {update.image ? (
+                  <Image
+                    source={{ uri: update.image }}
+                    style={{
+                      width: "100%",
+                      height: 120,
+                      borderRadius: 14,
+                      backgroundColor: BORDER,
+                    }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View
+                    style={{
+                      height: 88,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                      borderStyle: "dashed",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: BG,
+                    }}
+                  >
+                    <Ionicons name="image-outline" size={22} color={MUTED} />
+                    <Text style={{ marginTop: 6, color: MUTED, fontSize: 13 }}>
+                      Add image
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+
+              {update.image ? (
+                <Pressable
+                  onPress={() => updateBusinessUpdate(update.id, { image: "" })}
+                >
+                  <Text style={{ color: MUTED, fontSize: 13, fontWeight: "700" }}>
+                    Remove image
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ))}
+
+          <Pressable
+            onPress={addBusinessUpdate}
+            style={{
+              height: 52,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: TURQUOISE,
+              backgroundColor: "rgba(17,153,142,0.08)",
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              marginBottom: 8,
+            }}
+          >
+            <Ionicons name="add-circle-outline" size={20} color={TURQUOISE} />
+            <Text
+              style={{
+                marginLeft: 8,
+                color: TURQUOISE,
+                fontSize: 15,
+                fontWeight: "800",
+              }}
+            >
+              Add update
+            </Text>
+          </Pressable>
 
           <Section title="Services / Menu Items" />
           <Text style={{ fontSize: 14, color: MUTED, marginBottom: 14, lineHeight: 20 }}>

@@ -19,6 +19,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API } from "../../lib/api";
 import { getBusinessMenuItems, type BusinessMenuItem } from "../../lib/businessMenuItems";
 import {
+  formatBusinessUpdateExpiration,
+  getBusinessUpdateTypeLabel,
+  getVisibleBusinessUpdates,
+  type BusinessUpdate,
+  type BusinessUpdateType,
+} from "../../lib/businessUpdates";
+import {
   getBusinessHoursDisplay,
   getBusinessHoursFromRecord,
   getWeeklyHoursRows,
@@ -63,6 +70,8 @@ type Business = {
   images?: any[];
   menu_items?: BusinessMenuItem[];
   menuItems?: BusinessMenuItem[];
+  business_updates?: BusinessUpdate[];
+  businessUpdates?: BusinessUpdate[];
   business_hours?: unknown;
   businessHours?: unknown;
   hours_configured?: boolean;
@@ -124,33 +133,110 @@ const isFeatured = (item?: Business | null) =>
 
 const getInstagram = (item?: Business | null) => String(item?.instagram || "").trim();
 
-/** Future-ready activity slots (backend posts later). */
-const ACTIVITY_PLACEHOLDERS = [
-  {
-    key: "specials",
-    icon: "pricetag-outline" as const,
-    title: "Weekly specials",
-    description: "Share menus, deals, and seasonal offers with your community.",
-  },
-  {
-    key: "events",
-    icon: "calendar-outline" as const,
-    title: "Events",
-    description: "Promote gatherings, concerts, and community celebrations.",
-  },
-  {
-    key: "offers",
-    icon: "gift-outline" as const,
-    title: "Offers",
-    description: "Highlight limited-time discounts and member perks.",
-  },
-  {
-    key: "announcements",
-    icon: "megaphone-outline" as const,
-    title: "Announcements",
-    description: "Post hours, updates, and important business news.",
-  },
-];
+const UPDATE_TYPE_ICONS: Record<
+  BusinessUpdateType,
+  keyof typeof Ionicons.glyphMap
+> = {
+  special: "pricetag-outline",
+  offer: "gift-outline",
+  event: "calendar-outline",
+  announcement: "megaphone-outline",
+};
+
+function BusinessUpdateCard({ update }: { update: BusinessUpdate }) {
+  const expiration = formatBusinessUpdateExpiration(update.expiresAt);
+
+  return (
+    <View
+      style={{
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.border,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            backgroundColor: "rgba(13,148,136,0.1)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons
+            name={UPDATE_TYPE_ICONS[update.type]}
+            size={20}
+            color={theme.colors.turquoise}
+          />
+        </View>
+
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: "800",
+              color: theme.colors.turquoise,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+            }}
+          >
+            {getBusinessUpdateTypeLabel(update.type)}
+          </Text>
+          <Text
+            style={{
+              marginTop: 4,
+              fontSize: 15,
+              fontWeight: "800",
+              color: theme.colors.charcoal,
+            }}
+          >
+            {update.title}
+          </Text>
+          {update.description ? (
+            <Text
+              style={{
+                marginTop: 4,
+                fontSize: 14,
+                lineHeight: 21,
+                color: theme.colors.charcoal,
+              }}
+            >
+              {update.description}
+            </Text>
+          ) : null}
+          {expiration ? (
+            <Text
+              style={{
+                marginTop: 6,
+                fontSize: 12,
+                fontWeight: "600",
+                color: theme.colors.muted,
+              }}
+            >
+              {expiration}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      {update.image ? (
+        <Image
+          source={{ uri: update.image }}
+          style={{
+            width: "100%",
+            height: 140,
+            borderRadius: theme.radius.sm,
+            marginTop: 12,
+            backgroundColor: "#eee",
+          }}
+          resizeMode="cover"
+        />
+      ) : null}
+    </View>
+  );
+}
 
 const profileSectionCardStyle = {
   marginHorizontal: theme.spacing.md,
@@ -584,6 +670,10 @@ export default function BusinessProfileV2() {
   const hasInstagram = Boolean(getInstagram(business));
 
   const menuItems = useMemo(() => getBusinessMenuItems(business), [business]);
+  const businessUpdates = useMemo(
+    () => getVisibleBusinessUpdates(business),
+    [business]
+  );
 
   const businessHours = useMemo(
     () => getBusinessHoursFromRecord(business),
@@ -1994,6 +2084,25 @@ export default function BusinessProfileV2() {
               ) : null}
             </Section>
 
+            <Section title="Updates">
+              {businessUpdates.length > 0 ? (
+                businessUpdates.map((update) => (
+                  <BusinessUpdateCard key={update.id} update={update} />
+                ))
+              ) : (
+                <Text
+                  style={{
+                    fontSize: 14,
+                    lineHeight: 21,
+                    color: theme.colors.muted,
+                    fontWeight: "600",
+                  }}
+                >
+                  No updates yet.
+                </Text>
+              )}
+            </Section>
+
             <Section title="Highlights">
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <HighlightBox value="Active" label="Business" icon="flash" />
@@ -2112,26 +2221,21 @@ export default function BusinessProfileV2() {
         {activeTab === "Services" ? (
           <>
             <Section title="Business updates">
-              <Text
-                style={{
-                  fontSize: 14,
-                  lineHeight: 21,
-                  color: theme.colors.muted,
-                  marginBottom: theme.spacing.sm,
-                }}
-              >
-                Soon you will see specials, events, offers, and announcements from this
-                business here.
-              </Text>
-
-              {ACTIVITY_PLACEHOLDERS.map((slot) => (
-                <ActivityPlaceholder
-                  key={slot.key}
-                  icon={slot.icon}
-                  title={slot.title}
-                  description={slot.description}
+              {businessUpdates.length > 0 ? (
+                businessUpdates.map((update) => (
+                  <BusinessUpdateCard key={update.id} update={update} />
+                ))
+              ) : (
+                <EmptyState
+                  icon="megaphone-outline"
+                  title="No updates yet."
+                  subtitle={
+                    owner
+                      ? "Edit your business profile to post specials, offers, events, and announcements."
+                      : undefined
+                  }
                 />
-              ))}
+              )}
             </Section>
 
             <Section title="Services & menu">
