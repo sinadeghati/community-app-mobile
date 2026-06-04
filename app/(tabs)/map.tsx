@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -519,6 +526,315 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const PREVIEW_CARD_WIDTH = SCREEN_WIDTH - 32;
 const PREVIEW_CARD_GAP = 12;
+const PREVIEW_CARD_BOTTOM = 84;
+
+type MapPreviewCarouselEntry = {
+  item: MapItem;
+  point: ResolvedMapPoint;
+};
+
+type MapBusinessPreviewCarouselProps = {
+  carouselData: MapPreviewCarouselEntry[];
+  selectedItem: MapItem;
+  favorites: Record<string, boolean>;
+  reviewSummaries: Record<string, BusinessReviewSummary>;
+  activeUpdatesById: Record<string, BusinessUpdate | null>;
+  onSelectItem: (item: MapItem) => void;
+  onOpenProfile: (item: MapItem) => void;
+  onToggleFavorite: (item: MapItem) => void;
+  onOpenDirections: (point: ResolvedMapPoint) => void;
+  onOpenCall: (item: MapItem) => void;
+  onOpenProfileUpdates: (item: MapItem) => void;
+};
+
+const MapBusinessPreviewCarousel = memo(function MapBusinessPreviewCarousel({
+  carouselData,
+  selectedItem,
+  favorites,
+  reviewSummaries,
+  activeUpdatesById,
+  onSelectItem,
+  onOpenProfile,
+  onToggleFavorite,
+  onOpenDirections,
+  onOpenCall,
+  onOpenProfileUpdates,
+}: MapBusinessPreviewCarouselProps) {
+  const listRef = useRef<FlatList<MapPreviewCarouselEntry>>(null);
+  const enterAnim = useRef(new Animated.Value(1)).current;
+  const selectedItemId = getId(selectedItem);
+  const snapInterval = PREVIEW_CARD_WIDTH + PREVIEW_CARD_GAP;
+
+  useEffect(() => {
+    const index = carouselData.findIndex(
+      (entry) => getId(entry.item) === selectedItemId
+    );
+
+    if (index >= 0) {
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToIndex({ index, animated: false });
+      });
+    }
+  }, [carouselData, selectedItemId]);
+
+  useEffect(() => {
+    enterAnim.setValue(0);
+    Animated.spring(enterAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 70,
+    }).start();
+  }, [enterAnim, selectedItemId]);
+
+  const translateY = enterAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [28, 0],
+  });
+
+  const renderPreviewCard = ({
+    item,
+    point,
+  }: MapPreviewCarouselEntry) => {
+    const id = getId(item);
+    const saved = favorites[id];
+    const active = selectedItemId === id;
+
+    return (
+      <View
+        style={{
+          width: PREVIEW_CARD_WIDTH,
+          marginRight: PREVIEW_CARD_GAP,
+          opacity: active ? 1 : 0.94,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: "rgba(255,255,255,0.98)",
+            borderRadius: 18,
+            padding: 11,
+            borderWidth: 1,
+            borderColor: active
+              ? "rgba(13,148,136,0.35)"
+              : theme.colors.border,
+            shadowColor: "#000",
+            shadowOpacity: 0.08,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 3 },
+            elevation: 5,
+          }}
+        >
+          <Pressable onPress={() => onOpenProfile(item)}>
+            <View style={{ flexDirection: "row" }}>
+              <Image
+                source={{ uri: getImage(item) }}
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 12,
+                  backgroundColor: "#eee",
+                }}
+                resizeMode="cover"
+              />
+
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      flex: 1,
+                      fontSize: 16,
+                      fontWeight: "800",
+                      color: theme.colors.charcoal,
+                    }}
+                  >
+                    {getTitle(item)}
+                  </Text>
+
+                  <Pressable onPress={() => onToggleFavorite(item)} hitSlop={8}>
+                    <Ionicons
+                      name={saved ? "heart" : "heart-outline"}
+                      size={20}
+                      color={saved ? theme.colors.danger : theme.colors.charcoal}
+                    />
+                  </Pressable>
+                </View>
+
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    marginTop: 2,
+                    color: theme.colors.muted,
+                    fontWeight: "600",
+                    fontSize: 12,
+                  }}
+                >
+                  {getCategory(item)}
+                </Text>
+
+                {activeUpdatesById[id] ? (
+                  <MapActiveUpdateLabel
+                    update={activeUpdatesById[id]!}
+                    onPress={() => onOpenProfileUpdates(item)}
+                  />
+                ) : null}
+
+                <MapPreviewStatusLine
+                  item={item}
+                  reviewSummary={reviewSummaries[id]}
+                />
+
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    marginTop: 3,
+                    color: theme.colors.muted,
+                    fontSize: 11,
+                  }}
+                >
+                  {getAddress(item)}
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 8 }}>
+            <Pressable
+              onPress={() => onOpenDirections(point)}
+              style={{
+                flex: 1,
+                height: 34,
+                borderRadius: 10,
+                backgroundColor: theme.colors.turquoise,
+                alignItems: "center",
+                justifyContent: "center",
+                flexDirection: "row",
+              }}
+            >
+              <Ionicons name="navigate" size={15} color="#fff" />
+              <Text
+                style={{
+                  marginLeft: 4,
+                  color: "#fff",
+                  fontWeight: "700",
+                  fontSize: 12,
+                }}
+              >
+                Directions
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => onOpenCall(item)}
+              style={{
+                flex: 1,
+                height: 34,
+                borderRadius: 10,
+                backgroundColor: "rgba(15,76,92,0.1)",
+                alignItems: "center",
+                justifyContent: "center",
+                flexDirection: "row",
+              }}
+            >
+              <Ionicons name="call" size={15} color={theme.colors.deepTeal} />
+              <Text
+                style={{
+                  marginLeft: 4,
+                  color: theme.colors.deepTeal,
+                  fontWeight: "700",
+                  fontSize: 12,
+                }}
+              >
+                Call
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => onOpenProfile(item)}
+              style={{
+                flex: 1,
+                height: 34,
+                borderRadius: 10,
+                backgroundColor: "rgba(13,148,136,0.1)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.colors.turquoise,
+                  fontWeight: "700",
+                  fontSize: 12,
+                }}
+              >
+                Profile
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <Animated.View
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: PREVIEW_CARD_BOTTOM,
+        zIndex: 20,
+        opacity: enterAnim,
+        transform: [{ translateY }],
+      }}
+    >
+      {carouselData.length > 1 ? (
+        <Text
+          style={{
+            textAlign: "center",
+            fontSize: 11,
+            fontWeight: "600",
+            color: theme.colors.muted,
+            marginBottom: 6,
+          }}
+        >
+          Swipe for nearby businesses
+        </Text>
+      ) : null}
+
+      <FlatList
+        ref={listRef}
+        horizontal
+        data={carouselData}
+        extraData={selectedItemId}
+        keyExtractor={(entry) => `preview-${getId(entry.item)}`}
+        showsHorizontalScrollIndicator={false}
+        decelerationRate="fast"
+        snapToInterval={snapInterval}
+        disableIntervalMomentum
+        removeClippedSubviews={false}
+        contentContainerStyle={{ paddingHorizontal: 16 }}
+        getItemLayout={(_, index) => ({
+          length: snapInterval,
+          offset: snapInterval * index,
+          index,
+        })}
+        onScrollToIndexFailed={() => {}}
+        onMomentumScrollEnd={(event) => {
+          const index = Math.round(
+            event.nativeEvent.contentOffset.x / snapInterval
+          );
+          const next = carouselData[index]?.item;
+
+          if (next && getId(next) !== selectedItemId) {
+            onSelectItem(next);
+          }
+        }}
+        renderItem={({ item: entry }) => renderPreviewCard(entry)}
+      />
+    </Animated.View>
+  );
+});
 
 const SHEET_SNAP = {
   collapsed: 96,
@@ -685,7 +1001,12 @@ export default function MapScreenV25() {
   const mapRef = useRef<MapView>(null);
   const [mapRegion, setMapRegion] = useState<Region>(SAN_DIEGO_REGION);
   const mapRegionRef = useRef<Region>(SAN_DIEGO_REGION);
+  const pendingMapRegionRef = useRef<Region | null>(null);
+  const businessPreviewOpenRef = useRef(false);
   const suppressMapDeselectRef = useRef(false);
+  const [previewCarouselData, setPreviewCarouselData] = useState<
+    MapPreviewCarouselEntry[]
+  >([]);
   const insets = useSafeAreaInsets();
   const {
     sheetHeight: resultSheetHeight,
@@ -750,13 +1071,6 @@ export default function MapScreenV25() {
     }
   };
 
-  const applyCategoryFilter = (categoryKey: string) => {
-    dismissKeyboard();
-    setSelectedCategory(categoryKey);
-    setSelectedItem(null);
-    setFilterVisible(false);
-  };
-
   const openEventDetails = async (event: MapItem) => {
     dismissKeyboard();
     const id = getId(event);
@@ -785,12 +1099,32 @@ export default function MapScreenV25() {
     [items]
   );
 
+  const flushPendingMapRegion = useCallback(() => {
+    const pending = pendingMapRegionRef.current;
+    if (!pending) return;
+    pendingMapRegionRef.current = null;
+    setMapRegion((prev) => (regionsAreSimilar(prev, pending) ? prev : pending));
+  }, []);
+
+  const clearSelectedMapItem = useCallback(() => {
+    businessPreviewOpenRef.current = false;
+    setSelectedItem(null);
+    flushPendingMapRegion();
+  }, [flushPendingMapRegion]);
+
+  const applyCategoryFilter = (categoryKey: string) => {
+    dismissKeyboard();
+    setSelectedCategory(categoryKey);
+    clearSelectedMapItem();
+    setFilterVisible(false);
+  };
+
   const handleMapBackgroundPress = (action?: string) => {
     dismissKeyboard();
     if (suppressMapDeselectRef.current || action === "marker-press") {
       return;
     }
-    setSelectedItem(null);
+    clearSelectedMapItem();
   };
 
   useEffect(() => {
@@ -853,6 +1187,7 @@ export default function MapScreenV25() {
 
       setItems(merged);
 
+      businessPreviewOpenRef.current = false;
       setSelectedItem(null);
 
       setFavorites(await loadFavoriteBusinessMap());
@@ -947,6 +1282,10 @@ export default function MapScreenV25() {
 
   const handleMapRegionChangeComplete = useCallback((region: Region) => {
     mapRegionRef.current = region;
+    if (businessPreviewOpenRef.current) {
+      pendingMapRegionRef.current = region;
+      return;
+    }
     setMapRegion((prev) => (regionsAreSimilar(prev, region) ? prev : region));
   }, []);
 
@@ -965,6 +1304,39 @@ export default function MapScreenV25() {
       })
       .filter(Boolean) as { item: MapItem; point: ResolvedMapPoint }[];
   }, [isDiscoveryActive, filteredItems, mapPoints]);
+
+  useEffect(() => {
+    if (!selectedItem || isMapEvent(selectedItem)) {
+      businessPreviewOpenRef.current = false;
+      setPreviewCarouselData([]);
+      return;
+    }
+
+    businessPreviewOpenRef.current = true;
+
+    if (
+      isDiscoveryActive &&
+      discoveryResults.some((entry) => !isMapEvent(entry.item))
+    ) {
+      setPreviewCarouselData(
+        discoveryResults.filter((entry) => !isMapEvent(entry.item))
+      );
+      return;
+    }
+
+    const point =
+      mapPoints.find((p) => getId(p.item) === getId(selectedItem)) ??
+      resolveMapPoints([selectedItem])[0];
+
+    if (nearbyBusinesses.length > 0) {
+      setPreviewCarouselData(nearbyBusinesses);
+      return;
+    }
+
+    setPreviewCarouselData(point ? [{ item: selectedItem, point }] : []);
+    // Freeze carousel rows at selection time — do not rebuild on map pan/region updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getId(selectedItem ?? ""), isDiscoveryActive, discoveryResults]);
 
   const previewBusinessIds = useMemo(() => {
     const ids: string[] = [];
@@ -1052,6 +1424,7 @@ export default function MapScreenV25() {
   ) => {
     dismissKeyboard();
     suppressMapDeselectRef.current = true;
+    businessPreviewOpenRef.current = !isMapEvent(item);
     setSelectedItem(item);
 
     if (options?.focus !== false) {
@@ -1358,303 +1731,6 @@ export default function MapScreenV25() {
     );
   };
 
-  const BusinessPreviewCarousel = () => {
-    const listRef = useRef<FlatList<{ item: MapItem; point: ResolvedMapPoint }>>(
-      null
-    );
-    const enterAnim = useRef(new Animated.Value(0)).current;
-    const snapInterval = PREVIEW_CARD_WIDTH + PREVIEW_CARD_GAP;
-
-    const carouselData =
-      isDiscoveryActive && discoveryResults.some((e) => !isMapEvent(e.item))
-        ? discoveryResults.filter((e) => !isMapEvent(e.item))
-        : nearbyBusinesses.length > 0
-        ? nearbyBusinesses
-        : selectedItem
-          ? [
-              {
-                item: selectedItem,
-                point:
-                  mapPoints.find((p) => getId(p.item) === getId(selectedItem)) ??
-                  resolveMapPoints([selectedItem])[0],
-              },
-            ].filter((entry) => entry.point)
-          : [];
-
-    useEffect(() => {
-      if (!selectedItem || isMapEvent(selectedItem)) return;
-
-      const index = carouselData.findIndex(
-        (entry) => getId(entry.item) === getId(selectedItem)
-      );
-
-      if (index >= 0) {
-        requestAnimationFrame(() => {
-          listRef.current?.scrollToIndex({ index, animated: false });
-        });
-      }
-
-      enterAnim.setValue(0);
-      Animated.spring(enterAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        friction: 8,
-        tension: 70,
-      }).start();
-    }, [getId(selectedItem ?? {})]);
-
-    if (!selectedItem || isMapEvent(selectedItem)) return null;
-
-    const translateY = enterAnim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [28, 0],
-    });
-
-    const renderPreviewCard = ({
-      item,
-      point,
-    }: {
-      item: MapItem;
-      point: ResolvedMapPoint;
-    }) => {
-      const id = getId(item);
-      const saved = favorites[id];
-      const active = getId(selectedItem) === id;
-
-      return (
-        <View
-          style={{
-            width: PREVIEW_CARD_WIDTH,
-            marginRight: PREVIEW_CARD_GAP,
-            opacity: active ? 1 : 0.94,
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: "rgba(255,255,255,0.98)",
-              borderRadius: 18,
-              padding: 11,
-              borderWidth: 1,
-              borderColor: active
-                ? "rgba(13,148,136,0.35)"
-                : theme.colors.border,
-              shadowColor: "#000",
-              shadowOpacity: 0.08,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 3 },
-              elevation: 5,
-            }}
-          >
-            <Pressable onPress={() => openProfile(item)}>
-              <View style={{ flexDirection: "row" }}>
-                <Image
-                  source={{ uri: getImage(item) }}
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 12,
-                    backgroundColor: "#eee",
-                  }}
-                  resizeMode="cover"
-                />
-
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text
-                      numberOfLines={1}
-                      style={{
-                        flex: 1,
-                        fontSize: 16,
-                        fontWeight: "800",
-                        color: theme.colors.charcoal,
-                      }}
-                    >
-                      {getTitle(item)}
-                    </Text>
-
-                    <Pressable onPress={() => toggleFavorite(item)} hitSlop={8}>
-                      <Ionicons
-                        name={saved ? "heart" : "heart-outline"}
-                        size={20}
-                        color={saved ? theme.colors.danger : theme.colors.charcoal}
-                      />
-                    </Pressable>
-                  </View>
-
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      marginTop: 2,
-                      color: theme.colors.muted,
-                      fontWeight: "600",
-                      fontSize: 12,
-                    }}
-                  >
-                    {getCategory(item)}
-                  </Text>
-
-                  {activeUpdatesById[id] ? (
-                    <MapActiveUpdateLabel
-                      update={activeUpdatesById[id]!}
-                      onPress={() => openProfileUpdates(item)}
-                    />
-                  ) : null}
-
-                  <MapPreviewStatusLine
-                    item={item}
-                    reviewSummary={reviewSummaries[id]}
-                  />
-
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      marginTop: 3,
-                      color: theme.colors.muted,
-                      fontSize: 11,
-                    }}
-                  >
-                    {getAddress(item)}
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
-
-            <View style={{ flexDirection: "row", gap: 6, marginTop: 8 }}>
-              <Pressable
-                onPress={() => openDirections(point)}
-                style={{
-                  flex: 1,
-                  height: 34,
-                  borderRadius: 10,
-                  backgroundColor: theme.colors.turquoise,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexDirection: "row",
-                }}
-              >
-                <Ionicons name="navigate" size={15} color="#fff" />
-                <Text
-                  style={{
-                    marginLeft: 4,
-                    color: "#fff",
-                    fontWeight: "700",
-                    fontSize: 12,
-                  }}
-                >
-                  Directions
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => openCall(item)}
-                style={{
-                  flex: 1,
-                  height: 34,
-                  borderRadius: 10,
-                  backgroundColor: "rgba(15,76,92,0.1)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexDirection: "row",
-                }}
-              >
-                <Ionicons name="call" size={15} color={theme.colors.deepTeal} />
-                <Text
-                  style={{
-                    marginLeft: 4,
-                    color: theme.colors.deepTeal,
-                    fontWeight: "700",
-                    fontSize: 12,
-                  }}
-                >
-                  Call
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => openProfile(item)}
-                style={{
-                  flex: 1,
-                  height: 34,
-                  borderRadius: 10,
-                  backgroundColor: "rgba(13,148,136,0.1)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.turquoise,
-                    fontWeight: "700",
-                    fontSize: 12,
-                  }}
-                >
-                  Profile
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      );
-    };
-
-    return (
-      <Animated.View
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 84,
-          zIndex: 20,
-          opacity: enterAnim,
-          transform: [{ translateY }],
-        }}
-      >
-        {carouselData.length > 1 ? (
-          <Text
-            style={{
-              textAlign: "center",
-              fontSize: 11,
-              fontWeight: "600",
-              color: theme.colors.muted,
-              marginBottom: 6,
-            }}
-          >
-            Swipe for nearby businesses
-          </Text>
-        ) : null}
-
-        <FlatList
-          ref={listRef}
-          horizontal
-          data={carouselData}
-          keyExtractor={(entry) => `preview-${getId(entry.item)}`}
-          showsHorizontalScrollIndicator={false}
-          decelerationRate="fast"
-          snapToInterval={snapInterval}
-          disableIntervalMomentum
-          contentContainerStyle={{ paddingHorizontal: 16 }}
-          getItemLayout={(_, index) => ({
-            length: snapInterval,
-            offset: snapInterval * index,
-            index,
-          })}
-          onScrollToIndexFailed={() => {}}
-          onMomentumScrollEnd={(event) => {
-            const index = Math.round(
-              event.nativeEvent.contentOffset.x / snapInterval
-            );
-            const next = carouselData[index]?.item;
-
-            if (next && getId(next) !== getId(selectedItem)) {
-              selectMapItem(next, { focus: true, animate: false });
-            }
-          }}
-          renderItem={({ item: entry }) => renderPreviewCard(entry)}
-        />
-      </Animated.View>
-    );
-  };
-
   const FilterPill = ({ item }: { item: any }) => {
     const active = selectedCategory === item.key;
 
@@ -1663,7 +1739,7 @@ export default function MapScreenV25() {
         onPress={() => {
           dismissKeyboard();
           setSelectedCategory(item.key);
-          setSelectedItem(null);
+          clearSelectedMapItem();
         }}
         style={{
           flexDirection: "row",
@@ -2044,8 +2120,24 @@ export default function MapScreenV25() {
         </View>
       ) : null}
 
-      {selectedItem && !isMapEvent(selectedItem) ? (
-        <BusinessPreviewCarousel />
+      {selectedItem &&
+      !isMapEvent(selectedItem) &&
+      previewCarouselData.length > 0 ? (
+        <MapBusinessPreviewCarousel
+          carouselData={previewCarouselData}
+          selectedItem={selectedItem}
+          favorites={favorites}
+          reviewSummaries={reviewSummaries}
+          activeUpdatesById={activeUpdatesById}
+          onSelectItem={(item) =>
+            selectMapItem(item, { focus: true, animate: false })
+          }
+          onOpenProfile={openProfile}
+          onToggleFavorite={toggleFavorite}
+          onOpenDirections={openDirections}
+          onOpenCall={openCall}
+          onOpenProfileUpdates={openProfileUpdates}
+        />
       ) : selectedItem && isMapEvent(selectedItem) ? (
         <MapEventPreviewCard
           event={selectedItem}
