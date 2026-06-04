@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
   ImageBackground,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -32,12 +34,16 @@ import {
 } from "../../lib/businessHours";
 import {
   createReviewId,
+  deleteBusinessReview,
   formatReviewRelativeTime,
   getCurrentReviewer,
+  isReviewAuthor,
   loadBusinessReviews,
   saveBusinessReview,
   saveOwnerReply,
   summarizeBusinessReviews,
+  updateBusinessReview,
+  updateOwnerReply,
   type BusinessReview,
   type CurrentReviewer,
 } from "../../lib/businessReviews";
@@ -258,6 +264,57 @@ const profileSectionCardStyle = {
   elevation: 2,
 } as const;
 
+function Section({
+  title,
+  action,
+  onActionPress,
+  children,
+}: {
+  title: string;
+  action?: string;
+  onActionPress?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={profileSectionCardStyle}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginBottom: theme.spacing.sm,
+        }}
+      >
+        <Text
+          style={{
+            flex: 1,
+            fontSize: 17,
+            fontWeight: "800",
+            color: theme.colors.charcoal,
+          }}
+        >
+          {title}
+        </Text>
+
+        {action ? (
+          <Pressable onPress={onActionPress} hitSlop={8}>
+            <Text
+              style={{
+                color: theme.colors.turquoise,
+                fontSize: 13,
+                fontWeight: "700",
+              }}
+            >
+              {action}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {children}
+    </View>
+  );
+}
+
 function ReviewStarsDisplay({
   rating,
   size = 14,
@@ -359,58 +416,6 @@ function WriteReviewForm({
   );
 }
 
-function PostedReviewPreview({ review }: { review: BusinessReview }) {
-  return (
-    <View
-      style={{
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
-      }}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 14,
-            fontWeight: "800",
-            color: theme.colors.charcoal,
-          }}
-        >
-          {review.username}
-        </Text>
-        <Text
-          style={{
-            fontSize: 12,
-            color: theme.colors.muted,
-            fontWeight: "600",
-          }}
-        >
-          {formatReviewRelativeTime(review.createdAt)}
-        </Text>
-      </View>
-      <View style={{ marginTop: 6 }}>
-        <ReviewStarsDisplay rating={review.rating} />
-      </View>
-      <Text
-        style={{
-          marginTop: 6,
-          fontSize: 14,
-          lineHeight: 21,
-          color: theme.colors.charcoal,
-        }}
-      >
-        {review.text}
-      </Text>
-    </View>
-  );
-}
-
 function WriteReviewSection({
   currentReviewer,
   isBusinessOwner,
@@ -471,7 +476,16 @@ function WriteReviewSection({
           You can&apos;t review your own business.
         </Text>
       ) : userReview ? (
-        <PostedReviewPreview review={userReview} />
+        <Text
+          style={{
+            fontSize: 14,
+            lineHeight: 21,
+            color: theme.colors.muted,
+            fontWeight: "600",
+          }}
+        >
+          Your review is shown below.
+        </Text>
       ) : (
         <WriteReviewForm
           draftRating={draftRating}
@@ -485,6 +499,418 @@ function WriteReviewSection({
     </View>
   );
 }
+
+const ReviewStars = ({
+  rating,
+  size = 14,
+}: {
+  rating: number;
+  size?: number;
+}) => (
+  <View style={{ flexDirection: "row", alignItems: "center" }}>
+    {[1, 2, 3, 4, 5].map((star) => (
+      <Ionicons
+        key={star}
+        name={star <= rating ? "star" : "star-outline"}
+        size={size}
+        color="#C49A3A"
+        style={{ marginRight: 2 }}
+      />
+    ))}
+  </View>
+);
+
+type BusinessReviewCardProps = {
+  review: BusinessReview;
+  showOwnerReplyEditor?: boolean;
+  currentReviewer: CurrentReviewer | null;
+  isBusinessOwner: boolean;
+  editingReviewId: string | null;
+  editingReplyId: string | null;
+  editRating: number;
+  editText: string;
+  replyDraftText: string;
+  savingReviewEdit: boolean;
+  submittingReplyId: string | null;
+  onStartEditReview: (review: BusinessReview) => void;
+  onConfirmDeleteReview: (review: BusinessReview) => void;
+  onCancelEditReview: () => void;
+  onSaveEditedReview: (reviewId: string) => void;
+  onEditRatingChange: (rating: number) => void;
+  onEditTextChange: (text: string) => void;
+  onStartEditOwnerReply: (review: BusinessReview) => void;
+  onCancelEditOwnerReply: (reviewId: string) => void;
+  onSubmitOwnerReply: (reviewId: string) => void;
+  onReplyDraftChange: (text: string) => void;
+};
+
+const BusinessReviewCard = memo(function BusinessReviewCard({
+  review,
+  showOwnerReplyEditor = false,
+  currentReviewer,
+  isBusinessOwner,
+  editingReviewId,
+  editingReplyId,
+  editRating,
+  editText,
+  replyDraftText,
+  savingReviewEdit,
+  submittingReplyId,
+  onStartEditReview,
+  onConfirmDeleteReview,
+  onCancelEditReview,
+  onSaveEditedReview,
+  onEditRatingChange,
+  onEditTextChange,
+  onStartEditOwnerReply,
+  onCancelEditOwnerReply,
+  onSubmitOwnerReply,
+  onReplyDraftChange,
+}: BusinessReviewCardProps) {
+  const isAuthor =
+    Boolean(currentReviewer) && isReviewAuthor(review, currentReviewer);
+  const isEditing = editingReviewId === review.id;
+  const isEditingReply = editingReplyId === review.id;
+  const reviewTimestamp = review.updatedAt || review.createdAt;
+  const isSubmittingReply = submittingReplyId === review.id;
+
+  return (
+    <View
+      style={{
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.border,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 14,
+            fontWeight: "800",
+            color: theme.colors.charcoal,
+            flex: 1,
+            marginRight: 8,
+          }}
+        >
+          {review.username}
+        </Text>
+        <Text
+          style={{
+            fontSize: 12,
+            color: theme.colors.muted,
+            fontWeight: "600",
+          }}
+        >
+          {formatReviewRelativeTime(reviewTimestamp)}
+        </Text>
+      </View>
+
+      {isAuthor ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 14,
+            marginTop: 8,
+          }}
+        >
+          <Pressable onPress={() => onStartEditReview(review)} hitSlop={8}>
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: "700",
+                color: theme.colors.turquoise,
+              }}
+            >
+              Edit
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => onConfirmDeleteReview(review)} hitSlop={8}>
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: "700",
+                color: theme.colors.danger,
+              }}
+            >
+              Delete
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {isEditing ? (
+        <View style={{ marginTop: 10 }}>
+          <StarRatingPicker value={editRating} onChange={onEditRatingChange} />
+          <TextInput
+            value={editText}
+            onChangeText={onEditTextChange}
+            placeholder="Update your review..."
+            placeholderTextColor={theme.colors.muted}
+            multiline
+            textAlignVertical="top"
+            style={{
+              minHeight: 100,
+              borderRadius: theme.radius.sm,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.softCard,
+              padding: 12,
+              fontSize: 14,
+              color: theme.colors.charcoal,
+            }}
+          />
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+            <Pressable
+              onPress={onCancelEditReview}
+              style={{
+                flex: 1,
+                height: 40,
+                borderRadius: theme.radius.sm,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.colors.charcoal,
+                  fontWeight: "700",
+                  fontSize: 13,
+                }}
+              >
+                Cancel
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onSaveEditedReview(review.id)}
+              disabled={savingReviewEdit}
+              style={{
+                flex: 1,
+                height: 40,
+                borderRadius: theme.radius.sm,
+                backgroundColor: savingReviewEdit
+                  ? theme.colors.muted
+                  : theme.colors.turquoise,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
+                {savingReviewEdit ? "Saving..." : "Save"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <>
+          <View style={{ marginTop: 6 }}>
+            <ReviewStars rating={review.rating} />
+          </View>
+          <Text
+            style={{
+              marginTop: 6,
+              fontSize: 14,
+              lineHeight: 21,
+              color: theme.colors.charcoal,
+            }}
+          >
+            {review.text}
+          </Text>
+        </>
+      )}
+
+      {review.ownerReply && !isEditingReply ? (
+        <View
+          style={{
+            marginTop: 12,
+            padding: 12,
+            borderRadius: theme.radius.sm,
+            backgroundColor: theme.colors.softCard,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: "800",
+                color: theme.colors.turquoise,
+                letterSpacing: 0.3,
+              }}
+            >
+              Owner response
+            </Text>
+            {isBusinessOwner ? (
+              <Pressable
+                onPress={() => onStartEditOwnerReply(review)}
+                hitSlop={8}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "700",
+                    color: theme.colors.turquoise,
+                  }}
+                >
+                  Edit
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <Text
+            style={{
+              marginTop: 6,
+              fontSize: 14,
+              lineHeight: 21,
+              color: theme.colors.charcoal,
+            }}
+          >
+            {review.ownerReply.text}
+          </Text>
+        </View>
+      ) : null}
+
+      {isBusinessOwner && isEditingReply ? (
+        <View style={{ marginTop: 12 }}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: "800",
+              color: theme.colors.muted,
+              marginBottom: 8,
+            }}
+          >
+            Edit owner response
+          </Text>
+          <TextInput
+            value={replyDraftText}
+            onChangeText={onReplyDraftChange}
+            placeholder="Update your public response..."
+            placeholderTextColor={theme.colors.muted}
+            multiline
+            textAlignVertical="top"
+            style={{
+              minHeight: 72,
+              borderRadius: theme.radius.sm,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.softCard,
+              padding: 12,
+              fontSize: 14,
+              color: theme.colors.charcoal,
+            }}
+          />
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+            <Pressable
+              onPress={() => onCancelEditOwnerReply(review.id)}
+              style={{
+                flex: 1,
+                height: 40,
+                borderRadius: theme.radius.sm,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.colors.charcoal,
+                  fontWeight: "700",
+                  fontSize: 13,
+                }}
+              >
+                Cancel
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onSubmitOwnerReply(review.id)}
+              disabled={isSubmittingReply}
+              style={{
+                flex: 1,
+                height: 40,
+                borderRadius: theme.radius.sm,
+                backgroundColor: isSubmittingReply
+                  ? theme.colors.muted
+                  : theme.colors.turquoise,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
+                {isSubmittingReply ? "Saving..." : "Save"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : showOwnerReplyEditor ? (
+        <View style={{ marginTop: 12 }}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: "800",
+              color: theme.colors.muted,
+              marginBottom: 8,
+            }}
+          >
+            Reply
+          </Text>
+          <TextInput
+            value={replyDraftText}
+            onChangeText={onReplyDraftChange}
+            placeholder="Write a public response..."
+            placeholderTextColor={theme.colors.muted}
+            multiline
+            textAlignVertical="top"
+            style={{
+              minHeight: 72,
+              borderRadius: theme.radius.sm,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.softCard,
+              padding: 12,
+              fontSize: 14,
+              color: theme.colors.charcoal,
+            }}
+          />
+          <Pressable
+            onPress={() => onSubmitOwnerReply(review.id)}
+            disabled={isSubmittingReply}
+            style={{
+              marginTop: 10,
+              height: 40,
+              borderRadius: theme.radius.sm,
+              backgroundColor: isSubmittingReply
+                ? theme.colors.muted
+                : theme.colors.turquoise,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
+              {isSubmittingReply ? "Posting..." : "Post reply"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+});
 
 export default function BusinessProfileV2() {
   const params = useLocalSearchParams();
@@ -503,6 +929,11 @@ export default function BusinessProfileV2() {
   const [submittingReplyId, setSubmittingReplyId] = useState<string | null>(
     null
   );
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const [editRating, setEditRating] = useState(5);
+  const [editText, setEditText] = useState("");
+  const [savingReviewEdit, setSavingReviewEdit] = useState(false);
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
 
   const [business, setBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
@@ -546,45 +977,29 @@ export default function BusinessProfileV2() {
         return;
       }
 
-      if (canEdit(business)) {
-        if (!cancelled) setIsBusinessOwner(true);
-        return;
-      }
-
-      const businessId = getId(business);
-
       try {
-        const { getActiveUserId, loadUserBusinesses, loadUserProfile } =
+        const { getActiveUserId, isMyBusinessForUser, loadUserProfile } =
           await import("../../lib/userSessionStorage");
         const activeUserId = await getActiveUserId();
-        const localList = activeUserId
-          ? await loadUserBusinesses(activeUserId)
-          : [];
-        if (
-          Array.isArray(localList) &&
-          localList.some((item) => String(item?.id) === businessId)
-        ) {
-          if (!cancelled) setIsBusinessOwner(true);
+        if (!activeUserId) {
+          if (!cancelled) setIsBusinessOwner(false);
           return;
         }
 
-        const profile = activeUserId
-          ? await loadUserProfile(activeUserId)
-          : null;
-        if (profile) {
-          if (
-            profile?.business_id &&
-            String(profile.business_id) === businessId
-          ) {
-            if (!cancelled) setIsBusinessOwner(true);
-            return;
+        const profile = await loadUserProfile(activeUserId);
+        const owned = isMyBusinessForUser(
+          business as Record<string, unknown>,
+          activeUserId,
+          {
+            username: String(profile?.username || "").trim() || undefined,
+            email: String(profile?.email || "").trim() || undefined,
           }
-        }
-      } catch {
-        // fall through to not-owner
-      }
+        );
 
-      if (!cancelled) setIsBusinessOwner(false);
+        if (!cancelled) setIsBusinessOwner(owned);
+      } catch {
+        if (!cancelled) setIsBusinessOwner(false);
+      }
     };
 
     resolveOwner();
@@ -656,6 +1071,38 @@ export default function BusinessProfileV2() {
     if (!userReview) return reviewSummary.reviews;
     return reviewSummary.reviews.filter((review) => review.id !== userReview.id);
   }, [reviewSummary.reviews, userReview]);
+
+  const profileScrollRef = useRef<ScrollView>(null);
+  const reviewsBlockOffsetYRef = useRef(0);
+  const yourReviewSectionOffsetYRef = useRef(0);
+
+  useEffect(() => {
+    if (activeTab !== "Reviews" || (!editingReviewId && !editingReplyId)) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      const scrollView = profileScrollRef.current;
+      if (!scrollView) return;
+
+      if (editingReviewId && userReview?.id === editingReviewId) {
+        scrollView.scrollTo({
+          y: Math.max(
+            0,
+            reviewsBlockOffsetYRef.current +
+              yourReviewSectionOffsetYRef.current -
+              120
+          ),
+          animated: true,
+        });
+        return;
+      }
+
+      scrollView.scrollToEnd({ animated: true });
+    }, 200);
+
+    return () => clearTimeout(timeout);
+  }, [activeTab, editingReviewId, editingReplyId, userReview?.id]);
 
   const photos = useMemo(() => {
     const result: string[] = [];
@@ -892,16 +1339,26 @@ export default function BusinessProfileV2() {
       return;
     }
 
+    const isEditingReply = editingReplyId === reviewId;
+
     try {
       setSubmittingReplyId(reviewId);
-      const saved = await saveOwnerReply(profileId, reviewId, text);
+      const saved = isEditingReply
+        ? await updateOwnerReply(profileId, reviewId, text)
+        : await saveOwnerReply(profileId, reviewId, text);
       setReviews(saved);
       setReplyDrafts((prev) => {
         const next = { ...prev };
         delete next[reviewId];
         return next;
       });
-      Alert.alert("Posted", "Your reply is now visible under the review.");
+      setEditingReplyId(null);
+      Alert.alert(
+        isEditingReply ? "Updated" : "Posted",
+        isEditingReply
+          ? "Your response has been updated."
+          : "Your reply is now visible under the review."
+      );
     } catch (error: any) {
       if (error?.message === "duplicate_reply") {
         Alert.alert("Already replied", "You have already replied to this review.");
@@ -911,6 +1368,115 @@ export default function BusinessProfileV2() {
     } finally {
       setSubmittingReplyId(null);
     }
+  };
+
+  const startEditReview = (review: BusinessReview) => {
+    setEditingReviewId(review.id);
+    setEditRating(review.rating);
+    setEditText(review.text);
+  };
+
+  const cancelEditReview = () => {
+    setEditingReviewId(null);
+    setEditRating(5);
+    setEditText("");
+  };
+
+  const saveEditedReview = async (reviewId: string) => {
+    if (!currentReviewer) {
+      openLoginForReview();
+      return;
+    }
+
+    const text = editText.trim();
+    if (!text) {
+      Alert.alert("Review required", "Please write a short review before saving.");
+      return;
+    }
+
+    if (editRating < 1 || editRating > 5) {
+      Alert.alert("Rating required", "Please select a star rating from 1 to 5.");
+      return;
+    }
+
+    try {
+      setSavingReviewEdit(true);
+      const saved = await updateBusinessReview(
+        profileId,
+        reviewId,
+        currentReviewer.userId,
+        { rating: editRating, text }
+      );
+      setReviews(saved);
+      cancelEditReview();
+      Alert.alert("Updated", "Your review has been updated.");
+    } catch (error: any) {
+      if (error?.message === "forbidden") {
+        Alert.alert("Not allowed", "You can only edit your own review.");
+      } else {
+        Alert.alert("Error", "Could not update your review. Please try again.");
+      }
+    } finally {
+      setSavingReviewEdit(false);
+    }
+  };
+
+  const confirmDeleteReview = (review: BusinessReview) => {
+    if (!currentReviewer || !isReviewAuthor(review, currentReviewer)) {
+      Alert.alert("Not allowed", "You can only delete your own review.");
+      return;
+    }
+
+    Alert.alert(
+      "Delete review?",
+      "This will remove your review and update the business rating.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const saved = await deleteBusinessReview(
+                profileId,
+                review.id,
+                currentReviewer.userId
+              );
+              setReviews(saved);
+              if (editingReviewId === review.id) {
+                cancelEditReview();
+              }
+            } catch (error: any) {
+              if (error?.message === "forbidden") {
+                Alert.alert("Not allowed", "You can only delete your own review.");
+              } else {
+                Alert.alert(
+                  "Error",
+                  "Could not delete your review. Please try again."
+                );
+              }
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const startEditOwnerReply = (review: BusinessReview) => {
+    setEditingReplyId(review.id);
+    setReplyDrafts((prev) => ({
+      ...prev,
+      [review.id]: review.ownerReply?.text || "",
+    }));
+  };
+
+  const cancelEditOwnerReply = (reviewId: string) => {
+    setEditingReplyId(null);
+    setReplyDrafts((prev) => {
+      const next = { ...prev };
+      delete next[reviewId];
+      return next;
+    });
   };
 
   const shareBusiness = async () => {
@@ -1133,233 +1699,394 @@ export default function BusinessProfileV2() {
     </View>
   );
 
-  const Section = ({
-    title,
-    action,
-    onActionPress,
-    children,
-  }: {
-    title: string;
-    action?: string;
-    onActionPress?: () => void;
-    children: React.ReactNode;
-  }) => (
-    <View
-      style={{
-        marginHorizontal: theme.spacing.md,
-        marginTop: theme.spacing.md,
-        backgroundColor: theme.colors.card,
-        borderRadius: theme.radius.md,
-        padding: theme.spacing.md,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        shadowColor: "#000",
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 2,
-      }}
-    >
+  const review = userReview;
+  const ReviewCard_REMOVED_START = false
+    ? (
       <View
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          marginBottom: theme.spacing.sm,
+          paddingVertical: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: theme.colors.border,
         }}
       >
-        <Text
-          style={{
-            flex: 1,
-            fontSize: 17,
-            fontWeight: "800",
-            color: theme.colors.charcoal,
-          }}
-        >
-          {title}
-        </Text>
-
-        {action ? (
-          <Pressable onPress={onActionPress} hitSlop={8}>
-            <Text
-              style={{
-                color: theme.colors.turquoise,
-                fontSize: 13,
-                fontWeight: "700",
-              }}
-            >
-              {action}
-            </Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      {children}
-    </View>
-  );
-
-  const ReviewStars = ({
-    rating,
-    size = 14,
-  }: {
-    rating: number;
-    size?: number;
-  }) => (
-    <View style={{ flexDirection: "row", alignItems: "center" }}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <Ionicons
-          key={star}
-          name={star <= rating ? "star" : "star-outline"}
-          size={size}
-          color="#C49A3A"
-          style={{ marginRight: 2 }}
-        />
-      ))}
-    </View>
-  );
-
-  const ReviewCard = ({
-    review,
-    showOwnerReplyEditor = false,
-  }: {
-    review: BusinessReview;
-    showOwnerReplyEditor?: boolean;
-  }) => (
-    <View
-      style={{
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
-      }}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 14,
-            fontWeight: "800",
-            color: theme.colors.charcoal,
-          }}
-        >
-          {review.username}
-        </Text>
-        <Text
-          style={{
-            fontSize: 12,
-            color: theme.colors.muted,
-            fontWeight: "600",
-          }}
-        >
-          {formatReviewRelativeTime(review.createdAt)}
-        </Text>
-      </View>
-
-      <View style={{ marginTop: 6 }}>
-        <ReviewStars rating={review.rating} />
-      </View>
-
-      <Text
-        style={{
-          marginTop: 6,
-          fontSize: 14,
-          lineHeight: 21,
-          color: theme.colors.charcoal,
-        }}
-      >
-        {review.text}
-      </Text>
-
-      {review.ownerReply ? (
         <View
           style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: theme.radius.sm,
-            backgroundColor: theme.colors.softCard,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
           }}
         >
           <Text
             style={{
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: "800",
-              color: theme.colors.turquoise,
-              letterSpacing: 0.3,
+              color: theme.colors.charcoal,
+              flex: 1,
+              marginRight: 8,
             }}
           >
-            Owner response
+            {review.username}
           </Text>
           <Text
             style={{
-              marginTop: 6,
-              fontSize: 14,
-              lineHeight: 21,
-              color: theme.colors.charcoal,
+              fontSize: 12,
+              color: theme.colors.muted,
+              fontWeight: "600",
             }}
           >
-            {review.ownerReply.text}
+            {formatReviewRelativeTime(reviewTimestamp)}
           </Text>
         </View>
-      ) : showOwnerReplyEditor ? (
-        <View style={{ marginTop: 12 }}>
-          <Text
+
+        {isAuthor ? (
+          <View
             style={{
-              fontSize: 12,
-              fontWeight: "800",
-              color: theme.colors.muted,
-              marginBottom: 8,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 14,
+              marginTop: 8,
             }}
           >
-            Reply as owner
-          </Text>
-          <TextInput
-            value={replyDrafts[review.id] || ""}
-            onChangeText={(value) =>
-              setReplyDrafts((prev) => ({ ...prev, [review.id]: value }))
-            }
-            placeholder="Write a public response..."
-            placeholderTextColor={theme.colors.muted}
-            multiline
-            textAlignVertical="top"
+            <Pressable onPress={() => startEditReview(review)} hitSlop={8}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: theme.colors.turquoise,
+                }}
+              >
+                Edit
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => confirmDeleteReview(review)} hitSlop={8}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: theme.colors.danger,
+                }}
+              >
+                Delete
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {isEditing ? (
+          <View style={{ marginTop: 10 }}>
+            {console.log("REVIEW_FOCUS_DIAG_EDIT_INPUT_RENDER", {
+              reviewId: review.id,
+              textInputKey: editTextInputKey,
+              editingReviewId,
+              hasExplicitKeyProp: false,
+            })}
+            <StarRatingPicker value={editRating} onChange={setEditRating} />
+            <TextInput
+              value={editText}
+              onChangeText={(value) => {
+                console.log("REVIEW_FOCUS_DIAG_EDIT_ON_CHANGE", {
+                  reviewId: review.id,
+                  nextLength: value.length,
+                  editingReviewId,
+                });
+                setEditText(value);
+              }}
+              placeholder="Update your review..."
+              placeholderTextColor={theme.colors.muted}
+              multiline
+              textAlignVertical="top"
+              style={{
+                minHeight: 100,
+                borderRadius: theme.radius.sm,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.softCard,
+                padding: 12,
+                fontSize: 14,
+                color: theme.colors.charcoal,
+              }}
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+              <Pressable
+                onPress={cancelEditReview}
+                style={{
+                  flex: 1,
+                  height: 40,
+                  borderRadius: theme.radius.sm,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.charcoal,
+                    fontWeight: "700",
+                    fontSize: 13,
+                  }}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => saveEditedReview(review.id)}
+                disabled={savingReviewEdit}
+                style={{
+                  flex: 1,
+                  height: 40,
+                  borderRadius: theme.radius.sm,
+                  backgroundColor: savingReviewEdit
+                    ? theme.colors.muted
+                    : theme.colors.turquoise,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
+                  {savingReviewEdit ? "Saving..." : "Save"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <>
+            <View style={{ marginTop: 6 }}>
+              <ReviewStars rating={review.rating} />
+            </View>
+
+            <Text
+              style={{
+                marginTop: 6,
+                fontSize: 14,
+                lineHeight: 21,
+                color: theme.colors.charcoal,
+              }}
+            >
+              {review.text}
+            </Text>
+          </>
+        )}
+
+        {review.ownerReply && !isEditingReply ? (
+          <View
             style={{
-              minHeight: 72,
+              marginTop: 12,
+              padding: 12,
               borderRadius: theme.radius.sm,
+              backgroundColor: theme.colors.softCard,
               borderWidth: 1,
               borderColor: theme.colors.border,
-              backgroundColor: theme.colors.softCard,
-              padding: 12,
-              fontSize: 14,
-              color: theme.colors.charcoal,
-            }}
-          />
-          <Pressable
-            onPress={() => submitOwnerReply(review.id)}
-            disabled={submittingReplyId === review.id}
-            style={{
-              marginTop: 10,
-              height: 40,
-              borderRadius: theme.radius.sm,
-              backgroundColor:
-                submittingReplyId === review.id
-                  ? theme.colors.muted
-                  : theme.colors.turquoise,
-              alignItems: "center",
-              justifyContent: "center",
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
-              {submittingReplyId === review.id ? "Posting..." : "Post reply"}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: "800",
+                  color: theme.colors.turquoise,
+                  letterSpacing: 0.3,
+                }}
+              >
+                Owner response
+              </Text>
+              {isBusinessOwner ? (
+                <Pressable
+                  onPress={() => startEditOwnerReply(review)}
+                  hitSlop={8}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: "700",
+                      color: theme.colors.turquoise,
+                    }}
+                  >
+                    Edit
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <Text
+              style={{
+                marginTop: 6,
+                fontSize: 14,
+                lineHeight: 21,
+                color: theme.colors.charcoal,
+              }}
+            >
+              {review.ownerReply.text}
             </Text>
-          </Pressable>
-        </View>
-      ) : null}
-    </View>
-  );
+          </View>
+        ) : null}
+
+        {isBusinessOwner && isEditingReply ? (
+          <View style={{ marginTop: 12 }}>
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: "800",
+                color: theme.colors.muted,
+                marginBottom: 8,
+              }}
+            >
+              Edit owner response
+            </Text>
+            {console.log("REVIEW_FOCUS_DIAG_REPLY_INPUT_RENDER", {
+              reviewId: review.id,
+              textInputKey: replyTextInputKey,
+              editingReplyId,
+              replyingToReviewId: null,
+              mode: "edit_owner_reply",
+              hasExplicitKeyProp: false,
+            })}
+            <TextInput
+              value={replyDrafts[review.id] || ""}
+              onChangeText={(value) => {
+                console.log("REVIEW_FOCUS_DIAG_REPLY_ON_CHANGE", {
+                  reviewId: review.id,
+                  nextLength: value.length,
+                  editingReplyId,
+                  mode: "edit_owner_reply",
+                });
+                setReplyDrafts((prev) => ({ ...prev, [review.id]: value }));
+              }}
+              placeholder="Update your public response..."
+              placeholderTextColor={theme.colors.muted}
+              multiline
+              textAlignVertical="top"
+              style={{
+                minHeight: 72,
+                borderRadius: theme.radius.sm,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.softCard,
+                padding: 12,
+                fontSize: 14,
+                color: theme.colors.charcoal,
+              }}
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+              <Pressable
+                onPress={() => cancelEditOwnerReply(review.id)}
+                style={{
+                  flex: 1,
+                  height: 40,
+                  borderRadius: theme.radius.sm,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.charcoal,
+                    fontWeight: "700",
+                    fontSize: 13,
+                  }}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => submitOwnerReply(review.id)}
+                disabled={submittingReplyId === review.id}
+                style={{
+                  flex: 1,
+                  height: 40,
+                  borderRadius: theme.radius.sm,
+                  backgroundColor:
+                    submittingReplyId === review.id
+                      ? theme.colors.muted
+                      : theme.colors.turquoise,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
+                  {submittingReplyId === review.id ? "Saving..." : "Save"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : showOwnerReplyEditor ? (
+          <View style={{ marginTop: 12 }}>
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: "800",
+                color: theme.colors.muted,
+                marginBottom: 8,
+              }}
+            >
+              Reply
+            </Text>
+            {console.log("REVIEW_FOCUS_DIAG_REPLY_INPUT_RENDER", {
+              reviewId: review.id,
+              textInputKey: replyTextInputKey,
+              editingReplyId,
+              replyingToReviewId: review.id,
+              mode: "new_owner_reply",
+              hasExplicitKeyProp: false,
+            })}
+            <TextInput
+              value={replyDrafts[review.id] || ""}
+              onChangeText={(value) => {
+                console.log("REVIEW_FOCUS_DIAG_REPLY_ON_CHANGE", {
+                  reviewId: review.id,
+                  nextLength: value.length,
+                  editingReplyId,
+                  replyingToReviewId: review.id,
+                  mode: "new_owner_reply",
+                });
+                setReplyDrafts((prev) => ({ ...prev, [review.id]: value }));
+              }}
+              placeholder="Write a public response..."
+              placeholderTextColor={theme.colors.muted}
+              multiline
+              textAlignVertical="top"
+              style={{
+                minHeight: 72,
+                borderRadius: theme.radius.sm,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.softCard,
+                padding: 12,
+                fontSize: 14,
+                color: theme.colors.charcoal,
+              }}
+            />
+            <Pressable
+              onPress={() => submitOwnerReply(review.id)}
+              disabled={submittingReplyId === review.id}
+              style={{
+                marginTop: 10,
+                height: 40,
+                borderRadius: theme.radius.sm,
+                backgroundColor:
+                  submittingReplyId === review.id
+                    ? theme.colors.muted
+                    : theme.colors.turquoise,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
+                {submittingReplyId === review.id ? "Posting..." : "Post reply"}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    )
+    : null;
 
   const HighlightBox = ({
     icon,
@@ -1474,10 +2201,23 @@ export default function BusinessProfileV2() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: theme.spacing.xl }}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        enabled={activeTab === "Reviews"}
       >
+        <ScrollView
+          ref={profileScrollRef}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps={
+            activeTab === "Reviews" ? "handled" : "never"
+          }
+          automaticallyAdjustKeyboardInsets={activeTab === "Reviews"}
+          contentContainerStyle={{
+            paddingBottom:
+              activeTab === "Reviews" ? 320 : theme.spacing.xl,
+          }}
+        >
         <View style={{ height: 352 }}>
           <ImageBackground
             source={{ uri: getCover(business) }}
@@ -2343,7 +3083,19 @@ export default function BusinessProfileV2() {
         ) : null}
 
         {activeTab === "Reviews" ? (
-          <>
+          <View
+            onLayout={(event) => {
+              reviewsBlockOffsetYRef.current = event.nativeEvent.layout.y;
+            }}
+          >
+            {console.log("REVIEW_FOCUS_DIAG_PARENT_REVIEWS_TAB", {
+              editingReviewId,
+              editingReplyId,
+              editTextLength: editText.length,
+              replyDraftKeys: Object.keys(replyDrafts),
+              parentComponent: "BusinessProfileV2",
+              nestedReviewCardLine: 1289,
+            })}
             {reviewSummary.count > 0 ? (
               <Section title="Rating summary">
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -2388,14 +3140,71 @@ export default function BusinessProfileV2() {
               submittingReview={submittingReview}
             />
 
+            {userReview ? (
+              <View
+                onLayout={(event) => {
+                  yourReviewSectionOffsetYRef.current =
+                    event.nativeEvent.layout.y;
+                }}
+              >
+                <Section title="Your review">
+                  <BusinessReviewCard
+                  review={userReview}
+                  currentReviewer={currentReviewer}
+                  isBusinessOwner={isBusinessOwner}
+                  editingReviewId={editingReviewId}
+                  editingReplyId={editingReplyId}
+                  editRating={editRating}
+                  editText={editText}
+                  replyDraftText={replyDrafts[userReview.id] || ""}
+                  savingReviewEdit={savingReviewEdit}
+                  submittingReplyId={submittingReplyId}
+                  onStartEditReview={startEditReview}
+                  onConfirmDeleteReview={confirmDeleteReview}
+                  onCancelEditReview={cancelEditReview}
+                  onSaveEditedReview={saveEditedReview}
+                  onEditRatingChange={setEditRating}
+                  onEditTextChange={setEditText}
+                  onStartEditOwnerReply={startEditOwnerReply}
+                  onCancelEditOwnerReply={cancelEditOwnerReply}
+                  onSubmitOwnerReply={submitOwnerReply}
+                  onReplyDraftChange={(text) =>
+                    setReplyDrafts((prev) => ({ ...prev, [userReview.id]: text }))
+                  }
+                />
+                </Section>
+              </View>
+            ) : null}
+
             <Section title="All reviews">
               {otherReviews.length > 0 ? (
                 otherReviews.map((review) => (
-                  <ReviewCard
+                  <BusinessReviewCard
                     key={review.id}
                     review={review}
                     showOwnerReplyEditor={
                       isBusinessOwner && !review.ownerReply
+                    }
+                    currentReviewer={currentReviewer}
+                    isBusinessOwner={isBusinessOwner}
+                    editingReviewId={editingReviewId}
+                    editingReplyId={editingReplyId}
+                    editRating={editRating}
+                    editText={editText}
+                    replyDraftText={replyDrafts[review.id] || ""}
+                    savingReviewEdit={savingReviewEdit}
+                    submittingReplyId={submittingReplyId}
+                    onStartEditReview={startEditReview}
+                    onConfirmDeleteReview={confirmDeleteReview}
+                    onCancelEditReview={cancelEditReview}
+                    onSaveEditedReview={saveEditedReview}
+                    onEditRatingChange={setEditRating}
+                    onEditTextChange={setEditText}
+                    onStartEditOwnerReply={startEditOwnerReply}
+                    onCancelEditOwnerReply={cancelEditOwnerReply}
+                    onSubmitOwnerReply={submitOwnerReply}
+                    onReplyDraftChange={(text) =>
+                      setReplyDrafts((prev) => ({ ...prev, [review.id]: text }))
                     }
                   />
                 ))
@@ -2405,15 +3214,16 @@ export default function BusinessProfileV2() {
                   title="No reviews yet"
                   subtitle="Be the first to review"
                 />
-              ) : (
+              ) : userReview ? (
                 <Text style={{ fontSize: 13, color: theme.colors.muted }}>
-                  Your review is shown above.
+                  No other reviews yet.
                 </Text>
-              )}
+              ) : null}
             </Section>
-          </>
+          </View>
         ) : null}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

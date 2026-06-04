@@ -69,6 +69,7 @@ export const getCurrentReviewer = async (): Promise<CurrentReviewer | null> => {
 export type OwnerReply = {
   text: string;
   createdAt: string;
+  updatedAt?: string;
 };
 
 export type BusinessReview = {
@@ -79,6 +80,7 @@ export type BusinessReview = {
   rating: number;
   text: string;
   createdAt: string;
+  updatedAt?: string;
   ownerReply?: OwnerReply;
 };
 
@@ -111,6 +113,7 @@ export const normalizeBusinessReviews = (raw: unknown): BusinessReview[] => {
 
       const ownerReplyRaw = item.ownerReply as Record<string, unknown> | undefined;
       const ownerReplyText = String(ownerReplyRaw?.text || "").trim();
+      const ownerReplyUpdatedAt = String(ownerReplyRaw?.updatedAt || "").trim();
       const ownerReply =
         ownerReplyText.length > 0
           ? {
@@ -118,8 +121,13 @@ export const normalizeBusinessReviews = (raw: unknown): BusinessReview[] => {
               createdAt: String(
                 ownerReplyRaw?.createdAt || new Date().toISOString()
               ),
+              ...(ownerReplyUpdatedAt
+                ? { updatedAt: ownerReplyUpdatedAt }
+                : {}),
             }
           : undefined;
+
+      const updatedAt = String(item.updatedAt || "").trim();
 
       return {
         id: String(item.id || createReviewId()),
@@ -129,6 +137,7 @@ export const normalizeBusinessReviews = (raw: unknown): BusinessReview[] => {
         rating: Math.round(rating),
         text,
         createdAt: String(item.createdAt || new Date().toISOString()),
+        ...(updatedAt ? { updatedAt } : {}),
         ownerReply,
       } satisfies BusinessReview;
     })
@@ -201,6 +210,80 @@ export const saveBusinessReview = async (
   return next;
 };
 
+export const isReviewAuthor = (
+  review: BusinessReview,
+  reviewer: CurrentReviewer | null | undefined
+) => Boolean(reviewer && review.userId === reviewer.userId);
+
+export const updateBusinessReview = async (
+  businessId: string,
+  reviewId: string,
+  userId: string,
+  updates: { rating: number; text: string }
+): Promise<BusinessReview[]> => {
+  const trimmed = updates.text.trim();
+  if (!trimmed) {
+    throw new Error("empty_review");
+  }
+
+  const rating = Math.round(updates.rating);
+  if (rating < 1 || rating > 5) {
+    throw new Error("invalid_rating");
+  }
+
+  const existing = await loadBusinessReviews(businessId);
+  const index = existing.findIndex((item) => item.id === reviewId);
+
+  if (index < 0) {
+    throw new Error("review_not_found");
+  }
+
+  if (existing[index].userId !== userId) {
+    throw new Error("forbidden");
+  }
+
+  const next = [...existing];
+  next[index] = {
+    ...next[index],
+    rating,
+    text: trimmed,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await AsyncStorage.setItem(
+    reviewsStorageKey(businessId),
+    JSON.stringify(next)
+  );
+
+  return next;
+};
+
+export const deleteBusinessReview = async (
+  businessId: string,
+  reviewId: string,
+  userId: string
+): Promise<BusinessReview[]> => {
+  const existing = await loadBusinessReviews(businessId);
+  const review = existing.find((item) => item.id === reviewId);
+
+  if (!review) {
+    throw new Error("review_not_found");
+  }
+
+  if (review.userId !== userId) {
+    throw new Error("forbidden");
+  }
+
+  const next = existing.filter((item) => item.id !== reviewId);
+
+  await AsyncStorage.setItem(
+    reviewsStorageKey(businessId),
+    JSON.stringify(next)
+  );
+
+  return next;
+};
+
 export const saveOwnerReply = async (
   businessId: string,
   reviewId: string,
@@ -228,6 +311,45 @@ export const saveOwnerReply = async (
     ownerReply: {
       text: trimmed,
       createdAt: new Date().toISOString(),
+    },
+  };
+
+  await AsyncStorage.setItem(
+    reviewsStorageKey(businessId),
+    JSON.stringify(next)
+  );
+
+  return next;
+};
+
+export const updateOwnerReply = async (
+  businessId: string,
+  reviewId: string,
+  text: string
+): Promise<BusinessReview[]> => {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("empty_reply");
+  }
+
+  const existing = await loadBusinessReviews(businessId);
+  const index = existing.findIndex((item) => item.id === reviewId);
+
+  if (index < 0) {
+    throw new Error("review_not_found");
+  }
+
+  if (!existing[index].ownerReply) {
+    throw new Error("reply_not_found");
+  }
+
+  const next = [...existing];
+  next[index] = {
+    ...next[index],
+    ownerReply: {
+      ...next[index].ownerReply!,
+      text: trimmed,
+      updatedAt: new Date().toISOString(),
     },
   };
 

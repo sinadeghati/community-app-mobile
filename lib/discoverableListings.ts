@@ -31,12 +31,76 @@ export type DiscoverableListing = {
   reviews?: number;
   business_updates?: unknown;
   businessUpdates?: unknown;
+  menu_items?: unknown;
+  menuItems?: unknown;
+  services?: string;
+  business_type?: string;
 };
 
 export const getListingId = (item: DiscoverableListing) => String(item?.id || "");
 
 export const getListingCategory = (item: DiscoverableListing) =>
   item?.business_category || item?.category || "Local Business";
+
+const getListingMenuHaystack = (item: DiscoverableListing) => {
+  const raw = item.menu_items ?? item.menuItems;
+  if (!Array.isArray(raw)) return "";
+
+  return raw
+    .map((entry) => {
+      const row = entry as Record<string, unknown>;
+      return [row.title, row.name, row.description]
+        .filter((v) => v != null && String(v).trim() !== "")
+        .map((v) => String(v));
+    })
+    .flat()
+    .join(" ");
+};
+
+/** Labels saved via create-business and other flows that map to Explore filters. */
+const listingCategoryMatchesExploreFilter = (
+  item: DiscoverableListing,
+  selectedCategory: string
+) => {
+  const category = getListingCategory(item).toLowerCase();
+
+  switch (selectedCategory) {
+    case "Auto Repair":
+      return (
+        category === "auto" ||
+        category.includes("auto repair") ||
+        category.includes("automotive") ||
+        category.includes("car repair") ||
+        category.includes("mechanic")
+      );
+    case "Restaurant":
+      return (
+        category === "food" ||
+        category.includes("persian food") ||
+        category.includes("restaurant")
+      );
+    case "Cafe":
+      return (
+        category.includes("cafe") ||
+        category.includes("coffee") ||
+        category.includes("bakery")
+      );
+    case "Beauty":
+      return category.includes("beauty") || category.includes("salon");
+    case "Real Estate":
+      return category.includes("real estate") || category.includes("property");
+    case "Services":
+      return (
+        category.includes("home service") ||
+        category.includes("professional service") ||
+        category.includes("professional") ||
+        category.includes("legal") ||
+        category.includes("construction")
+      );
+    default:
+      return false;
+  }
+};
 
 /** Searchable text from listing fields only (no synonym injection). */
 export const getBaseSearchHaystack = (item: DiscoverableListing) => {
@@ -55,6 +119,8 @@ export const getBaseSearchHaystack = (item: DiscoverableListing) => {
     item.category,
     item.subcategory,
     item.business_subcategory,
+    item.business_type,
+    item.services,
     item.city,
     item.state,
     item.address,
@@ -63,6 +129,7 @@ export const getBaseSearchHaystack = (item: DiscoverableListing) => {
     item.contact_info,
     item.phone,
     keywordsText,
+    getListingMenuHaystack(item),
   ]
     .filter((v) => v != null && String(v).trim() !== "")
     .map((v) => String(v).toLowerCase())
@@ -383,6 +450,10 @@ const matchesCategoryKey = (
 
   if (selectedCategory === "Events") {
     return false;
+  }
+
+  if (listingCategoryMatchesExploreFilter(item, selectedCategory)) {
+    return true;
   }
 
   switch (selectedCategory) {

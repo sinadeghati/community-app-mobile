@@ -1296,6 +1296,87 @@ export const upsertUserBusiness = async (
   await saveUserBusinesses(userId, next, username);
 };
 
+export type DeleteUserBusinessResult =
+  | { ok: true }
+  | { ok: false; reason: "missing_ids" | "not_owner" | "not_found" };
+
+/**
+ * Remove an owned business from local/public discovery storage.
+ * - profile_v2_{businessId} (Map / Explore / public profile)
+ * - my_local_businesses_{userId} (owner scoped list)
+ * - business_reviews_{businessId} (local reviews only)
+ * Does not touch user profile or other accounts' data.
+ */
+export const deleteUserBusiness = async (
+  userId: string,
+  businessId: string,
+  identity?: { username?: string; email?: string }
+): Promise<DeleteUserBusinessResult> => {
+  const id = String(businessId || "").trim();
+  if (!userId || !id) {
+    return { ok: false, reason: "missing_ids" };
+  }
+
+  const profileStorageKey = `profile_v2_${id}`;
+  let record: Record<string, unknown> | null = null;
+
+  try {
+    const profileRaw = await AsyncStorage.getItem(profileStorageKey);
+    if (profileRaw) {
+      record = JSON.parse(profileRaw) as Record<string, unknown>;
+    }
+  } catch {
+    record = null;
+  }
+
+  if (!record) {
+    const owned = (await loadUserBusinesses(userId, identity)) as Record<
+      string,
+      unknown
+    >[];
+    record = owned.find((item) => String(item.id || "") === id) ?? null;
+  }
+
+  if (!record) {
+    return { ok: false, reason: "not_found" };
+  }
+
+  if (!isMyBusinessForUser(record, userId, identity)) {
+    return { ok: false, reason: "not_owner" };
+  }
+
+  await AsyncStorage.removeItem(profileStorageKey);
+
+  const ownedList = (await loadUserBusinesses(userId, identity)) as Record<
+    string,
+    unknown
+  >[];
+  const nextList = ownedList.filter((item) => String(item.id || "") !== id);
+  await saveUserBusinesses(
+    userId,
+    nextList,
+    identity?.username ?? businessOwnerUsername(record) ?? undefined
+  );
+
+  await AsyncStorage.removeItem(`business_reviews_${id}`);
+
+  try {
+    const { removeBusinessFavorite } = await import("./businessFavorites");
+    await removeBusinessFavorite(id);
+  } catch {
+    // Favorites cleanup is best-effort; business removal already succeeded.
+  }
+
+  console.log("BUSINESS_STORAGE_DELETE", {
+    userId,
+    businessId: id,
+    profileStorageKey,
+    ownerUsername: identity?.username ?? businessOwnerUsername(record),
+  });
+
+  return { ok: true };
+};
+
 /** Login: profile cache only — businesses load after identity (username) is known. */
 export const prepareSessionForUser = async (userId: string) => {
   await loadUserProfile(userId);

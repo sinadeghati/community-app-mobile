@@ -50,8 +50,6 @@ export default function ProfileV2Clean() {
     userId: string | null,
     identity?: { username?: string; email?: string }
   ) => {
-    setLocalBusinesses([]);
-
     if (!userId) {
       return;
     }
@@ -176,7 +174,6 @@ export default function ProfileV2Clean() {
       setLocalBusinesses(filteredBusinesses);
     } catch (error) {
       console.log("LOCAL BUSINESSES LOAD ERROR:", error);
-      setLocalBusinesses([]);
     }
   };
 
@@ -223,7 +220,6 @@ export default function ProfileV2Clean() {
           return;
         }
 
-        setLocalBusinesses([]);
         await AsyncStorage.setItem("is_logged_in", "true");
         setIsLoggedIn(true);
         await prepareSessionForUser(userId);

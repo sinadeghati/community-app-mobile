@@ -63,6 +63,8 @@ export default function EditBusinessProfileScreen() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [canDeleteBusiness, setCanDeleteBusiness] = useState(false);
 
   const [businessName, setBusinessName] = useState("");
   const [businessBio, setBusinessBio] = useState("");
@@ -84,6 +86,20 @@ export default function EditBusinessProfileScreen() {
   const [logoImage, setLogoImage] = useState<string | null>(null);
 
   const businessStorageKey = `profile_v2_${businessId}`;
+
+  const resolveCanDeleteBusiness = async (item: Record<string, unknown>) => {
+    const { getActiveUserId, isMyBusinessForUser, loadUserProfile } = await import(
+      "../../lib/userSessionStorage"
+    );
+    const ownerId = await getActiveUserId();
+    if (!ownerId) return false;
+
+    const ownerProfile = await loadUserProfile(ownerId);
+    return isMyBusinessForUser(item, ownerId, {
+      username: String(ownerProfile?.username || "").trim() || undefined,
+      email: String(ownerProfile?.email || "").trim() || undefined,
+    });
+  };
 
   const normalizeBusiness = (item: any) => ({
     id: String(item?.id || businessId),
@@ -157,7 +173,9 @@ export default function EditBusinessProfileScreen() {
 
         const savedRaw = await AsyncStorage.getItem(businessStorageKey);
         if (savedRaw) {
-          applyBusinessToForm(JSON.parse(savedRaw));
+          const savedBusiness = JSON.parse(savedRaw) as Record<string, unknown>;
+          applyBusinessToForm(savedBusiness);
+          setCanDeleteBusiness(await resolveCanDeleteBusiness(savedBusiness));
           return;
         }
 
@@ -171,13 +189,18 @@ export default function EditBusinessProfileScreen() {
           : null;
 
         if (localBusiness) {
+          const record = localBusiness as Record<string, unknown>;
           applyBusinessToForm(localBusiness);
+          setCanDeleteBusiness(await resolveCanDeleteBusiness(record));
           return;
         }
 
         if ((API as any)?.getListing) {
           const apiData = await (API as any).getListing(businessId);
           applyBusinessToForm(apiData);
+          setCanDeleteBusiness(
+            await resolveCanDeleteBusiness(apiData as Record<string, unknown>)
+          );
           return;
         }
 
@@ -293,6 +316,75 @@ export default function EditBusinessProfileScreen() {
       if (type === "cover") setCoverImage(uri);
       if (type === "logo") setLogoImage(uri);
     }
+  };
+
+  const performDeleteBusiness = async () => {
+    try {
+      setDeleting(true);
+      const { deleteUserBusiness, getActiveUserId, loadUserProfile } = await import(
+        "../../lib/userSessionStorage"
+      );
+      const ownerId = await getActiveUserId();
+      if (!ownerId) {
+        Alert.alert("Login required", "You must be logged in to delete a business.");
+        return;
+      }
+
+      const ownerProfile = await loadUserProfile(ownerId);
+      const result = await deleteUserBusiness(ownerId, businessId, {
+        username: String(ownerProfile?.username || "").trim() || undefined,
+        email: String(ownerProfile?.email || "").trim() || undefined,
+      });
+
+      if (!result.ok) {
+        if (result.reason === "not_owner") {
+          Alert.alert("Not allowed", "You can only delete businesses you own.");
+        } else if (result.reason === "not_found") {
+          Alert.alert("Not found", "Could not find this business to delete.");
+        } else {
+          Alert.alert("Error", "Could not delete this business.");
+        }
+        return;
+      }
+
+      Alert.alert("Business deleted", "Your business has been removed.", [
+        {
+          text: "OK",
+          onPress: () => router.replace("/(tabs)/profile"),
+        },
+      ]);
+    } catch (error) {
+      console.log("DELETE BUSINESS ERROR:", error);
+      Alert.alert("Error", "Could not delete this business.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDeleteBusiness = () => {
+    Alert.alert(
+      "Delete Business?",
+      "This will remove this business from your profile, Map, Explore, and public listings.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert("This action cannot be undone.", undefined, [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Yes, delete permanently",
+                style: "destructive",
+                onPress: () => {
+                  void performDeleteBusiness();
+                },
+              },
+            ]);
+          },
+        },
+      ]
+    );
   };
 
   const saveBusiness = async () => {
@@ -889,7 +981,7 @@ export default function EditBusinessProfileScreen() {
               Keyboard.dismiss();
               saveBusiness();
             }}
-            disabled={saving}
+            disabled={saving || deleting}
             style={{
               marginTop: 26,
               height: 62,
@@ -903,6 +995,28 @@ export default function EditBusinessProfileScreen() {
               {saving ? "Saving..." : "Save Changes"}
             </Text>
           </Pressable>
+
+          {canDeleteBusiness ? (
+            <Pressable
+              onPress={confirmDeleteBusiness}
+              disabled={saving || deleting}
+              style={{
+                marginTop: 16,
+                marginBottom: 28,
+                height: 52,
+                borderRadius: 16,
+                borderWidth: 1.5,
+                borderColor: "#EF4444",
+                backgroundColor: "rgba(239,68,68,0.08)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: "#EF4444", fontSize: 16, fontWeight: "800" }}>
+                {deleting ? "Deleting..." : "Delete Business"}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

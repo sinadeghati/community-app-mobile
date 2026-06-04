@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -23,6 +23,11 @@ import {
   toggleBusinessFavorite,
 } from "../../lib/businessFavorites";
 import { ensureLoggedInForSave } from "../../lib/savedActions";
+import {
+  formatMapPreviewReviewText,
+  getBusinessReviewSummary,
+  type BusinessReviewSummary,
+} from "../../lib/businessReviews";
 import { theme } from "../../lib/theme";
 
 type Listing = {
@@ -54,6 +59,22 @@ const HERO_IMAGE =
 
 const EVENT_IMAGE =
   "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=1200";
+
+const exploreCardShadow = {
+  shadowColor: "#000",
+  shadowOpacity: 0.05,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 2,
+} as const;
+
+const exploreHeroShadow = {
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 3,
+} as const;
 
 const categories = [
   { key: "All", label: "All", icon: "apps-outline" },
@@ -96,6 +117,26 @@ export default function ExploreScreen() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
+  const [reviewSummaries, setReviewSummaries] = useState<
+    Record<string, BusinessReviewSummary>
+  >({});
+
+  const syncReviewSummaries = useCallback(async (items: Listing[]) => {
+    const ids = [...new Set(items.map(getId).filter(Boolean))];
+    if (!ids.length) return;
+
+    const pairs = await Promise.all(
+      ids.map(async (id) => [id, await getBusinessReviewSummary(id)] as const)
+    );
+
+    setReviewSummaries((prev) => {
+      const next = { ...prev };
+      for (const [id, summary] of pairs) {
+        next[id] = summary;
+      }
+      return next;
+    });
+  }, []);
 
   const loadFavorites = async () => {
     try {
@@ -112,7 +153,10 @@ export default function ExploreScreen() {
   useFocusEffect(
     React.useCallback(() => {
       loadFavorites();
-    }, [])
+      if (listings.length > 0) {
+        syncReviewSummaries(listings);
+      }
+    }, [listings, syncReviewSummaries])
   );
 
   const loadListings = async () => {
@@ -120,6 +164,7 @@ export default function ExploreScreen() {
       setLoading(true);
       const data = await loadDiscoverableListings();
       setListings(data);
+      await syncReviewSummaries(data);
       await loadFavorites();
     } catch (e) {
       console.log("Explore V2.5 load error:", e);
@@ -162,69 +207,63 @@ export default function ExploreScreen() {
 
   const popular = useMemo(() => filteredListings.slice(0, 8), [filteredListings]);
 
-  const SectionHeader = ({ title, action }: { title: string; action?: string }) => (
+  const getReviewLine = (item: Listing) =>
+    formatMapPreviewReviewText(reviewSummaries[getId(item)]);
+
+  const SectionHeader = ({ title }: { title: string }) => (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingHorizontal: 20,
-        marginTop: 28,
-        marginBottom: 14,
+        paddingHorizontal: theme.spacing.md,
+        marginTop: theme.spacing.lg,
+        marginBottom: theme.spacing.sm,
       }}
     >
       <Text
         style={{
           flex: 1,
-          fontSize: 24,
-          fontWeight: "900",
+          fontSize: 18,
+          fontWeight: "800",
           color: theme.colors.charcoal,
+          letterSpacing: -0.3,
         }}
       >
         {title}
       </Text>
-
-      {action ? (
-        <Text
-          style={{
-            color: theme.colors.turquoise,
-            fontWeight: "800",
-            fontSize: 14,
-          }}
-        >
-          {action}
-        </Text>
-      ) : null}
     </View>
-  );  const CategoryPill = ({ item }: { item: any }) => {
+  );
+
+  const CategoryPill = ({ item }: { item: any }) => {
     const active = selectedCategory === item.key;
 
     return (
       <Pressable
         onPress={() => setSelectedCategory(item.key)}
         style={{
-          width: 96,
-          height: 92,
-          borderRadius: 26,
-          backgroundColor: active ? "rgba(13,148,136,0.14)" : theme.colors.card,
+          width: 80,
+          height: 72,
+          borderRadius: theme.radius.md,
+          backgroundColor: active ? "rgba(13,148,136,0.10)" : theme.colors.card,
           borderWidth: 1,
-          borderColor: active ? "rgba(13,148,136,0.32)" : theme.colors.border,
+          borderColor: active ? "rgba(13,148,136,0.28)" : theme.colors.border,
           alignItems: "center",
           justifyContent: "center",
-          marginRight: 12,
-          ...theme.shadow.soft,
+          marginRight: 10,
+          ...exploreCardShadow,
         }}
       >
         <Ionicons
           name={item.icon as any}
-          size={28}
+          size={22}
           color={active ? theme.colors.turquoise : theme.colors.charcoal}
         />
         <Text
           numberOfLines={1}
           style={{
-            marginTop: 9,
-            fontSize: 13,
-            fontWeight: "900",
+            marginTop: 6,
+            fontSize: 12,
+            fontWeight: "700",
             color: theme.colors.charcoal,
           }}
         >
@@ -237,26 +276,27 @@ export default function ExploreScreen() {
   const BusinessCard = ({ item, large = false }: { item: Listing; large?: boolean }) => {
     const id = getId(item);
     const saved = favorites[id];
+    const reviewLine = getReviewLine(item);
 
     return (
       <Pressable
         onPress={() => goProfile(item)}
         style={{
-          width: large ? 182 : 165,
+          width: large ? 168 : 154,
           backgroundColor: theme.colors.card,
-          borderRadius: 26,
-          marginRight: 14,
+          borderRadius: theme.radius.md,
+          marginRight: 12,
           overflow: "hidden",
           borderWidth: 1,
           borderColor: theme.colors.border,
-          ...theme.shadow.soft,
+          ...exploreCardShadow,
         }}
       >
         <Image
           source={{ uri: getImage(item) }}
           style={{
             width: "100%",
-            height: large ? 128 : 112,
+            height: large ? 116 : 100,
             backgroundColor: "#eee",
           }}
           resizeMode="cover"
@@ -266,31 +306,33 @@ export default function ExploreScreen() {
           onPress={() => toggleFavorite(item)}
           style={{
             position: "absolute",
-            top: 10,
-            right: 10,
-            width: 38,
-            height: 38,
-            borderRadius: 19,
-            backgroundColor: "rgba(255,255,255,0.92)",
+            top: 8,
+            right: 8,
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: "rgba(255,255,255,0.94)",
             alignItems: "center",
             justifyContent: "center",
+            borderWidth: 1,
+            borderColor: "rgba(229,231,235,0.9)",
           }}
         >
           <Ionicons
             name={saved ? "heart" : "heart-outline"}
-            size={22}
+            size={19}
             color={saved ? theme.colors.danger : theme.colors.charcoal}
           />
         </Pressable>
 
-        <View style={{ padding: 13 }}>
+        <View style={{ padding: 11 }}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Text
               numberOfLines={1}
               style={{
                 flex: 1,
-                fontSize: large ? 18 : 16,
-                fontWeight: "900",
+                fontSize: large ? 15 : 14,
+                fontWeight: "800",
                 color: theme.colors.charcoal,
               }}
             >
@@ -298,32 +340,34 @@ export default function ExploreScreen() {
             </Text>
 
             {item.is_verified ? (
-              <Ionicons name="checkmark-circle" size={17} color={theme.colors.turquoise} />
+              <Ionicons name="checkmark-circle" size={15} color={theme.colors.turquoise} />
             ) : null}
           </View>
 
           <Text
             numberOfLines={1}
             style={{
-              marginTop: 4,
+              marginTop: 3,
               color: theme.colors.muted,
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: "600",
             }}
           >
             {getCategory(item)}
           </Text>
 
-          <Text
-            style={{
-              marginTop: 8,
-              color: "#C49A3A",
-              fontSize: 13,
-              fontWeight: "900",
-            }}
-          >
-            ⭐ {item.rating || "4.8"} · {item.reviews || 24} reviews
-          </Text>
+          {reviewLine ? (
+            <Text
+              style={{
+                marginTop: 6,
+                fontSize: 12,
+                fontWeight: "600",
+                color: theme.colors.charcoal,
+              }}
+            >
+              {reviewLine}
+            </Text>
+          ) : null}
         </View>
       </Pressable>
     );
@@ -332,40 +376,41 @@ export default function ExploreScreen() {
   const PopularRow = ({ item }: { item: Listing }) => {
     const id = getId(item);
     const saved = favorites[id];
+    const reviewLine = getReviewLine(item);
 
     return (
       <Pressable
         onPress={() => goProfile(item)}
         style={{
-          marginHorizontal: 20,
-          marginBottom: 13,
+          marginHorizontal: theme.spacing.md,
+          marginBottom: 10,
           backgroundColor: theme.colors.card,
-          borderRadius: 24,
-          padding: 12,
+          borderRadius: theme.radius.md,
+          padding: 10,
           flexDirection: "row",
           alignItems: "center",
           borderWidth: 1,
           borderColor: theme.colors.border,
-          ...theme.shadow.soft,
+          ...exploreCardShadow,
         }}
       >
         <Image
           source={{ uri: getImage(item) }}
           style={{
-            width: 76,
-            height: 76,
-            borderRadius: 18,
+            width: 60,
+            height: 60,
+            borderRadius: theme.radius.sm,
             backgroundColor: "#eee",
           }}
           resizeMode="cover"
         />
 
-        <View style={{ flex: 1, marginLeft: 14 }}>
+        <View style={{ flex: 1, marginLeft: 12 }}>
           <Text
             numberOfLines={1}
             style={{
-              fontSize: 18,
-              fontWeight: "900",
+              fontSize: 15,
+              fontWeight: "800",
               color: theme.colors.charcoal,
             }}
           >
@@ -375,30 +420,34 @@ export default function ExploreScreen() {
           <Text
             numberOfLines={1}
             style={{
-              marginTop: 3,
+              marginTop: 2,
               color: theme.colors.muted,
+              fontSize: 12,
               fontWeight: "600",
             }}
           >
             {getCategory(item)}
           </Text>
 
-          <Text
-            style={{
-              marginTop: 6,
-              color: "#C49A3A",
-              fontWeight: "900",
-            }}
-          >
-            ⭐ {item.rating || "4.8"} · {item.reviews || 24} reviews
-          </Text>
+          {reviewLine ? (
+            <Text
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                fontWeight: "600",
+                color: theme.colors.charcoal,
+              }}
+            >
+              {reviewLine}
+            </Text>
+          ) : null}
         </View>
 
-        <Pressable onPress={() => toggleFavorite(item)}>
+        <Pressable onPress={() => toggleFavorite(item)} hitSlop={8}>
           <Ionicons
-            name={saved ? "bookmark" : "bookmark-outline"}
-            size={27}
-            color={saved ? theme.colors.turquoise : theme.colors.charcoal}
+            name={saved ? "heart" : "heart-outline"}
+            size={22}
+            color={saved ? theme.colors.danger : theme.colors.charcoal}
           />
         </Pressable>
       </Pressable>
@@ -418,32 +467,40 @@ export default function ExploreScreen() {
         <ActivityIndicator size="large" color={theme.colors.turquoise} />
       </SafeAreaView>
     );
-  }  return (
+  }
+
+  return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
       <FlatList
         data={popular}
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
         ListHeaderComponent={
           <>
-            <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+            <View
+              style={{
+                paddingHorizontal: theme.spacing.md,
+                paddingTop: 12,
+              }}
+            >
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <View style={{ flex: 1 }}>
                   <Text
                     style={{
-                      fontSize: 34,
-                      fontWeight: "900",
+                      fontSize: 28,
+                      fontWeight: "800",
                       color: theme.colors.charcoal,
+                      letterSpacing: -0.5,
                     }}
                   >
                     Explore
                   </Text>
                   <Text
                     style={{
-                      marginTop: 4,
+                      marginTop: 2,
                       color: theme.colors.muted,
-                      fontSize: 15,
+                      fontSize: 13,
                       fontWeight: "600",
                     }}
                   >
@@ -453,20 +510,20 @@ export default function ExploreScreen() {
 
                 <Pressable
                   style={{
-                    width: 46,
-                    height: 46,
-                    borderRadius: 23,
+                    width: 42,
+                    height: 42,
+                    borderRadius: theme.radius.sm,
                     backgroundColor: theme.colors.card,
                     alignItems: "center",
                     justifyContent: "center",
                     borderWidth: 1,
                     borderColor: theme.colors.border,
-                    ...theme.shadow.soft,
+                    ...exploreCardShadow,
                   }}
                 >
                   <Ionicons
                     name="options-outline"
-                    size={23}
+                    size={20}
                     color={theme.colors.turquoise}
                   />
                 </Pressable>
@@ -474,21 +531,21 @@ export default function ExploreScreen() {
 
               <View
                 style={{
-                  marginTop: 18,
-                  height: 56,
-                  borderRadius: 22,
+                  marginTop: theme.spacing.md,
+                  height: 46,
+                  borderRadius: theme.radius.sm,
                   backgroundColor: theme.colors.card,
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingHorizontal: 15,
+                  paddingHorizontal: 12,
                   borderWidth: 1,
                   borderColor: theme.colors.border,
-                  ...theme.shadow.soft,
+                  ...exploreCardShadow,
                 }}
               >
                 <Ionicons
                   name="search-outline"
-                  size={21}
+                  size={19}
                   color={theme.colors.turquoise}
                 />
                 <TextInput
@@ -498,35 +555,40 @@ export default function ExploreScreen() {
                   placeholderTextColor="#9CA3AF"
                   style={{
                     flex: 1,
-                    marginLeft: 10,
-                    fontSize: 15,
+                    marginLeft: 8,
+                    fontSize: 14,
                     color: theme.colors.charcoal,
                   }}
                 />
                 {search.length > 0 ? (
                   <Pressable onPress={() => setSearch("")}>
-                    <Ionicons name="close-circle" size={21} color="#999" />
+                    <Ionicons name="close-circle" size={19} color="#999" />
                   </Pressable>
                 ) : null}
               </View>
             </View>
 
-            <View style={{ marginTop: 22, paddingHorizontal: 20 }}>
+            <View
+              style={{
+                marginTop: theme.spacing.md,
+                paddingHorizontal: theme.spacing.md,
+              }}
+            >
               <ImageBackground
                 source={{ uri: HERO_IMAGE }}
-                imageStyle={{ borderRadius: 32 }}
+                imageStyle={{ borderRadius: theme.radius.md }}
                 style={{
-                  height: 210,
-                  borderRadius: 32,
+                  height: 168,
+                  borderRadius: theme.radius.md,
                   overflow: "hidden",
-                  ...theme.shadow.medium,
+                  ...exploreHeroShadow,
                 }}
               >
                 <View
                   style={{
                     flex: 1,
                     backgroundColor: "rgba(6,31,36,0.52)",
-                    padding: 22,
+                    padding: 18,
                     justifyContent: "flex-end",
                   }}
                 >
@@ -534,17 +596,17 @@ export default function ExploreScreen() {
                     style={{
                       alignSelf: "flex-start",
                       backgroundColor: "rgba(13,148,136,0.92)",
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      marginBottom: 12,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: theme.radius.pill,
+                      marginBottom: 10,
                     }}
                   >
                     <Text
                       style={{
                         color: "#fff",
-                        fontSize: 12,
-                        fontWeight: "900",
+                        fontSize: 11,
+                        fontWeight: "800",
                         letterSpacing: 0.4,
                       }}
                     >
@@ -555,39 +617,39 @@ export default function ExploreScreen() {
                   <Text
                     style={{
                       color: "#fff",
-                      fontSize: 28,
-                      lineHeight: 33,
-                      fontWeight: "900",
-                      width: "85%",
+                      fontSize: 22,
+                      lineHeight: 28,
+                      fontWeight: "800",
+                      width: "90%",
                     }}
                   >
-                    Discover the heart of your community
+                    Persian businesses & events near you
                   </Text>
 
                   <Text
                     style={{
-                      marginTop: 8,
+                      marginTop: 6,
                       color: "rgba(255,255,255,0.9)",
-                      fontSize: 14.5,
-                      lineHeight: 21,
-                      width: "88%",
+                      fontSize: 13,
+                      lineHeight: 19,
+                      width: "92%",
                     }}
                   >
-                    Local businesses, events, services, and Persian culture near you.
+                    Local businesses, events, services, and culture on the map.
                   </Text>
 
                   <Pressable
                     onPress={() => router.push("/(tabs)/map")}
                     style={{
-                      marginTop: 15,
+                      marginTop: 12,
                       alignSelf: "flex-start",
                       backgroundColor: theme.colors.turquoise,
-                      borderRadius: 16,
-                      paddingHorizontal: 18,
-                      paddingVertical: 11,
+                      borderRadius: theme.radius.sm,
+                      paddingHorizontal: 16,
+                      paddingVertical: 9,
                     }}
                   >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>
+                    <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
                       Open Map
                     </Text>
                   </Pressable>
@@ -595,50 +657,56 @@ export default function ExploreScreen() {
               </ImageBackground>
             </View>
 
-            <SectionHeader title="Popular Categories" action="See all" />
+            <SectionHeader title="Popular Categories" />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingLeft: 20, paddingRight: 8 }}
+              contentContainerStyle={{
+                paddingLeft: theme.spacing.md,
+                paddingRight: 8,
+              }}
             >
               {categories.map((item) => (
                 <CategoryPill key={item.key} item={item} />
               ))}
             </ScrollView>
 
-            <SectionHeader title="Featured Businesses" action="See all" />
+            <SectionHeader title="Featured Businesses" />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingLeft: 20, paddingRight: 8 }}
+              contentContainerStyle={{
+                paddingLeft: theme.spacing.md,
+                paddingRight: 8,
+              }}
             >
               {featured.map((item) => (
                 <BusinessCard key={`featured-${item.id}`} item={item} large />
               ))}
             </ScrollView>
 
-            <SectionHeader title="Upcoming Events" action="View all" />
+            <SectionHeader title="Upcoming Events" />
             <View
               style={{
-                marginHorizontal: 20,
-                borderRadius: 30,
+                marginHorizontal: theme.spacing.md,
+                borderRadius: theme.radius.md,
                 overflow: "hidden",
                 backgroundColor: theme.colors.card,
                 borderWidth: 1,
                 borderColor: theme.colors.border,
-                ...theme.shadow.medium,
+                ...exploreCardShadow,
               }}
             >
               <ImageBackground
                 source={{ uri: EVENT_IMAGE }}
-                style={{ height: 150 }}
+                style={{ height: 128 }}
                 resizeMode="cover"
               >
                 <View
                   style={{
                     flex: 1,
                     backgroundColor: "rgba(15,43,51,0.42)",
-                    padding: 18,
+                    padding: 14,
                     justifyContent: "flex-end",
                   }}
                 >
@@ -646,22 +714,22 @@ export default function ExploreScreen() {
                     style={{
                       alignSelf: "flex-start",
                       backgroundColor: theme.colors.eventPurple,
-                      borderRadius: 999,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
+                      borderRadius: theme.radius.pill,
+                      paddingHorizontal: 9,
+                      paddingVertical: 4,
                     }}
                   >
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
+                    <Text style={{ color: "#fff", fontWeight: "800", fontSize: 11 }}>
                       TONIGHT
                     </Text>
                   </View>
 
                   <Text
                     style={{
-                      marginTop: 8,
+                      marginTop: 6,
                       color: "#fff",
-                      fontSize: 22,
-                      fontWeight: "900",
+                      fontSize: 18,
+                      fontWeight: "800",
                     }}
                   >
                     Persian Events Near You
@@ -669,18 +737,24 @@ export default function ExploreScreen() {
                 </View>
               </ImageBackground>
 
-              <View style={{ padding: 16 }}>
-                <Text style={{ color: theme.colors.muted, lineHeight: 22 }}>
+              <View style={{ padding: 14 }}>
+                <Text
+                  style={{
+                    color: theme.colors.muted,
+                    fontSize: 13,
+                    lineHeight: 20,
+                  }}
+                >
                   Concerts, Nowruz, Yalda, networking nights, and community events.
                 </Text>
 
                 <Pressable
                   onPress={() => router.push("/(tabs)/map")}
                   style={{
-                    marginTop: 14,
-                    height: 46,
-                    borderRadius: 16,
-                    backgroundColor: "rgba(13,148,136,0.12)",
+                    marginTop: 12,
+                    height: 42,
+                    borderRadius: theme.radius.sm,
+                    backgroundColor: "rgba(13,148,136,0.10)",
                     alignItems: "center",
                     justifyContent: "center",
                   }}
@@ -688,7 +762,8 @@ export default function ExploreScreen() {
                   <Text
                     style={{
                       color: theme.colors.turquoise,
-                      fontWeight: "900",
+                      fontWeight: "800",
+                      fontSize: 13,
                     }}
                   >
                     Explore Events on Map
@@ -702,13 +777,19 @@ export default function ExploreScreen() {
         }
         renderItem={({ item }) => <PopularRow item={item} />}
         ListEmptyComponent={
-          <View style={{ alignItems: "center", paddingTop: 70, paddingHorizontal: 30 }}>
-            <Ionicons name="search-outline" size={42} color={theme.colors.turquoise} />
+          <View
+            style={{
+              alignItems: "center",
+              paddingTop: 56,
+              paddingHorizontal: theme.spacing.lg,
+            }}
+          >
+            <Ionicons name="search-outline" size={36} color={theme.colors.turquoise} />
             <Text
               style={{
-                marginTop: 14,
-                fontSize: 20,
-                fontWeight: "900",
+                marginTop: 12,
+                fontSize: 17,
+                fontWeight: "800",
                 color: theme.colors.charcoal,
               }}
             >
@@ -716,10 +797,11 @@ export default function ExploreScreen() {
             </Text>
             <Text
               style={{
-                marginTop: 6,
+                marginTop: 4,
                 color: theme.colors.muted,
+                fontSize: 13,
                 textAlign: "center",
-                lineHeight: 22,
+                lineHeight: 20,
               }}
             >
               Try another keyword, category, or city.

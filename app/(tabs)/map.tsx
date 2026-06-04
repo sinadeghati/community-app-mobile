@@ -2265,51 +2265,53 @@ export default function MapScreenV25() {
           </View>
 
           {!isDiscoveryActive ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{
-                paddingHorizontal: 16,
-                paddingBottom: 10,
-                gap: 8,
-              }}
-            >
-              {EVENT_TIME_FILTERS.map((filter) => {
-                const active = eventTimeFilter === filter.key;
+            <View style={{ marginBottom: 12 }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{
+                  paddingHorizontal: 16,
+                  gap: 8,
+                  alignItems: "center",
+                }}
+              >
+                {EVENT_TIME_FILTERS.map((filter) => {
+                  const active = eventTimeFilter === filter.key;
 
-                return (
-                  <Pressable
-                    key={filter.key}
-                    onPress={() => setEventTimeFilter(filter.key)}
-                    style={{
-                      height: 30,
-                      paddingHorizontal: 12,
-                      borderRadius: 999,
-                      backgroundColor: active
-                        ? theme.colors.eventPurple
-                        : "rgba(124,58,237,0.08)",
-                      borderWidth: 1,
-                      borderColor: active
-                        ? theme.colors.eventPurple
-                        : theme.colors.border,
-                      justifyContent: "center",
-                      marginRight: 8,
-                    }}
-                  >
-                    <Text
+                  return (
+                    <Pressable
+                      key={filter.key}
+                      onPress={() => setEventTimeFilter(filter.key)}
                       style={{
-                        fontSize: 12,
-                        fontWeight: "700",
-                        color: active ? "#fff" : theme.colors.charcoal,
+                        height: 30,
+                        paddingHorizontal: 12,
+                        borderRadius: 999,
+                        backgroundColor: active
+                          ? theme.colors.eventPurple
+                          : "rgba(124,58,237,0.08)",
+                        borderWidth: 1,
+                        borderColor: active
+                          ? theme.colors.eventPurple
+                          : theme.colors.border,
+                        justifyContent: "center",
+                        marginRight: 8,
                       }}
                     >
-                      {filter.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: "700",
+                          color: active ? "#fff" : theme.colors.charcoal,
+                        }}
+                      >
+                        {filter.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
           ) : null}
 
           {isDiscoveryActive ? (
