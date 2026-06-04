@@ -41,6 +41,11 @@ import {
   type BusinessReview,
   type CurrentReviewer,
 } from "../../lib/businessReviews";
+import {
+  isBusinessFavorited,
+  toggleBusinessFavorite,
+} from "../../lib/businessFavorites";
+import { ensureLoggedInForSave } from "../../lib/savedActions";
 import { theme } from "../../lib/theme";
 
 
@@ -517,13 +522,19 @@ export default function BusinessProfileV2() {
     setActiveTab("Services");
   }, [focusUpdates, loading, profileId]);
 
+  const refreshFavoriteState = React.useCallback(async () => {
+    if (!profileId) return;
+    setFavorite(await isBusinessFavorited(profileId));
+  }, [profileId]);
+
   useFocusEffect(
     React.useCallback(() => {
       getCurrentReviewer().then(setCurrentReviewer);
+      refreshFavoriteState();
       if (String(params?.focus || "") === "updates") {
         setActiveTab("Services");
       }
-    }, [params?.focus])
+    }, [params?.focus, refreshFavoriteState])
   );
 
   useEffect(() => {
@@ -543,8 +554,12 @@ export default function BusinessProfileV2() {
       const businessId = getId(business);
 
       try {
-        const localRaw = await AsyncStorage.getItem("my_local_businesses");
-        const localList = localRaw ? JSON.parse(localRaw) : [];
+        const { getActiveUserId, loadUserBusinesses, loadUserProfile } =
+          await import("../../lib/userSessionStorage");
+        const activeUserId = await getActiveUserId();
+        const localList = activeUserId
+          ? await loadUserBusinesses(activeUserId)
+          : [];
         if (
           Array.isArray(localList) &&
           localList.some((item) => String(item?.id) === businessId)
@@ -553,9 +568,10 @@ export default function BusinessProfileV2() {
           return;
         }
 
-        const profileRaw = await AsyncStorage.getItem("user_profile_v2");
-        if (profileRaw) {
-          const profile = JSON.parse(profileRaw);
+        const profile = activeUserId
+          ? await loadUserProfile(activeUserId)
+          : null;
+        if (profile) {
           if (
             profile?.business_id &&
             String(profile.business_id) === businessId
@@ -593,10 +609,7 @@ export default function BusinessProfileV2() {
         const localBusiness = JSON.parse(localRaw);
         setBusiness(localBusiness);
 
-        const saved = await AsyncStorage.getItem(
-          `favorite-business-${getId(localBusiness)}`
-        );
-        setFavorite(saved === "true");
+        setFavorite(await isBusinessFavorited(getId(localBusiness)));
         return;
       }
 
@@ -615,8 +628,7 @@ export default function BusinessProfileV2() {
       setBusiness(data);
 
       if (data) {
-        const saved = await AsyncStorage.getItem(`favorite-business-${getId(data)}`);
-        setFavorite(saved === "true");
+        setFavorite(await isBusinessFavorited(getId(data)));
       }
 
     } catch (error) {
@@ -710,28 +722,13 @@ export default function BusinessProfileV2() {
   const toggleFavorite = async () => {
     if (!business) return;
 
-    const id = getId(business);
-    const next = !favorite;
+    const allowed = await ensureLoggedInForSave(
+      favorite ? "manage your favorites" : "save businesses"
+    );
+    if (!allowed) return;
 
+    const next = await toggleBusinessFavorite(business, favorite);
     setFavorite(next);
-
-    if (next) {
-      await AsyncStorage.setItem(`favorite-business-${id}`, "true");
-      await AsyncStorage.setItem(
-        `favorite-business-data-${id}`,
-        JSON.stringify({
-          id,
-          name: getTitle(business),
-          title: getTitle(business),
-          category: getCategory(business),
-          image: getCover(business),
-          address: getAddress(business),
-        })
-      );
-    } else {
-      await AsyncStorage.removeItem(`favorite-business-${id}`);
-      await AsyncStorage.removeItem(`favorite-business-data-${id}`);
-    }
   };
 
   const openCall = () => {

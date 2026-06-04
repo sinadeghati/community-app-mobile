@@ -15,6 +15,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  getActiveUserId,
+  loadUserBusinesses,
+  loadUserProfile,
+} from "../../lib/userSessionStorage";
 import { useRouter, useLocalSearchParams } from "expo-router";
 
 const colors = {
@@ -67,8 +72,8 @@ export default function CreateListingFinal() {
   useEffect(() => {
     const loadBusinesses = async () => {
       try {
-        const raw = await AsyncStorage.getItem("my_local_businesses");
-        const list = raw ? JSON.parse(raw) : [];
+        const userId = await getActiveUserId();
+        const list = userId ? await loadUserBusinesses(userId) : [];
         setLocalBusinesses(Array.isArray(list) ? list : []);
       } catch (error) {
         console.log("Failed to load local businesses", error);
@@ -83,8 +88,8 @@ export default function CreateListingFinal() {
       if (!editId) return;
 
       try {
-        const rawProfile = await AsyncStorage.getItem("user_profile_v2");
-        const profile = rawProfile ? JSON.parse(rawProfile) : {};
+        const userId = await getActiveUserId();
+        const profile = userId ? (await loadUserProfile(userId)) || {} : {};
 
         const storageKey = `my_listings_${profile.username || profile.email || "default"}`;
 
@@ -186,8 +191,8 @@ export default function CreateListingFinal() {
 
       setLoading(true);
 
-      const rawProfile = await AsyncStorage.getItem("user_profile_v2");
-      const profile = rawProfile ? JSON.parse(rawProfile) : {};
+      const userId = await getActiveUserId();
+      const profile = userId ? (await loadUserProfile(userId)) || {} : {};
 
       const storageKey = `my_listings_${profile.username || profile.email || "default"
         }`;

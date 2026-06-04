@@ -50,6 +50,12 @@ export default function LoginScreen() {
      }
      await authStorage.setTokens(tokens);
 
+      const userId = authStorage.getUserIdFromAccessToken(tokens.access);
+      if (userId != null) {
+        const { prepareSessionForUser } = await import("../lib/userSessionStorage");
+        await prepareSessionForUser(String(userId));
+      }
+
       Alert.alert("Success", "Logged in successfully!");
       router.replace("/(tabs)/explore"); // بعد از لاگین برو توی تب‌ها
 

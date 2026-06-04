@@ -35,10 +35,12 @@ type Listing = {
 
 async function loadLocalListingById(listingId: string) {
   try {
-    const rawProfile = await AsyncStorage.getItem("user_profile_v2");
-    if (!rawProfile) return null;
-
-    const profile = JSON.parse(rawProfile);
+    const { getActiveUserId, loadUserProfile } = await import(
+      "../../lib/userSessionStorage"
+    );
+    const userId = await getActiveUserId();
+    const profile = userId ? await loadUserProfile(userId) : null;
+    if (!profile) return null;
     const storageKeys = [
       `my_listings_${profile.username || profile.email || "default"}`,
       profile.username || profile.email
@@ -67,8 +69,12 @@ async function loadLocalListingById(listingId: string) {
 
 async function loadLocalBusinesses() {
   try {
-    const raw = await AsyncStorage.getItem("my_local_businesses");
-    const list = raw ? JSON.parse(raw) : [];
+    const { getActiveUserId, loadUserBusinesses } = await import(
+      "../../lib/userSessionStorage"
+    );
+    const userId = await getActiveUserId();
+    if (!userId) return [];
+    const list = await loadUserBusinesses(userId);
     return Array.isArray(list) ? list : [];
   } catch {
     return [];

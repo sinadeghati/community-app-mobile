@@ -184,6 +184,12 @@ export default function RegisterScreen() {
         refresh,
       });
 
+      const userId = authStorage.getUserIdFromAccessToken(access);
+      if (userId != null) {
+        const { prepareSessionForUser } = await import("../lib/userSessionStorage");
+        await prepareSessionForUser(String(userId));
+      }
+
       router.replace("/(tabs)/explore");
       return;
     } catch (error: any) {

@@ -53,6 +53,11 @@ import {
   getEventTitle,
   saveMapEventSnapshot,
 } from "../../lib/mapEventDetails";
+import {
+  loadFavoriteBusinessMap,
+  toggleBusinessFavorite,
+} from "../../lib/businessFavorites";
+import { ensureLoggedInForSave } from "../../lib/savedActions";
 import { getItemHoursDisplay } from "../../lib/businessHours";
 import {
   formatMapPreviewReviewText,
@@ -850,19 +855,7 @@ export default function MapScreenV25() {
 
       setSelectedItem(null);
 
-      const keys = await AsyncStorage.getAllKeys();
-      const favoriteKeys = keys.filter((key) =>
-        key.startsWith("favorite-business-")
-      );
-
-      const favMap: Record<string, boolean> = {};
-
-      favoriteKeys.forEach((key) => {
-        const id = key.replace("favorite-business-", "");
-        if (!key.includes("data")) favMap[id] = true;
-      });
-
-      setFavorites(favMap);
+      setFavorites(await loadFavoriteBusinessMap());
     } catch (e) {
       console.log("Map V2.5 load error:", e);
     } finally {
@@ -995,10 +988,15 @@ export default function MapScreenV25() {
     syncReviewSummaries(previewBusinessIds);
   }, [previewBusinessIds, syncReviewSummaries]);
 
+  const refreshFavorites = useCallback(async () => {
+    setFavorites(await loadFavoriteBusinessMap());
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       syncReviewSummaries(previewBusinessIds);
-    }, [previewBusinessIds, syncReviewSummaries])
+      refreshFavorites();
+    }, [previewBusinessIds, syncReviewSummaries, refreshFavorites])
   );
 
   useEffect(() => {
@@ -1075,31 +1073,14 @@ export default function MapScreenV25() {
   const toggleFavorite = async (item: MapItem) => {
     dismissKeyboard();
     const id = getId(item);
-    const next = !favorites[id];
+    const currently = Boolean(favorites[id]);
+    const allowed = await ensureLoggedInForSave(
+      currently ? "manage your favorites" : "save businesses"
+    );
+    if (!allowed) return;
 
+    const next = await toggleBusinessFavorite(item, currently);
     setFavorites((prev) => ({ ...prev, [id]: next }));
-
-    if (next) {
-      await AsyncStorage.setItem(`favorite-business-${id}`, "true");
-      await AsyncStorage.setItem(
-        `favorite-business-data-${id}`,
-        JSON.stringify({
-          id,
-          name: getTitle(item),
-          title: getTitle(item),
-          category: getCategory(item),
-          image: getImage(item),
-          address: getAddress(item),
-          city: item.city,
-          state: item.state,
-          rating: item.rating || 4.8,
-          reviews: item.reviews || 24,
-        })
-      );
-    } else {
-      await AsyncStorage.removeItem(`favorite-business-${id}`);
-      await AsyncStorage.removeItem(`favorite-business-data-${id}`);
-    }
   };
 
   const openProfile = (

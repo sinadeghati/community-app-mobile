@@ -13,12 +13,16 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   loadDiscoverableListings,
   matchesListingCategory,
   matchesListingSearch,
 } from "../../lib/discoverableListings";
+import {
+  loadFavoriteBusinessMap,
+  toggleBusinessFavorite,
+} from "../../lib/businessFavorites";
+import { ensureLoggedInForSave } from "../../lib/savedActions";
 import { theme } from "../../lib/theme";
 
 type Listing = {
@@ -95,26 +99,7 @@ export default function ExploreScreen() {
 
   const loadFavorites = async () => {
     try {
-      const keys = await AsyncStorage.getAllKeys();
-      const favoriteKeys = keys.filter(
-        (key) =>
-          key.startsWith("favorite-business-") && !key.includes("data")
-      );
-
-      if (favoriteKeys.length === 0) {
-        setFavorites({});
-        return;
-      }
-
-      const result = await AsyncStorage.multiGet(favoriteKeys);
-      const favMap: Record<string, boolean> = {};
-
-      result.forEach(([key, value]) => {
-        const id = key.replace("favorite-business-", "");
-        favMap[id] = value === "true";
-      });
-
-      setFavorites(favMap);
+      setFavorites(await loadFavoriteBusinessMap());
     } catch (e) {
       console.log("Explore favorites load error:", e);
     }
@@ -145,31 +130,14 @@ export default function ExploreScreen() {
 
   const toggleFavorite = async (item: Listing) => {
     const id = getId(item);
-    const next = !favorites[id];
+    const currently = Boolean(favorites[id]);
+    const allowed = await ensureLoggedInForSave(
+      currently ? "manage your favorites" : "save businesses"
+    );
+    if (!allowed) return;
 
+    const next = await toggleBusinessFavorite(item, currently);
     setFavorites((prev) => ({ ...prev, [id]: next }));
-
-    if (next) {
-      await AsyncStorage.setItem(`favorite-business-${id}`, "true");
-      await AsyncStorage.setItem(
-        `favorite-business-data-${id}`,
-        JSON.stringify({
-          id,
-          name: getTitle(item),
-          title: getTitle(item),
-          category: getCategory(item),
-          image: getImage(item),
-          address: getAddress(item),
-          city: item.city,
-          state: item.state,
-          rating: item.rating || 4.8,
-          reviews: item.reviews || 24,
-        })
-      );
-    } else {
-      await AsyncStorage.removeItem(`favorite-business-${id}`);
-      await AsyncStorage.removeItem(`favorite-business-data-${id}`);
-    }
   };
 
   const filteredListings = useMemo(() => {

@@ -12,6 +12,11 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+    getActiveUserId,
+    loadUserProfile,
+    upsertUserBusiness,
+} from "../../lib/userSessionStorage";
 import * as ImagePicker from "expo-image-picker";
 
 const CATEGORIES = [
@@ -66,6 +71,11 @@ export default function CreateBusiness() {
 
         const businessId = Date.now().toString();
 
+        const ownerId = await getActiveUserId();
+        const ownerProfile = ownerId ? await loadUserProfile(ownerId) : null;
+        const ownerUsername = String(ownerProfile?.username || "").trim();
+        const ownerEmail = String(ownerProfile?.email || "").trim();
+
         const businessData = {
             id: businessId,
             business_name: businessName,
@@ -87,30 +97,36 @@ export default function CreateBusiness() {
             is_owner: true,
             owner_is_current_user: true,
             can_edit: true,
+            owner_id: ownerId ?? undefined,
+            user_id: ownerId ?? undefined,
+            owner_username: ownerUsername || undefined,
+            ownerUsername: ownerUsername || undefined,
+            owner_email: ownerEmail || undefined,
+            ownerEmail: ownerEmail || undefined,
+            created_by: ownerId ?? ownerEmail ?? ownerUsername ?? undefined,
+            createdBy: ownerId ?? ownerEmail ?? ownerUsername ?? undefined,
         };
 
-        await AsyncStorage.setItem(
-            `profile_v2_${businessId}`,
-            JSON.stringify(businessData)
-        );
+        const profileStorageKey = `profile_v2_${businessId}`;
 
-        const existingRaw = await AsyncStorage.getItem("my_local_businesses");
-        const existingBusinesses = existingRaw ? JSON.parse(existingRaw) : [];
+        console.log("BUSINESS_STORAGE_WRITE", {
+            writer: "create-business.tsx",
+            targetKey: profileStorageKey,
+            userId: ownerId,
+            ownerUsername,
+            ownerEmail,
+            businessId,
+            name: businessName,
+        });
 
-        await AsyncStorage.setItem(
-            "my_local_businesses",
-            JSON.stringify([...existingBusinesses, businessData])
-        );
+        await AsyncStorage.setItem(profileStorageKey, JSON.stringify(businessData));
+
+        if (ownerId) {
+            await upsertUserBusiness(ownerId, businessData, ownerUsername);
+        }
 
         console.log("BUSINESS DATA:", businessData);
-        console.log("ALL BUSINESSES:", [
-            ...existingBusinesses,
-            businessData,
-        ]);
-        console.log("LOCAL BUSINESSES SAVED:", [
-            ...existingBusinesses,
-            businessData,
-        ]);
+        console.log("LOCAL BUSINESSES SAVED:", businessData);
 
         Alert.alert("Business created", "Your business profile has been created.", [
             {

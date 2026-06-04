@@ -161,8 +161,11 @@ export default function EditBusinessProfileScreen() {
           return;
         }
 
-        const localRaw = await AsyncStorage.getItem("my_local_businesses");
-        const localList = localRaw ? JSON.parse(localRaw) : [];
+        const { getActiveUserId, loadUserBusinesses } = await import(
+          "../../lib/userSessionStorage"
+        );
+        const ownerId = await getActiveUserId();
+        const localList = ownerId ? await loadUserBusinesses(ownerId) : [];
         const localBusiness = Array.isArray(localList)
           ? localList.find((b: any) => String(b?.id) === businessId)
           : null;
@@ -375,18 +378,28 @@ export default function EditBusinessProfileScreen() {
         JSON.stringify(updatedBusiness)
       );
 
-      const localRaw = await AsyncStorage.getItem("my_local_businesses");
-      const localList = localRaw ? JSON.parse(localRaw) : [];
-
-      const nextList = Array.isArray(localList)
-        ? localList.some((b: any) => String(b?.id) === businessId)
-          ? localList.map((b: any) =>
-              String(b?.id) === businessId ? { ...b, ...updatedBusiness } : b
-            )
-          : [...localList, updatedBusiness]
-        : [updatedBusiness];
-
-      await AsyncStorage.setItem("my_local_businesses", JSON.stringify(nextList));
+      const { getActiveUserId, loadUserProfile, upsertUserBusiness } =
+        await import("../../lib/userSessionStorage");
+      const ownerId = await getActiveUserId();
+      if (ownerId) {
+        const ownerProfile = await loadUserProfile(ownerId);
+        const ownerUsername = String(ownerProfile?.username || "").trim();
+        await upsertUserBusiness(
+          ownerId,
+          {
+            ...updatedBusiness,
+            owner_id: (updatedBusiness as Record<string, unknown>).owner_id ?? ownerId,
+            user_id: (updatedBusiness as Record<string, unknown>).user_id ?? ownerId,
+            owner_username:
+              (updatedBusiness as Record<string, unknown>).owner_username ??
+              ownerUsername,
+            ownerUsername:
+              (updatedBusiness as Record<string, unknown>).ownerUsername ??
+              ownerUsername,
+          },
+          ownerUsername
+        );
+      }
 
       Alert.alert("Saved", "Business profile updated.");
       router.replace(`/profile/v2?id=${businessId}` as any);

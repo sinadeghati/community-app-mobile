@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { isUserLoggedIn } from "./businessReviews";
 import { getMapLat, getMapLng, resolveMapPoints } from "./mapCoordinates";
 import {
   formatEventDateTime,
@@ -101,29 +102,68 @@ export const loadMapEventSnapshot = async (
   }
 };
 
-const SAVED_EVENTS_KEY = "saved_map_events";
+export const INTERESTED_EVENTS_KEY = "saved_map_events";
 
-export const isEventSaved = async (eventId: string) => {
+const readInterestedEventIds = async (): Promise<string[]> => {
   try {
-    const raw = await AsyncStorage.getItem(SAVED_EVENTS_KEY);
+    const raw = await AsyncStorage.getItem(INTERESTED_EVENTS_KEY);
     const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) && list.includes(eventId);
+    return Array.isArray(list) ? list.map(String) : [];
   } catch {
-    return false;
+    return [];
   }
 };
 
-export const toggleEventSaved = async (eventId: string) => {
-  const raw = await AsyncStorage.getItem(SAVED_EVENTS_KEY);
-  const list = raw ? JSON.parse(raw) : [];
-  const ids = Array.isArray(list) ? list.map(String) : [];
+export const loadInterestedEventIds = async (): Promise<string[]> => {
+  if (!(await isUserLoggedIn())) return [];
+  return readInterestedEventIds();
+};
 
+export const isEventSaved = async (eventId: string) => {
+  if (!eventId || !(await isUserLoggedIn())) return false;
+  const ids = await readInterestedEventIds();
+  return ids.includes(eventId);
+};
+
+export const toggleEventSaved = async (eventId: string) => {
+  const ids = await readInterestedEventIds();
   const next = ids.includes(eventId)
     ? ids.filter((id) => id !== eventId)
     : [...ids, eventId];
 
-  await AsyncStorage.setItem(SAVED_EVENTS_KEY, JSON.stringify(next));
+  await AsyncStorage.setItem(INTERESTED_EVENTS_KEY, JSON.stringify(next));
   return !ids.includes(eventId);
+};
+
+export const removeInterestedEvent = async (eventId: string) => {
+  const ids = await readInterestedEventIds();
+  const next = ids.filter((id) => id !== eventId);
+  await AsyncStorage.setItem(INTERESTED_EVENTS_KEY, JSON.stringify(next));
+};
+
+export const loadInterestedEvents = async (): Promise<EventMapItem[]> => {
+  const ids = await loadInterestedEventIds();
+  if (!ids.length) return [];
+
+  const pairs = await AsyncStorage.multiGet(
+    ids.map((id) => `${EVENT_SNAPSHOT_PREFIX}${id}`)
+  );
+
+  const byId = new Map<string, EventMapItem>();
+  pairs.forEach(([key, value]) => {
+    if (!value) return;
+    try {
+      const event = JSON.parse(value) as EventMapItem;
+      const id = key.replace(EVENT_SNAPSHOT_PREFIX, "");
+      byId.set(id, event);
+    } catch {
+      /* skip */
+    }
+  });
+
+  return ids
+    .map((id) => byId.get(id))
+    .filter((event): event is EventMapItem => Boolean(event));
 };
 
 export { formatEventDateTime, formatEventLocation };

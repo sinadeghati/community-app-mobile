@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { loadDiscoverableListings } from "../../lib/discoverableListings";
 import { isMapEvent } from "../../lib/mapEvents";
 import {
@@ -28,9 +28,11 @@ import {
   getEventTitle,
   isEventSaved,
   loadMapEventSnapshot,
+  saveMapEventSnapshot,
   toggleEventSaved,
   type EventMapItem,
 } from "../../lib/mapEventDetails";
+import { ensureLoggedInForSave } from "../../lib/savedActions";
 import { theme } from "../../lib/theme";
 
 export default function EventDetailsScreen() {
@@ -73,6 +75,17 @@ export default function EventDetailsScreen() {
     load();
   }, [eventId]);
 
+  const refreshInterestedState = React.useCallback(async () => {
+    if (!eventId) return;
+    setSaved(await isEventSaved(eventId));
+  }, [eventId]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshInterestedState();
+    }, [refreshInterestedState])
+  );
+
   const ticketUrl = getEventTicketUrl(event);
   const organizer = getEventOrganizer(event);
   const mapPoint = event ? getEventMapPoint(event) : null;
@@ -99,14 +112,18 @@ export default function EventDetailsScreen() {
 
   const onToggleSaved = async () => {
     if (!eventId) return;
+
+    const allowed = await ensureLoggedInForSave(
+      saved ? "manage interested events" : "save events you're interested in"
+    );
+    if (!allowed) return;
+
+    if (!saved && event) {
+      await saveMapEventSnapshot(event);
+    }
+
     const next = await toggleEventSaved(eventId);
     setSaved(next);
-    Alert.alert(
-      next ? "Saved" : "Removed",
-      next
-        ? "This event was added to your interested list."
-        : "This event was removed from your interested list."
-    );
   };
 
   const onTickets = () => {
@@ -303,7 +320,7 @@ export default function EventDetailsScreen() {
             />
             <ActionChip
               icon={saved ? "heart" : "heart-outline"}
-              label={saved ? "Interested" : "Interested"}
+              label={saved ? "Interested ✓" : "Interested"}
               onPress={onToggleSaved}
               accent
             />

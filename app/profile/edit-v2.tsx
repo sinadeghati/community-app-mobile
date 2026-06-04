@@ -14,9 +14,14 @@ import {
     View,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+    getActiveUserId,
+    loadUserProfile,
+    saveUserProfile,
+} from "../../lib/userSessionStorage";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 const BG = "#F6F5F2";
 const CARD = "#FFFFFF";
@@ -52,17 +57,21 @@ export default function EditProfileV2() {
     const [profileImage, setProfileImage] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
 
-    useEffect(() => {
-        loadSavedProfile();
-    }, []);
+    useFocusEffect(
+        React.useCallback(() => {
+            loadSavedProfile();
+        }, [])
+    );
 
     const loadSavedProfile = async () => {
         try {
-            const raw = await AsyncStorage.getItem("user_profile_v2");
+            const userId = await getActiveUserId();
+            if (!userId) return;
 
-            if (!raw) return;
+            const savedRecord = await loadUserProfile(userId);
+            if (!savedRecord) return;
 
-            const saved: UserProfile = JSON.parse(raw);
+            const saved = savedRecord as UserProfile;
 
             setDisplayName(saved.name || saved.username || "");
             setUsername(saved.username || "");
@@ -110,8 +119,14 @@ export default function EditProfileV2() {
         try {
             setSaving(true);
 
-            const oldRaw = await AsyncStorage.getItem("user_profile_v2");
-            const oldProfile: UserProfile = oldRaw ? JSON.parse(oldRaw) : {};
+            const userId = await getActiveUserId();
+            if (!userId) {
+                Alert.alert("Login required", "Please log in to save your profile.");
+                return;
+            }
+
+            const oldRecord = await loadUserProfile(userId);
+            const oldProfile: UserProfile = (oldRecord || {}) as UserProfile;
 
             const updatedProfile: UserProfile = {
                 ...oldProfile,
@@ -129,13 +144,8 @@ export default function EditProfileV2() {
                 profile_image: profileImage,
             };
 
-            await AsyncStorage.setItem(
-                "user_profile_v2",
-                JSON.stringify(updatedProfile)
-            );
-
-            const verifySave = await AsyncStorage.getItem("user_profile_v2");
-            console.log("VERIFY SAVED USER PROFILE:", verifySave);
+            await saveUserProfile(userId, updatedProfile as Record<string, unknown>);
+            console.log("VERIFY SAVED USER PROFILE:", updatedProfile);
 
             Alert.alert("Saved", "Your profile has been updated.", [
                 {

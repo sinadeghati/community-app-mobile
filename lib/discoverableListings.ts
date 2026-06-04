@@ -436,9 +436,13 @@ const mergeListingsById = (
 
 const loadLocalBusinesses = async (): Promise<DiscoverableListing[]> => {
   try {
-    const raw = await AsyncStorage.getItem("my_local_businesses");
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    const { getActiveUserId, loadUserBusinesses } = await import(
+      "./userSessionStorage"
+    );
+    const userId = await getActiveUserId();
+    if (!userId) return [];
+    const parsed = await loadUserBusinesses(userId);
+    return Array.isArray(parsed) ? (parsed as DiscoverableListing[]) : [];
   } catch {
     return [];
   }

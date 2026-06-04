@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -13,6 +13,24 @@ import { router, useFocusEffect } from "expo-router";
 import { theme } from "../../lib/theme";
 import authStorage from "../utils/authStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  clearUserSession,
+  cleanupPollutedTestBusinessStorage,
+  diagnoseBusinessStorageDuplication,
+  explainMyBusinessOwnershipMatch,
+  inspectPollutedTestBusinessStorage,
+  TEST_BUSINESS_NAME_NEEDLES,
+  gatherRawMyBusinessCandidatesWithProvenance,
+  getActiveUserId,
+  getMyBusinessesStorageKey,
+  loadMyBusinessesForProfile,
+  loadUserProfile,
+  adoptLegacyProfileIfMatching,
+  mergeProfileWithApi,
+  prepareSessionForUser,
+  saveUserProfile,
+  toMyBusinessLogRow,
+} from "../../lib/userSessionStorage";
 import * as ImagePicker from "expo-image-picker";
 
 const USER_AVATAR =
@@ -26,53 +44,148 @@ export default function ProfileV2Clean() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [eventsCount, setEventsCount] = useState(0);
+  const activeAccountKeyRef = useRef<string | null>(null);
 
-  const loadLocalBusinesses = async () => {
+  const loadLocalBusinesses = async (
+    userId: string | null,
+    identity?: { username?: string; email?: string }
+  ) => {
+    setLocalBusinesses([]);
+
+    if (!userId) {
+      return;
+    }
+
+    const accountKey = `${userId}:${String(identity?.username || "").toLowerCase()}:${String(identity?.email || "").toLowerCase()}`;
+    if (activeAccountKeyRef.current !== accountKey) {
+      activeAccountKeyRef.current = accountKey;
+      setLocalBusinesses([]);
+    }
+
     try {
-      const localRaw = await AsyncStorage.getItem("my_local_businesses");
-      const localList = localRaw ? JSON.parse(localRaw) : [];
-      setLocalBusinesses(Array.isArray(localList) ? localList : []);
+      const currentUser = {
+        id: userId,
+        username: identity?.username ?? null,
+        email: identity?.email ?? null,
+        storageKey: getMyBusinessesStorageKey(userId),
+      };
+
+      console.log("CURRENT_USER_FOR_MY_BUSINESSES", currentUser);
+
+      await inspectPollutedTestBusinessStorage(TEST_BUSINESS_NAME_NEEDLES);
+      await cleanupPollutedTestBusinessStorage(TEST_BUSINESS_NAME_NEEDLES);
+
+      await diagnoseBusinessStorageDuplication(TEST_BUSINESS_NAME_NEEDLES);
+
+      const rawWithSources =
+        await gatherRawMyBusinessCandidatesWithProvenance(userId);
+
+      console.log(
+        "RAW_BUSINESSES",
+        rawWithSources.map((entry) => ({
+          ...toMyBusinessLogRow(entry.business),
+          loadedFrom: entry.loadedFrom,
+          mergeOrder: entry.mergeOrder,
+        }))
+      );
+
+      rawWithSources.forEach((entry) => {
+        const check = explainMyBusinessOwnershipMatch(
+          entry.business,
+          userId,
+          identity
+        );
+        console.log("MY_BUSINESS_FILTER_CHECK", {
+          ...toMyBusinessLogRow(entry.business),
+          loadedFrom: entry.loadedFrom,
+          mergeOrder: entry.mergeOrder,
+          owned: check.owned,
+          reason: check.reason,
+        });
+      });
+
+      const filteredBusinesses = await loadMyBusinessesForProfile(
+        userId,
+        identity
+      );
+
+      const filteredWithSources = rawWithSources.filter((entry) =>
+        filteredBusinesses.some(
+          (b) => String(b.id) === String(entry.business.id)
+        )
+      );
+
+      console.log(
+        "FILTERED_MY_BUSINESSES",
+        filteredWithSources.map((entry) => ({
+          ...toMyBusinessLogRow(entry.business),
+          loadedFrom: entry.loadedFrom,
+          mergeOrder: entry.mergeOrder,
+        }))
+      );
+
+      filteredWithSources.forEach((entry) => {
+        const check = explainMyBusinessOwnershipMatch(
+          entry.business,
+          userId,
+          identity
+        );
+        console.log("MY_BUSINESS_SHOWN_REASON", {
+          ...toMyBusinessLogRow(entry.business),
+          loadedFrom: entry.loadedFrom,
+          mergeOrder: entry.mergeOrder,
+          owned: check.owned,
+          reason: check.reason,
+        });
+      });
+
+      console.log("FINAL_MY_BUSINESSES_AFTER_FIX", {
+        userId,
+        username: identity?.username ?? null,
+        email: identity?.email ?? null,
+        count: filteredBusinesses.length,
+        businesses: filteredBusinesses.map((b) => {
+          const row = toMyBusinessLogRow(b);
+          return {
+            id: row.id,
+            name: row.name,
+            ownerId: row.ownerId,
+            ownerUsername: row.ownerUsername,
+            ownerEmail: row.ownerEmail,
+          };
+        }),
+      });
+
+      console.log("FINAL_MY_BUSINESSES_AFTER_CLEANUP", {
+        userId,
+        username: identity?.username ?? null,
+        email: identity?.email ?? null,
+        count: filteredBusinesses.length,
+        businesses: filteredBusinesses.map((b) => {
+          const row = toMyBusinessLogRow(b);
+          return {
+            id: row.id,
+            name: row.name,
+            ownerId: row.ownerId,
+            ownerUsername: row.ownerUsername,
+            ownerEmail: row.ownerEmail,
+          };
+        }),
+      });
+
+      setLocalBusinesses(filteredBusinesses);
     } catch (error) {
       console.log("LOCAL BUSINESSES LOAD ERROR:", error);
+      setLocalBusinesses([]);
     }
   };
 
-  useFocusEffect(
-    React.useCallback(() => {
-      const loadSavedProfile = async () => {
-        try {
-          const raw = await AsyncStorage.getItem("user_profile_v2");
-
-          const favoritesRaw = await AsyncStorage.getItem("favorites");
-          const favoritesList = favoritesRaw ? JSON.parse(favoritesRaw) : [];
-
-          setFavoritesCount(
-            Array.isArray(favoritesList) ? favoritesList.length : 0
-          );
-
-          await loadLocalBusinesses();
-
-          if (!raw) return;
-
-          const saved = JSON.parse(raw);
-
-          if (saved?.profileImage || saved?.profile_image) {
-            setProfileImage(saved.profileImage || saved.profile_image);
-          }
-
-          setProfile((prev: any) => ({
-            ...(prev || {}),
-            ...saved,
-          }));
-        } catch (error) {
-          console.log("PROFILE CACHE LOAD ERROR:", error);
-        }
-      };
-
-      loadSavedProfile();
-    }, [])
-  );
-
+  const resetProfileState = () => {
+    setProfile(null);
+    setProfileImage(null);
+    setLocalBusinesses([]);
+    setMyBusinessId(null);
+  };
 
   const pickProfileImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -87,86 +200,103 @@ export default function ProfileV2Clean() {
     }
   };
 
-
   useFocusEffect(
     React.useCallback(() => {
       const checkLogin = async () => {
         const tokens = await authStorage.getTokens();
+        const userId = await getActiveUserId();
 
-        
+        try {
+          const favoritesRaw = await AsyncStorage.getItem("favorites");
+          const favoritesList = favoritesRaw ? JSON.parse(favoritesRaw) : [];
+          setFavoritesCount(
+            Array.isArray(favoritesList) ? favoritesList.length : 0
+          );
+        } catch {
+          setFavoritesCount(0);
+        }
 
-        if (tokens?.access) {
-          await AsyncStorage.setItem("is_logged_in", "true");
-          setIsLoggedIn(true);
-
-          await loadLocalBusinesses();
-
-          try {
-            const cachedRaw = await AsyncStorage.getItem("user_profile_v2");
-
-            const cachedProfile = cachedRaw
-              ? JSON.parse(cachedRaw)
-              : {};
-
-            if (cachedProfile && Object.keys(cachedProfile).length > 0) {
-              setProfile(cachedProfile);
-
-              setProfileImage(
-                cachedProfile.profileImage ||
-                cachedProfile.profile_image ||
-                null
-              );
-            }
-
-
-            const res = await fetch(
-              "https://community-app-backend-production.up.railway.app/api/accounts/profile/",
-              {
-                headers: {
-                  Authorization: `Bearer ${tokens.access}`,
-                },
-              }
-            );
-
-            const data = await res.json();
-            if (!res.ok || data?.code === "token_not_valid") {
-              console.log("PROFILE API INVALID, USING LOCAL CACHE:", data);
-              await loadLocalBusinesses();
-              return;
-            }
-            const mergedProfile = {
-              ...data,
-              ...cachedProfile,
-              
-            };
-
-            setProfile(mergedProfile);
-
-            setProfileImage(
-              mergedProfile.profileImage ||
-              mergedProfile.profile_image ||
-              null
-            );
-
-            await AsyncStorage.setItem(
-              "user_profile_v2",
-              JSON.stringify(mergedProfile)
-            );
-
-            await loadLocalBusinesses();
-
-            console.log("PROFILE RESPONSE:", data);
-
-            if (data?.business_id) {
-              setMyBusinessId(String(data.business_id));
-            }
-          } catch (e) {
-            console.log("PROFILE LOAD ERROR:", e);
-            await loadLocalBusinesses();
-          }
-        } else {
-          // No tokens = guest UI. Keep user_profile_v2 in storage for the next login.
+        if (!tokens?.access || !userId) {
+          activeAccountKeyRef.current = null;
           setIsLoggedIn(false);
+          resetProfileState();
+          return;
+        }
+
+        setLocalBusinesses([]);
+        await AsyncStorage.setItem("is_logged_in", "true");
+        setIsLoggedIn(true);
+        await prepareSessionForUser(userId);
+
+        try {
+          let cachedProfile = await loadUserProfile(userId);
+          const identityFromCache = {
+            username: String(cachedProfile?.username || "").trim() || undefined,
+            email: String(cachedProfile?.email || "").trim() || undefined,
+          };
+
+          if (cachedProfile) {
+            setProfile(cachedProfile);
+            setProfileImage(
+              (cachedProfile.profileImage as string) ||
+                (cachedProfile.profile_image as string) ||
+                null
+            );
+          }
+
+          const res = await fetch(
+            "https://community-app-backend-production.up.railway.app/api/accounts/profile/",
+            {
+              headers: {
+                Authorization: `Bearer ${tokens.access}`,
+              },
+            }
+          );
+
+          const data = await res.json();
+          const identity = {
+            username:
+              String(data?.username || identityFromCache.username || "").trim() ||
+              undefined,
+            email:
+              String(data?.email || identityFromCache.email || "").trim() ||
+              undefined,
+          };
+
+          if (!res.ok || data?.code === "token_not_valid") {
+            console.log("PROFILE API INVALID, USING SCOPED CACHE:", data);
+            await loadLocalBusinesses(userId, identityFromCache);
+            return;
+          }
+
+          await adoptLegacyProfileIfMatching(userId, identity);
+          cachedProfile = await loadUserProfile(userId, identity);
+
+          const mergedProfile = mergeProfileWithApi(cachedProfile, data);
+          setProfile(mergedProfile);
+          setProfileImage(
+            (mergedProfile.profileImage as string) ||
+              (mergedProfile.profile_image as string) ||
+              null
+          );
+          await saveUserProfile(userId, mergedProfile);
+
+          await loadLocalBusinesses(userId, {
+            username: String(mergedProfile.username || identity.username || ""),
+            email: String(mergedProfile.email || identity.email || ""),
+          });
+
+          if (data?.business_id) {
+            setMyBusinessId(String(data.business_id));
+          } else {
+            setMyBusinessId(null);
+          }
+        } catch (e) {
+          console.log("PROFILE LOAD ERROR:", e);
+          await loadLocalBusinesses(userId, {
+            username: profile?.username,
+            email: profile?.email,
+          });
         }
       };
 
@@ -317,7 +447,8 @@ export default function ProfileV2Clean() {
                 color: theme.colors.muted,
               }}
             >
-              Sign in to manage your listings, favorites, events, and community profile.
+              Sign in to manage your listings, favorites, events, and community
+              profile.
             </Text>
 
             <Pressable
@@ -371,37 +502,24 @@ export default function ProfileV2Clean() {
       >
         <View
           style={{
+            paddingTop: 18,
+            paddingHorizontal: 18,
+            paddingBottom: 24,
             backgroundColor: theme.colors.turquoise,
-            paddingHorizontal: 22,
-            paddingTop: 24,
-            paddingBottom: 72,
-            borderBottomLeftRadius: 34,
-            borderBottomRightRadius: 34,
+            borderBottomLeftRadius: 32,
+            borderBottomRightRadius: 32,
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  color: "#fff",
-                  fontSize: 28,
-                  fontWeight: "900",
-                }}
-              >
-                Your Profile
-              </Text>
-
-              <Text
-                style={{
-                  marginTop: 5,
-                  color: "rgba(255,255,255,0.82)",
-                  fontSize: 15,
-                  fontWeight: "600",
-                }}
-              >
-                Your space. Your community.
-              </Text>
-            </View>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Text style={{ fontSize: 28, fontWeight: "900", color: "#fff" }}>
+              Profile
+            </Text>
 
             <Pressable
               onPress={() => go("/profile/settings")}
@@ -452,12 +570,10 @@ export default function ProfileV2Clean() {
                   color: theme.colors.charcoal,
                 }}
               >
-                {isLoggedIn
-                  ? profile?.name ||
-                    profile?.username ||
-                    profile?.email ||
-                    "User"
-                  : "Community Member"}
+                {profile?.name ||
+                  profile?.username ||
+                  profile?.email ||
+                  "User"}
               </Text>
 
               <Text
@@ -467,7 +583,7 @@ export default function ProfileV2Clean() {
                   fontWeight: "700",
                 }}
               >
-                {isLoggedIn ? profile?.email || "Complete your profile" : "Complete your profile"}
+                {profile?.email || "Complete your profile"}
               </Text>
 
               {profile?.city ? (
@@ -532,7 +648,7 @@ export default function ProfileV2Clean() {
             ...theme.shadow.soft,
           }}
         >
-          <StatBox value={String(localBusinesses.length)} label="Listings" />
+          <StatBox value={String(localBusinesses.length)} label="My Businesses" />
           <StatBox value={String(favoritesCount)} label="Favorites" />
           <StatBox value={String(eventsCount)} label="Events" />
         </View>
@@ -586,7 +702,7 @@ export default function ProfileV2Clean() {
 
               {localBusinesses.map((biz, index) => (
                 <Pressable
-                  key={index}
+                  key={String(biz?.id || index)}
                   onPress={() =>
                     router.push(`/profile/v2?id=${biz.id}` as any)
                   }
@@ -637,44 +753,19 @@ export default function ProfileV2Clean() {
                     >
                       {[biz.category || biz.business_category, biz.city]
                         .filter(Boolean)
-                        .join(" • ") || "View business"}
+                        .join(" · ")}
                     </Text>
                   </View>
 
                   <Ionicons
                     name="chevron-forward"
-                    size={22}
-                    color="#999"
+                    size={20}
+                    color={theme.colors.muted}
                   />
                 </Pressable>
               ))}
             </View>
           ) : null}
-
-          <MenuItem
-            icon="grid-outline"
-            title="My Listings"
-            subtitle="Manage your business listings"
-            onPress={() => go("/mylistings")}
-            isLast
-          />
-        </View>
-
-        <Text style={sectionLabelStyle}>Community</Text>
-        <View style={sectionCardStyle}>
-          <MenuItem
-            icon="heart-outline"
-            title="Favorites"
-            subtitle="Saved businesses and places"
-            onPress={() => go("/favorites")}
-          />
-
-          <MenuItem
-            icon="images-outline"
-            title="Gallery"
-            subtitle="Your uploaded photos and highlights"
-            onPress={() => go("/profile/gallery")}
-          />
 
           <MenuItem
             icon="chatbubble-ellipses-outline"
@@ -688,7 +779,7 @@ export default function ProfileV2Clean() {
             title="Events"
             subtitle="Community events and gatherings"
             onPress={() => go("/profile/events")}
-            isLast
+            isLast={localBusinesses.length === 0}
           />
         </View>
 
@@ -713,14 +804,14 @@ export default function ProfileV2Clean() {
             title="Logout"
             subtitle="Sign out from your account"
             onPress={async () => {
-              await authStorage.clearTokens();
-
-              await AsyncStorage.setItem("is_logged_in", "false");
+              await clearUserSession();
+              activeAccountKeyRef.current = null;
               setIsLoggedIn(false);
+              resetProfileState();
 
               Alert.alert(
                 "Logged out",
-                "You’ve been logged out successfully.",
+                "You've been logged out successfully.",
                 [
                   {
                     text: "OK",

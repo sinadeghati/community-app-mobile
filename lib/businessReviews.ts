@@ -1,5 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import authStorage from "../app/utils/authStorage";
+import {
+  getActiveUserId,
+  loadUserProfile,
+  profileIdFromRecord,
+} from "./userSessionStorage";
 
 export type CurrentReviewer = {
   userId: string;
@@ -34,17 +39,19 @@ export const getCurrentReviewer = async (): Promise<CurrentReviewer | null> => {
   let username = userId ? `User ${userId}` : "Community member";
 
   try {
-    const profileRaw = await AsyncStorage.getItem("user_profile_v2");
-    if (profileRaw) {
-      const profile = JSON.parse(profileRaw) as Record<string, unknown>;
+    const activeUserId = await getActiveUserId();
+    const cachedProfile = activeUserId
+      ? await loadUserProfile(activeUserId)
+      : null;
+    if (cachedProfile) {
       if (!userId) {
-        userId = profileUserId(profile);
+        userId = profileIdFromRecord(cachedProfile);
       }
       username = String(
-        profile.username ||
-          profile.first_name ||
-          profile.name ||
-          profile.email ||
+        cachedProfile.username ||
+          cachedProfile.first_name ||
+          cachedProfile.name ||
+          cachedProfile.email ||
           username
       );
     }

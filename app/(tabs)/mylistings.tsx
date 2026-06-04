@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
+import { getActiveUserId, loadUserProfile } from "../../lib/userSessionStorage";
 
 const colors = {
   bg: "#F7F5F0",
@@ -92,14 +93,13 @@ export default function MyListingsScreen() {
     React.useCallback(() => {
       const loadListings = async () => {
         try {
-          const rawProfile = await AsyncStorage.getItem("user_profile_v2");
+          const userId = await getActiveUserId();
+          const profile = userId ? await loadUserProfile(userId) : null;
 
-          if (!rawProfile) {
+          if (!profile) {
             setListings([]);
             return;
           }
-
-          const profile = JSON.parse(rawProfile);
 
           const storageKey = `my_listings_${profile.username || profile.email || "default"}`;
 
@@ -186,8 +186,8 @@ export default function MyListingsScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              const rawProfile = await AsyncStorage.getItem("user_profile_v2");
-              const profile = rawProfile ? JSON.parse(rawProfile) : {};
+              const userId = await getActiveUserId();
+              const profile = userId ? (await loadUserProfile(userId)) || {} : {};
 
               const storageKey = `my_listings_${profile.username || profile.email || "default"}`;
 

@@ -16,6 +16,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import authStorage from "../utils/authStorage";
+import {
+  getActiveUserId,
+  loadUserProfile,
+  prepareSessionForUser,
+} from "../../lib/userSessionStorage";
 import { API } from "../../lib/api";
 import { theme } from "../../lib/theme";
 
@@ -102,12 +107,14 @@ export default function HomeLoginV2() {
       setIsLoggedIn(true);
 
       try {
-        const raw = await AsyncStorage.getItem("user_profile_v2");
-        if (raw) {
-          const saved = JSON.parse(raw);
-          setDisplayName(
-            saved?.username || saved?.email?.split("@")[0] || "there"
-          );
+        const userId = await getActiveUserId();
+        if (userId) {
+          const saved = await loadUserProfile(userId);
+          if (saved) {
+            setDisplayName(
+              String(saved.username || saved.email || "").split("@")[0] || "there"
+            );
+          }
         }
       } catch {
         // keep default display name
@@ -176,6 +183,11 @@ export default function HomeLoginV2() {
         access,
         refresh,
       });
+
+      const userId = authStorage.getUserIdFromAccessToken(access);
+      if (userId != null) {
+        await prepareSessionForUser(String(userId));
+      }
 
       setDisplayName(cleanUsername);
       setIsLoggedIn(true);
