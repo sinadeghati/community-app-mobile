@@ -1,5 +1,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API } from "./api";
+import { logLoaderDone, logLoaderStart, withTimeout } from "./asyncGuards";
+import { normalizeBusinessUpdates } from "./businessUpdates";
+import {
+  categoryLabelMatchesProfessionalServices,
+  DISCOVERY_CATEGORY_FILTERS,
+  discoveryQueryMatchesHaystack,
+  findDiscoveryFilterKey,
+  getCategorySearchTerms,
+  getDiscoveryTagsSearchBlob,
+  getInferredDiscoveryFilterKeys,
+  getInferredDiscoveryTags,
+} from "./discoverySearch";
+import { getMapLat } from "./mapCoordinates";
+import { setCachedDiscoverListings } from "./discoverListingsCache";
 
 export type DiscoverableListing = {
   id: number | string;
@@ -33,6 +47,8 @@ export type DiscoverableListing = {
   businessUpdates?: unknown;
   menu_items?: unknown;
   menuItems?: unknown;
+  business_offerings?: unknown;
+  businessOfferings?: unknown;
   services?: string;
   business_type?: string;
 };
@@ -43,7 +59,11 @@ export const getListingCategory = (item: DiscoverableListing) =>
   item?.business_category || item?.category || "Local Business";
 
 const getListingMenuHaystack = (item: DiscoverableListing) => {
-  const raw = item.menu_items ?? item.menuItems;
+  const raw =
+    item.business_offerings ??
+    item.businessOfferings ??
+    item.menu_items ??
+    item.menuItems;
   if (!Array.isArray(raw)) return "";
 
   return raw
@@ -74,10 +94,13 @@ const listingCategoryMatchesExploreFilter = (
         category.includes("mechanic")
       );
     case "Restaurant":
+    case "Food":
       return (
         category === "food" ||
         category.includes("persian food") ||
-        category.includes("restaurant")
+        category.includes("restaurant") ||
+        category.includes("catering") ||
+        category.includes("home catering")
       );
     case "Cafe":
       return (
@@ -88,18 +111,41 @@ const listingCategoryMatchesExploreFilter = (
     case "Beauty":
       return category.includes("beauty") || category.includes("salon");
     case "Real Estate":
-      return category.includes("real estate") || category.includes("property");
+      return (
+        category.includes("real estate") ||
+        category.includes("property") ||
+        category.includes("mortgage")
+      );
     case "Services":
       return (
         category.includes("home service") ||
         category.includes("professional service") ||
         category.includes("professional") ||
         category.includes("legal") ||
-        category.includes("construction")
+        category.includes("construction") ||
+        categoryLabelMatchesProfessionalServices(getListingCategory(item))
       );
-    default:
-      return false;
+    default: {
+      const selected = selectedCategory.toLowerCase();
+      return (
+        category === selected ||
+        category.includes(selected) ||
+        getBaseSearchHaystack(item).includes(selected)
+      );
+    }
   }
+};
+
+const getListingUpdateHaystack = (item: DiscoverableListing) => {
+  const record = item as Record<string, unknown>;
+  const updates = normalizeBusinessUpdates(
+    record.business_updates ?? record.businessUpdates
+  );
+
+  return updates
+    .flatMap((update) => [update.title, update.description])
+    .filter((value) => value != null && String(value).trim() !== "")
+    .join(" ");
 };
 
 /** Searchable text from listing fields only (no synonym injection). */
@@ -110,6 +156,7 @@ export const getBaseSearchHaystack = (item: DiscoverableListing) => {
     : typeof keywords === "string"
       ? keywords
       : "";
+  const record = item as Record<string, unknown>;
 
   return [
     item.business_name,
@@ -121,6 +168,7 @@ export const getBaseSearchHaystack = (item: DiscoverableListing) => {
     item.business_subcategory,
     item.business_type,
     item.services,
+    record.organizer,
     item.city,
     item.state,
     item.address,
@@ -130,6 +178,7 @@ export const getBaseSearchHaystack = (item: DiscoverableListing) => {
     item.phone,
     keywordsText,
     getListingMenuHaystack(item),
+    getListingUpdateHaystack(item),
   ]
     .filter((v) => v != null && String(v).trim() !== "")
     .map((v) => String(v).toLowerCase())
@@ -140,7 +189,7 @@ export const isEventListing = (item: DiscoverableListing) => {
   const id = getListingId(item).toLowerCase();
   const category = getListingCategory(item).toLowerCase();
 
-  if (id.startsWith("event-")) return true;
+  if (id.startsWith("event-") || id.startsWith("festival-")) return true;
   return (
     /\bevents?\b/.test(category) ||
     category.includes("concert") ||
@@ -247,17 +296,29 @@ const matchesServices = (category: string, haystack: string) => {
     matchesBeauty(category, haystack) ||
     matchesHealth(category, haystack) ||
     matchesRealEstate(category, haystack) ||
+    categoryLabelMatchesProfessionalServices(category) ||
     category.includes("service") ||
     category.includes("legal") ||
     category.includes("law") ||
     category.includes("construction") ||
     category.includes("professional") ||
+    category.includes("insurance") ||
+    category.includes("mortgage") ||
+    category.includes("accounting") ||
+    category.includes("immigration") ||
+    category.includes("tutor") ||
+    category.includes("tax") ||
     haystack.includes("home service") ||
     haystack.includes("legal") ||
     haystack.includes("construction") ||
     haystack.includes("lawyer") ||
     haystack.includes("attorney") ||
     haystack.includes("immigration") ||
+    haystack.includes("insurance") ||
+    haystack.includes("mortgage") ||
+    haystack.includes("accounting") ||
+    haystack.includes("tutor") ||
+    haystack.includes("tax service") ||
     haystack.includes("handyman")
   );
 };
@@ -389,29 +450,19 @@ const getListingSearchAliasBlob = (item: DiscoverableListing) => {
 
 export const getSearchHaystack = (item: DiscoverableListing) => {
   const base = getBaseSearchHaystack(item);
+  const category = getListingCategory(item);
   const aliases = getListingSearchAliasBlob(item);
-  return [base, aliases].filter(Boolean).join(" ");
+  const categoryTerms = getCategorySearchTerms(category);
+  const discoveryTags = getDiscoveryTagsSearchBlob(base, category);
+  return [base, aliases, categoryTerms, discoveryTags].filter(Boolean).join(" ");
 };
 
-const tokenMatchesHaystack = (token: string, haystack: string) => {
-  if (!token) return true;
-  if (haystack.includes(token)) return true;
-
-  if (token.length < 3) return false;
-
-  return haystack.split(/\s+/).some((word) => {
-    if (word.length < 2) return false;
-    return word.includes(token) || token.includes(word);
-  });
-};
-
-export const matchesListingSearch = (item: DiscoverableListing, query: string) => {
-  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (!tokens.length) return true;
-
-  const haystack = getSearchHaystack(item);
-  return tokens.every((token) => tokenMatchesHaystack(token, haystack));
-};
+/** Secondary discovery tags inferred from content (primary category unchanged). */
+export const getListingDiscoveryTags = (item: DiscoverableListing) =>
+  getInferredDiscoveryTags(
+    getBaseSearchHaystack(item),
+    getListingCategory(item)
+  );
 
 export type MapMarkerKind =
   | "auto"
@@ -441,7 +492,8 @@ const matchesCategoryKey = (
   selectedCategory: string
 ) => {
   const category = getListingCategory(item).toLowerCase();
-  const haystack = getSearchHaystack(item);
+  // Category only — never use search alias blob (keeps category independent of search).
+  const haystack = getBaseSearchHaystack(item);
   const isEvent = isEventListing(item);
 
   if (isEvent) {
@@ -456,8 +508,14 @@ const matchesCategoryKey = (
     return true;
   }
 
+  const inferredFilterKeys = getInferredDiscoveryFilterKeys(haystack, category);
+  if (inferredFilterKeys.includes(selectedCategory)) {
+    return true;
+  }
+
   switch (selectedCategory) {
     case "Restaurant":
+    case "Food":
       return matchesFood(category, haystack);
     case "Cafe":
       return matchesCafe(category, haystack);
@@ -476,14 +534,99 @@ const matchesCategoryKey = (
   }
 };
 
-/** Strict category matching; events only on All or Events. Search respects category unless All. */
+/** Category filter only — combine with matchesListingSearch for Explore/Map (AND, never OR). */
 export const matchesListingCategory = (
   item: DiscoverableListing,
-  selectedCategory: string,
-  _searchQuery?: string
+  selectedCategory: string
 ) => {
   if (selectedCategory === "All") return true;
   return matchesCategoryKey(item, selectedCategory);
+};
+
+export const matchesListingSearch = (item: DiscoverableListing, query: string) => {
+  const trimmed = query.trim();
+  if (!trimmed) return true;
+
+  if (discoveryQueryMatchesHaystack(trimmed, getSearchHaystack(item))) {
+    return true;
+  }
+
+  const categoryIntent = findDiscoveryFilterKey(
+    trimmed,
+    [...DISCOVERY_CATEGORY_FILTERS]
+  );
+  if (categoryIntent && categoryIntent !== "All") {
+    return matchesListingCategory(item, categoryIntent);
+  }
+
+  return false;
+};
+
+/**
+ * Map-style discovery search: category-intent queries filter by bucket;
+ * otherwise text/synonym match across the listing haystack.
+ */
+export const matchesDiscoverySearchFilter = (
+  item: DiscoverableListing,
+  query: string
+) => {
+  const trimmed = query.trim();
+  if (!trimmed) return true;
+
+  const categoryIntent = findDiscoveryFilterKey(trimmed, [
+    ...DISCOVERY_CATEGORY_FILTERS,
+  ]);
+  if (categoryIntent && categoryIntent !== "All") {
+    if (categoryIntent === "Events") return isEventListing(item);
+    if (isEventListing(item)) return false;
+    return matchesListingCategory(item, categoryIntent);
+  }
+
+  return matchesListingSearch(item, trimmed);
+};
+
+/** Search AND category — both must pass; empty search does not bypass category. */
+export const filterListingsBySearchAndCategory = (
+  items: DiscoverableListing[],
+  options: { query?: string; category?: string }
+) => {
+  const query = String(options.query ?? "").trim().toLowerCase();
+  const category = options.category ?? "All";
+
+  return items.filter(
+    (item) =>
+      matchesListingSearch(item, query) &&
+      matchesListingCategory(item, category)
+  );
+};
+
+const isCommunityEventListing = (item: DiscoverableListing) => {
+  const id = getListingId(item).toLowerCase();
+  return id.startsWith("event-") || id.startsWith("festival-");
+};
+
+const mergeListingRecords = (
+  incoming: DiscoverableListing,
+  existing: DiscoverableListing
+): DiscoverableListing => {
+  if (isCommunityEventListing(incoming)) return incoming;
+
+  const inc = incoming as Record<string, unknown>;
+  const ext = existing as Record<string, unknown>;
+
+  if (inc.coordinates_exact === true && ext.coordinates_exact !== true) {
+    return incoming;
+  }
+  if (ext.coordinates_exact === true && inc.coordinates_exact !== true) {
+    return existing;
+  }
+
+  const incLat = getMapLat(incoming);
+  const extLat = getMapLat(existing);
+  if (incLat != null && extLat == null) return incoming;
+  if (extLat != null && incLat == null) return existing;
+
+  return { ...existing, ...incoming };
 };
 
 const mergeListingsById = (
@@ -499,7 +642,15 @@ const mergeListingsById = (
 
   extra.forEach((item) => {
     const id = getListingId(item);
-    if (id && !byId.has(id)) byId.set(id, item);
+    if (!id) return;
+
+    const existing = byId.get(id);
+    if (!existing) {
+      byId.set(id, item);
+      return;
+    }
+
+    byId.set(id, mergeListingRecords(item, existing));
   });
 
   return Array.from(byId.values());
@@ -541,20 +692,59 @@ const loadProfileV2Businesses = async (): Promise<DiscoverableListing[]> => {
   }
 };
 
+const loadCommunityEventsSafe = async (): Promise<DiscoverableListing[]> => {
+  try {
+    const mod = await import("./communityEvents");
+    return await mod.loadCommunityEventsForDiscover();
+  } catch (error) {
+    console.log("[loader] communityEvents error:", error);
+    return [];
+  }
+};
+
 export const loadDiscoverableListings = async (): Promise<DiscoverableListing[]> => {
+  logLoaderStart("loadDiscoverableListings");
   let apiListings: DiscoverableListing[] = [];
 
   try {
-    const response = await API.getListings();
-    apiListings = Array.isArray(response) ? response : response?.results || [];
+    const response = await withTimeout(
+      API.getListings(),
+      12000,
+      "loadDiscoverableListings.api",
+      [] as DiscoverableListing[] | { results?: DiscoverableListing[] }
+    );
+    apiListings = Array.isArray(response)
+      ? response
+      : response?.results || [];
   } catch (e) {
-    console.log("discoverableListings API error:", e);
+    console.log("[loader] discoverableListings API error:", e);
   }
 
-  const [local, profiles] = await Promise.all([
-    loadLocalBusinesses(),
-    loadProfileV2Businesses(),
+  const [local, profiles, communityEvents] = await Promise.all([
+    withTimeout(loadLocalBusinesses(), 8000, "loadDiscoverableListings.local", []),
+    withTimeout(
+      loadProfileV2Businesses(),
+      8000,
+      "loadDiscoverableListings.profiles",
+      []
+    ),
+    loadCommunityEventsSafe(),
   ]);
 
-  return mergeListingsById(apiListings, [...local, ...profiles]);
+  console.log("[discover] community event ids", communityEvents.map(getListingId));
+
+  const merged = mergeListingsById(apiListings, [
+    ...profiles,
+    ...local,
+    ...communityEvents,
+  ]);
+
+  const mergedEventIds = merged
+    .filter((item) => isEventListing(item))
+    .map(getListingId);
+  console.log("[discover] merged event ids", mergedEventIds);
+
+  setCachedDiscoverListings(merged);
+  logLoaderDone("loadDiscoverableListings");
+  return merged;
 };

@@ -18,11 +18,16 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { API } from "@/lib/api";
 import {
-  createEmptyMenuItem,
-  sanitizeMenuItemsForSave,
-  normalizeMenuItems,
-  type BusinessMenuItem,
-} from "@/lib/businessMenuItems";
+  BUSINESS_OFFERING_AVAILABILITY,
+  BUSINESS_OFFERING_CATEGORIES,
+  createEmptyBusinessOffering,
+  normalizeBusinessOfferings,
+  parseOfferingDiscountPercent,
+  sanitizeBusinessOfferingsForSave,
+  type BusinessOffering,
+  type BusinessOfferingAvailability,
+  type BusinessOfferingCategory,
+} from "@/lib/businessOfferings";
 import {
   createDefaultBusinessHours,
   formatTime12,
@@ -44,6 +49,18 @@ import {
   type BusinessUpdate,
   type BusinessUpdateType,
 } from "@/lib/businessUpdates";
+import {
+  getBusinessGalleryUris,
+  sanitizeBusinessGalleryForSave,
+} from "@/lib/businessGallery";
+import { StreetAddressAutocomplete } from "@/components/business/StreetAddressAutocomplete";
+import type { ParsedAddress } from "@/lib/addressAutocomplete";
+import {
+  logBusinessCreateAddress,
+  logBusinessSavedCoordinates,
+  resolveBusinessCoordinatesForSave,
+} from "@/lib/businessLocation";
+import { requestDiscoverListingsRefresh } from "@/lib/discoverListingsRefresh";
 
 const TURQUOISE = "#11998E";
 const BG = "#F5F4F0";
@@ -57,6 +74,8 @@ const DEFAULT_COVER =
 const DEFAULT_LOGO =
   "https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=900";
 
+const isValidZipCode = (zipCode: string) => /^\d{5}$/.test(zipCode.trim());
+
 export default function EditBusinessProfileScreen() {
   const params = useLocalSearchParams();
   const businessId = String(params?.id || "");
@@ -69,13 +88,17 @@ export default function EditBusinessProfileScreen() {
   const [businessName, setBusinessName] = useState("");
   const [businessBio, setBusinessBio] = useState("");
   const [phone, setPhone] = useState("");
+  const [streetAddress, setStreetAddress] = useState("");
   const [city, setCity] = useState("");
-  const [address, setAddress] = useState("");
+  const [state, setState] = useState("CA");
+  const [zipCode, setZipCode] = useState("");
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [website, setWebsite] = useState("");
   const [email, setEmail] = useState("");
   const [instagram, setInstagram] = useState("");
   const [category, setCategory] = useState("");
-  const [menuItems, setMenuItems] = useState<BusinessMenuItem[]>([]);
+  const [offerings, setOfferings] = useState<BusinessOffering[]>([]);
   const [businessUpdates, setBusinessUpdates] = useState<BusinessUpdate[]>([]);
   const [hoursEnabled, setHoursEnabled] = useState(false);
   const [businessHours, setBusinessHours] = useState<BusinessHours>(
@@ -84,21 +107,16 @@ export default function EditBusinessProfileScreen() {
 
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
 
   const businessStorageKey = `profile_v2_${businessId}`;
 
   const resolveCanDeleteBusiness = async (item: Record<string, unknown>) => {
-    const { getActiveUserId, isMyBusinessForUser, loadUserProfile } = await import(
+    const { verifyBusinessOwnerAccess } = await import(
       "../../lib/userSessionStorage"
     );
-    const ownerId = await getActiveUserId();
-    if (!ownerId) return false;
-
-    const ownerProfile = await loadUserProfile(ownerId);
-    return isMyBusinessForUser(item, ownerId, {
-      username: String(ownerProfile?.username || "").trim() || undefined,
-      email: String(ownerProfile?.email || "").trim() || undefined,
-    });
+    const access = await verifyBusinessOwnerAccess(item, businessId);
+    return access.ok;
   };
 
   const normalizeBusiness = (item: any) => ({
@@ -111,13 +129,39 @@ export default function EditBusinessProfileScreen() {
     phone: item?.phone || item?.contact_info || "",
     contact_info: item?.phone || item?.contact_info || "",
     city: item?.city || "",
+    state: item?.state || "CA",
+    zip:
+      item?.zip ||
+      item?.zip_code ||
+      item?.zipCode ||
+      item?.postal_code ||
+      "",
+    street_address: item?.street_address || item?.streetAddress || "",
     address: item?.address || item?.street_address || "",
+    latitude: item?.latitude ?? item?.lat ?? null,
+    longitude: item?.longitude ?? item?.lng ?? null,
+    lat: item?.lat ?? item?.latitude ?? null,
+    lng: item?.lng ?? item?.longitude ?? null,
+    coordinates_exact: item?.coordinates_exact === true,
     website: item?.website || "",
     email: item?.email || "",
     instagram: item?.instagram || "",
     category: item?.category || "",
-    menu_items: sanitizeMenuItemsForSave(
-      normalizeMenuItems(item?.menu_items ?? item?.menuItems)
+    menu_items: sanitizeBusinessOfferingsForSave(
+      normalizeBusinessOfferings(
+        item?.business_offerings ??
+          item?.businessOfferings ??
+          item?.menu_items ??
+          item?.menuItems
+      )
+    ),
+    business_offerings: sanitizeBusinessOfferingsForSave(
+      normalizeBusinessOfferings(
+        item?.business_offerings ??
+          item?.businessOfferings ??
+          item?.menu_items ??
+          item?.menuItems
+      )
     ),
     business_updates: sanitizeBusinessUpdatesForSave(
       normalizeBusinessUpdates(item?.business_updates ?? item?.businessUpdates)
@@ -133,9 +177,12 @@ export default function EditBusinessProfileScreen() {
     logo: item?.logo || item?.avatar || item?.profile_image || item?.logoImage || null,
     avatar: item?.avatar || item?.logo || item?.profile_image || item?.logoImage || null,
     profile_image: item?.profile_image || item?.avatar || item?.logo || item?.logoImage || null,
-    is_owner: item?.is_owner ?? true,
-    owner_is_current_user: item?.owner_is_current_user ?? true,
-    can_edit: item?.can_edit ?? true,
+    images: sanitizeBusinessGalleryForSave(
+      getBusinessGalleryUris(item as Record<string, unknown>)
+    ),
+    is_owner: item?.is_owner ?? false,
+    owner_is_current_user: item?.owner_is_current_user ?? false,
+    can_edit: item?.can_edit ?? false,
   });
 
   const applyBusinessToForm = (item: any) => {
@@ -144,13 +191,31 @@ export default function EditBusinessProfileScreen() {
     setBusinessName(data.business_name);
     setBusinessBio(data.about);
     setPhone(data.phone);
+    setStreetAddress(
+      String(data.street_address || data.address || "").trim()
+    );
     setCity(data.city);
-    setAddress(data.address);
+    setState(String(data.state || "CA").trim().toUpperCase());
+    setZipCode(String(data.zip || "").replace(/\D/g, "").slice(0, 5));
+    const coordinatesExact = item?.coordinates_exact === true;
+    const lat = Number(item?.latitude ?? item?.lat);
+    const lng = Number(item?.longitude ?? item?.lng);
+    if (coordinatesExact && Number.isFinite(lat) && Number.isFinite(lng)) {
+      setLatitude(lat);
+      setLongitude(lng);
+    } else {
+      setLatitude(null);
+      setLongitude(null);
+    }
     setWebsite(data.website);
     setEmail(data.email);
     setInstagram(data.instagram);
     setCategory(data.category);
-    setMenuItems(normalizeMenuItems(item?.menu_items ?? item?.menuItems));
+    setOfferings(
+      normalizeBusinessOfferings(
+        data.business_offerings ?? data.menu_items
+      )
+    );
     setBusinessUpdates(
       normalizeBusinessUpdates(item?.business_updates ?? item?.businessUpdates)
     );
@@ -161,6 +226,7 @@ export default function EditBusinessProfileScreen() {
     );
     setCoverImage(data.cover_image || DEFAULT_COVER);
     setLogoImage(data.logo || DEFAULT_LOGO);
+    setGalleryImages(getBusinessGalleryUris(item as Record<string, unknown>));
   };
 
   useEffect(() => {
@@ -168,43 +234,68 @@ export default function EditBusinessProfileScreen() {
       try {
         if (!businessId) {
           Alert.alert("Missing business", "Business ID was not found.");
+          router.replace("/(tabs)");
           return;
         }
 
-        const savedRaw = await AsyncStorage.getItem(businessStorageKey);
-        if (savedRaw) {
-          const savedBusiness = JSON.parse(savedRaw) as Record<string, unknown>;
-          applyBusinessToForm(savedBusiness);
-          setCanDeleteBusiness(await resolveCanDeleteBusiness(savedBusiness));
+        const {
+          loadMyBusinessesForProfile,
+          loadUserProfile,
+          requireAuthenticatedUser,
+          verifyBusinessOwnerAccess,
+        } = await import("../../lib/userSessionStorage");
+
+        const userId = await requireAuthenticatedUser();
+        if (!userId) {
+          router.replace("/(tabs)");
           return;
         }
 
-        const { getActiveUserId, loadUserBusinesses } = await import(
-          "../../lib/userSessionStorage"
-        );
-        const ownerId = await getActiveUserId();
-        const localList = ownerId ? await loadUserBusinesses(ownerId) : [];
-        const localBusiness = Array.isArray(localList)
-          ? localList.find((b: any) => String(b?.id) === businessId)
-          : null;
+        const profile = await loadUserProfile(userId);
+        const identity = {
+          username: String(profile?.username || "").trim() || undefined,
+          email: String(profile?.email || "").trim() || undefined,
+        };
 
-        if (localBusiness) {
-          const record = localBusiness as Record<string, unknown>;
-          applyBusinessToForm(localBusiness);
-          setCanDeleteBusiness(await resolveCanDeleteBusiness(record));
+        const myBusinesses = await loadMyBusinessesForProfile(userId, identity);
+        let loaded =
+          myBusinesses.find((item) => String(item.id || "") === businessId) ??
+          null;
+
+        if (!loaded) {
+          const savedRaw = await AsyncStorage.getItem(businessStorageKey);
+          if (savedRaw) {
+            loaded = JSON.parse(savedRaw) as Record<string, unknown>;
+          } else if ((API as any)?.getListing) {
+            loaded = (await (API as any).getListing(businessId)) as Record<
+              string,
+              unknown
+            >;
+          }
+        }
+
+        if (!loaded) {
+          Alert.alert("Not found", "Could not find this business.");
+          router.back();
           return;
         }
 
-        if ((API as any)?.getListing) {
-          const apiData = await (API as any).getListing(businessId);
-          applyBusinessToForm(apiData);
-          setCanDeleteBusiness(
-            await resolveCanDeleteBusiness(apiData as Record<string, unknown>)
-          );
+        const access = await verifyBusinessOwnerAccess(loaded, businessId);
+        if (!access.ok) {
+          if (access.reason === "guest") {
+            router.replace("/(tabs)");
+          } else {
+            Alert.alert(
+              "Access denied",
+              "Only the business owner can edit this profile."
+            );
+            router.back();
+          }
           return;
         }
 
-        Alert.alert("Not found", "Could not find this business.");
+        applyBusinessToForm(loaded);
+        setCanDeleteBusiness(await resolveCanDeleteBusiness(loaded));
       } catch (error) {
         console.log("EDIT BUSINESS LOAD ERROR:", error);
         Alert.alert("Error", "Could not load this business.");
@@ -216,17 +307,14 @@ export default function EditBusinessProfileScreen() {
     loadBusiness();
   }, [businessId]);
 
-  const updateMenuItem = (
-    id: string,
-    patch: Partial<BusinessMenuItem>
-  ) => {
-    setMenuItems((current) =>
+  const updateOffering = (id: string, patch: Partial<BusinessOffering>) => {
+    setOfferings((current) =>
       current.map((item) => (item.id === id ? { ...item, ...patch } : item))
     );
   };
 
-  const addMenuItem = () => {
-    setMenuItems((current) => [...current, createEmptyMenuItem()]);
+  const addOffering = () => {
+    setOfferings((current) => [...current, createEmptyBusinessOffering()]);
   };
 
   const updateBusinessUpdate = (
@@ -270,20 +358,20 @@ export default function EditBusinessProfileScreen() {
     }
   };
 
-  const removeMenuItem = (id: string) => {
-    Alert.alert("Remove item", "Delete this service or menu item?", [
+  const removeOffering = (id: string) => {
+    Alert.alert("Remove offering", "Delete this business offering?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: () => {
-          setMenuItems((current) => current.filter((item) => item.id !== id));
+          setOfferings((current) => current.filter((item) => item.id !== id));
         },
       },
     ]);
   };
 
-  const pickMenuItemImage = async (id: string) => {
+  const pickOfferingImage = async (id: string) => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
@@ -292,7 +380,7 @@ export default function EditBusinessProfileScreen() {
     });
 
     if (!result.canceled) {
-      updateMenuItem(id, { image: result.assets[0].uri });
+      updateOffering(id, { image: result.assets[0].uri });
     }
   };
 
@@ -301,6 +389,47 @@ export default function EditBusinessProfileScreen() {
       ...current,
       [key]: { ...current[key], ...patch },
     }));
+  };
+
+  const pickGalleryImage = async () => {
+    if (galleryImages.length >= 24) {
+      Alert.alert("Limit reached", "Maximum 24 gallery photos.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      setGalleryImages((current) => [...current, result.assets[0].uri]);
+    }
+  };
+
+  const removeGalleryImage = (uri: string) => {
+    setGalleryImages((current) => current.filter((item) => item !== uri));
+  };
+
+  const clearCoordinates = () => {
+    setLatitude(null);
+    setLongitude(null);
+  };
+
+  const handleStreetAddressChange = (text: string) => {
+    setStreetAddress(text);
+    clearCoordinates();
+  };
+
+  const handleAddressSelected = (parsed: ParsedAddress) => {
+    setStreetAddress(parsed.streetAddress);
+    setCity(parsed.city);
+    setState(parsed.state || "CA");
+    setZipCode(parsed.zipCode);
+    setLatitude(parsed.latitude ?? null);
+    setLongitude(parsed.longitude ?? null);
   };
 
   const pickImage = async (type: "cover" | "logo") => {
@@ -390,10 +519,26 @@ export default function EditBusinessProfileScreen() {
   const saveBusiness = async () => {
     if (!businessId) return;
 
+    if (!city.trim() || !state.trim()) {
+      Alert.alert(
+        "Missing location",
+        "Please enter your business city and state."
+      );
+      return;
+    }
+
+    if (!isValidZipCode(zipCode)) {
+      Alert.alert(
+        "ZIP code required",
+        "Enter a 5-digit ZIP code so we can place your business accurately on the map."
+      );
+      return;
+    }
+
     try {
       setSaving(true);
 
-      const itemsToSave = sanitizeMenuItemsForSave(menuItems);
+      const offeringsToSave = sanitizeBusinessOfferingsForSave(offerings);
       const updatesToSave = sanitizeBusinessUpdatesForSave(
         businessUpdates.map((item) => {
           const exp = item.expiresAt?.trim();
@@ -407,14 +552,20 @@ export default function EditBusinessProfileScreen() {
         })
       );
 
-      const invalidMenuDraft = menuItems.some(
-        (item) => !item.title.trim() && (item.description || item.price || item.image)
+      const invalidOfferingDraft = offerings.some(
+        (item) =>
+          !item.title.trim() &&
+          (item.description ||
+            item.price ||
+            item.image ||
+            item.discountPercent ||
+            item.featured)
       );
 
-      if (invalidMenuDraft) {
+      if (invalidOfferingDraft) {
         Alert.alert(
           "Title required",
-          "Each service or menu item needs a title before saving."
+          "Each business offering needs a title before saving."
         );
         setSaving(false);
         return;
@@ -435,6 +586,30 @@ export default function EditBusinessProfileScreen() {
         return;
       }
 
+      logBusinessCreateAddress({
+        streetAddress,
+        city,
+        state,
+        zipCode,
+        latitude,
+        longitude,
+      });
+
+      const resolved = await resolveBusinessCoordinatesForSave({
+        streetAddress,
+        city,
+        state,
+        zipCode,
+        latitude,
+        longitude,
+      });
+
+      if (!resolved.ok) {
+        Alert.alert("Address not found", resolved.message);
+        setSaving(false);
+        return;
+      }
+
       const updatedBusiness = normalizeBusiness({
         id: businessId,
         business_name: businessName,
@@ -444,13 +619,24 @@ export default function EditBusinessProfileScreen() {
         about: businessBio,
         phone,
         contact_info: phone,
-        city,
-        address,
+        street_address: streetAddress.trim(),
+        address: resolved.address,
+        city: city.trim(),
+        state: state.trim().toUpperCase(),
+        zip: zipCode.trim(),
+        zip_code: zipCode.trim(),
+        postal_code: zipCode.trim(),
+        coordinates_exact: true,
+        latitude: resolved.latitude,
+        longitude: resolved.longitude,
+        lat: resolved.latitude,
+        lng: resolved.longitude,
         website,
         email,
         instagram,
         category,
-        menu_items: itemsToSave,
+        menu_items: offeringsToSave,
+        business_offerings: offeringsToSave,
         business_updates: updatesToSave,
         business_hours: hoursEnabled
           ? sanitizeBusinessHoursForSave(businessHours)
@@ -460,10 +646,13 @@ export default function EditBusinessProfileScreen() {
         logo: logoImage,
         avatar: logoImage,
         profile_image: logoImage,
+        images: sanitizeBusinessGalleryForSave(galleryImages),
         is_owner: true,
         owner_is_current_user: true,
         can_edit: true,
       });
+
+      logBusinessSavedCoordinates(updatedBusiness as Record<string, unknown>);
 
       await AsyncStorage.setItem(
         businessStorageKey,
@@ -493,8 +682,14 @@ export default function EditBusinessProfileScreen() {
         );
       }
 
-      Alert.alert("Saved", "Business profile updated.");
-      router.replace(`/profile/v2?id=${businessId}` as any);
+      requestDiscoverListingsRefresh();
+
+      Alert.alert("Saved", "Business profile updated.", [
+        {
+          text: "OK",
+          onPress: () => router.back(),
+        },
+      ]);
     } catch (error) {
       console.log("EDIT BUSINESS SAVE ERROR:", error);
       Alert.alert("Error", "Could not save this business.");
@@ -516,7 +711,10 @@ export default function EditBusinessProfileScreen() {
       style={{ flex: 1, backgroundColor: BG }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
         <View style={{ paddingTop: 60, paddingHorizontal: 20, paddingBottom: 16 }}>
           <Pressable onPress={() => router.back()} style={{ marginBottom: 20 }}>
             <Text style={{ color: TURQUOISE, fontSize: 18 }}>← Back</Text>
@@ -531,7 +729,7 @@ export default function EditBusinessProfileScreen() {
         </View>
 
         <View style={{ paddingHorizontal: 20 }}>
-          <Text style={label}>Cover Photo</Text>
+          <Text style={labelStyle}>Cover Photo</Text>
           <Pressable onPress={() => pickImage("cover")}>
             <Image
               source={{ uri: coverImage || DEFAULT_COVER }}
@@ -542,7 +740,7 @@ export default function EditBusinessProfileScreen() {
             </View>
           </Pressable>
 
-          <Text style={[label, { marginTop: 22 }]}>Business Logo</Text>
+          <Text style={[labelStyle, { marginTop: 22 }]}>Business Logo</Text>
           <Pressable onPress={() => pickImage("logo")} style={{ alignSelf: "flex-start" }}>
             <Image
               source={{ uri: logoImage || DEFAULT_LOGO }}
@@ -553,12 +751,107 @@ export default function EditBusinessProfileScreen() {
             </View>
           </Pressable>
 
+          <Text style={[labelStyle, { marginTop: 22 }]}>Business Gallery</Text>
+          <Text style={{ marginBottom: 10, fontSize: 13, color: MUTED, lineHeight: 18 }}>
+            Permanent photos for your profile gallery. Update banners stay on each
+            update only.
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 8 }}
+          >
+            <Pressable
+              onPress={pickGalleryImage}
+              style={{
+                width: 100,
+                height: 100,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: BORDER,
+                borderStyle: "dashed",
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 12,
+                backgroundColor: BG,
+              }}
+            >
+              <Ionicons name="add" size={28} color={TURQUOISE} />
+            </Pressable>
+
+            {galleryImages.map((uri) => (
+              <View key={uri} style={{ marginRight: 12 }}>
+                <Image
+                  source={{ uri }}
+                  style={{
+                    width: 100,
+                    height: 100,
+                    borderRadius: 16,
+                    backgroundColor: BORDER,
+                  }}
+                />
+                <Pressable
+                  onPress={() => removeGalleryImage(uri)}
+                  style={{
+                    position: "absolute",
+                    top: 6,
+                    right: 6,
+                    width: 24,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor: "rgba(0,0,0,0.55)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="close" size={14} color="#fff" />
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+
           <Section title="Business Information" />
           <Field label="Business Name" value={businessName} setValue={setBusinessName} />
           <Field label="Business Bio" value={businessBio} setValue={setBusinessBio} multiline />
           <Field label="Phone Number" value={phone} setValue={setPhone} keyboardType="phone-pad" />
-          <Field label="City" value={city} setValue={setCity} />
-          <Field label="Address" value={address} setValue={setAddress} />
+          <StreetAddressAutocomplete
+            variant="edit"
+            label="Street Address"
+            value={streetAddress}
+            onChangeText={handleStreetAddressChange}
+            onAddressSelected={handleAddressSelected}
+            placeholder="Start typing your street address"
+          />
+          <Field
+            label="City *"
+            value={city}
+            setValue={(value) => {
+              setCity(value);
+              clearCoordinates();
+            }}
+            placeholder="San Diego"
+          />
+          <Field
+            label="State *"
+            value={state}
+            setValue={(value) => {
+              setState(value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2));
+              clearCoordinates();
+            }}
+            placeholder="CA"
+            autoCapitalize="characters"
+          />
+          <Field
+            label="ZIP Code *"
+            value={zipCode}
+            setValue={(value) => {
+              setZipCode(value.replace(/\D/g, "").slice(0, 5));
+              clearCoordinates();
+            }}
+            placeholder="92101"
+            keyboardType="number-pad"
+            helperText="ZIP code helps us place your business accurately on the map."
+          />
           <Field label="Website" value={website} setValue={setWebsite} />
           <Field label="Email" value={email} setValue={setEmail} keyboardType="email-address" />
           <Field label="Instagram" value={instagram} setValue={setInstagram} />
@@ -670,9 +963,10 @@ export default function EditBusinessProfileScreen() {
               })
             : null}
 
-          <Section title="Business Updates" />
+          <Section title="Announcements & Promotions" />
           <Text style={{ fontSize: 14, color: MUTED, marginBottom: 14, lineHeight: 20 }}>
-            Share specials, offers, events, and announcements with your community.
+            Post specials, offers, events, and announcements customers will see on
+            your profile.
           </Text>
 
           {businessUpdates.map((update, index) => (
@@ -775,7 +1069,7 @@ export default function EditBusinessProfileScreen() {
                 placeholder="YYYY-MM-DD (optional)"
               />
 
-              <Text style={label}>Image (optional)</Text>
+              <Text style={labelStyle}>Image (optional)</Text>
               <Pressable
                 onPress={() => pickUpdateImage(update.id)}
                 style={{ marginBottom: 4 }}
@@ -851,12 +1145,13 @@ export default function EditBusinessProfileScreen() {
             </Text>
           </Pressable>
 
-          <Section title="Services / Menu Items" />
+          <Section title="Business Offerings" />
           <Text style={{ fontSize: 14, color: MUTED, marginBottom: 14, lineHeight: 20 }}>
-            Add services, menu items, or offerings customers can browse on your profile.
+            Add services or products for any business type — food, legal, medical,
+            real estate, beauty, auto, and more.
           </Text>
 
-          {menuItems.map((item, index) => (
+          {offerings.map((item, index) => (
             <View
               key={item.id}
               style={{
@@ -877,34 +1172,171 @@ export default function EditBusinessProfileScreen() {
                 }}
               >
                 <Text style={{ fontSize: 15, fontWeight: "800", color: TEXT }}>
-                  Item {index + 1}
+                  Offering {index + 1}
                 </Text>
-                <Pressable onPress={() => removeMenuItem(item.id)} hitSlop={8}>
+                <Pressable onPress={() => removeOffering(item.id)} hitSlop={8}>
                   <Ionicons name="trash-outline" size={20} color="#DC2626" />
                 </Pressable>
+              </View>
+
+              <Text style={fieldLabelStyle}>Category</Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginBottom: 14,
+                }}
+              >
+                {BUSINESS_OFFERING_CATEGORIES.map((entry) => {
+                  const active = item.category === entry.key;
+
+                  return (
+                    <Pressable
+                      key={entry.key}
+                      onPress={() =>
+                        updateOffering(item.id, {
+                          category: entry.key as BusinessOfferingCategory,
+                        })
+                      }
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: active ? TURQUOISE : BORDER,
+                        backgroundColor: active
+                          ? "rgba(17,153,142,0.12)"
+                          : CARD,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "700",
+                          color: active ? TURQUOISE : MUTED,
+                        }}
+                      >
+                        {entry.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
 
               <Field
                 label="Title *"
                 value={item.title}
-                setValue={(text) => updateMenuItem(item.id, { title: text })}
+                setValue={(text) => updateOffering(item.id, { title: text })}
               />
               <Field
                 label="Description"
                 value={item.description || ""}
-                setValue={(text) => updateMenuItem(item.id, { description: text })}
+                setValue={(text) => updateOffering(item.id, { description: text })}
                 multiline
               />
               <Field
                 label="Price"
                 value={item.price || ""}
-                setValue={(text) => updateMenuItem(item.id, { price: text })}
+                setValue={(text) => updateOffering(item.id, { price: text })}
                 placeholder="e.g. $25 or Starting at $49"
               />
+              <Field
+                label="Discount %"
+                value={
+                  item.discountPercent != null ? String(item.discountPercent) : ""
+                }
+                setValue={(text) => {
+                  const trimmed = text.replace(/[^\d]/g, "").trim();
+                  updateOffering(item.id, {
+                    discountPercent: trimmed
+                      ? parseOfferingDiscountPercent(trimmed)
+                      : undefined,
+                  });
+                }}
+                keyboardType="numeric"
+                placeholder="Optional"
+              />
 
-              <Text style={label}>Photo (optional)</Text>
+              <Text style={fieldLabelStyle}>Availability</Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginBottom: 14,
+                }}
+              >
+                {BUSINESS_OFFERING_AVAILABILITY.map((entry) => {
+                  const active = item.availability === entry.key;
+
+                  return (
+                    <Pressable
+                      key={entry.key}
+                      onPress={() =>
+                        updateOffering(item.id, {
+                          availability: entry.key as BusinessOfferingAvailability,
+                        })
+                      }
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: active ? TURQUOISE : BORDER,
+                        backgroundColor: active
+                          ? "rgba(17,153,142,0.12)"
+                          : CARD,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "700",
+                          color: active ? TURQUOISE : MUTED,
+                        }}
+                      >
+                        {entry.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 14,
+                  padding: 14,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                  backgroundColor: CARD,
+                }}
+              >
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ fontSize: 15, fontWeight: "800", color: TEXT }}>
+                    Featured
+                  </Text>
+                  <Text style={{ marginTop: 4, fontSize: 13, color: MUTED }}>
+                    Highlight this offering on your profile.
+                  </Text>
+                </View>
+                <Switch
+                  value={Boolean(item.featured)}
+                  onValueChange={(value) =>
+                    updateOffering(item.id, { featured: value })
+                  }
+                  trackColor={{ false: "#D1D5DB", true: "rgba(17,153,142,0.45)" }}
+                  thumbColor={item.featured ? TURQUOISE : "#f4f4f5"}
+                />
+              </View>
+
+              <Text style={labelStyle}>Photo (optional)</Text>
               <Pressable
-                onPress={() => pickMenuItemImage(item.id)}
+                onPress={() => pickOfferingImage(item.id)}
                 style={{ marginBottom: 4 }}
               >
                 {item.image ? (
@@ -940,7 +1372,7 @@ export default function EditBusinessProfileScreen() {
               </Pressable>
 
               {item.image ? (
-                <Pressable onPress={() => updateMenuItem(item.id, { image: "" })}>
+                <Pressable onPress={() => updateOffering(item.id, { image: "" })}>
                   <Text style={{ color: MUTED, fontSize: 13, fontWeight: "700" }}>
                     Remove photo
                   </Text>
@@ -950,7 +1382,7 @@ export default function EditBusinessProfileScreen() {
           ))}
 
           <Pressable
-            onPress={addMenuItem}
+            onPress={addOffering}
             style={{
               height: 52,
               borderRadius: 16,
@@ -972,7 +1404,7 @@ export default function EditBusinessProfileScreen() {
                 fontWeight: "800",
               }}
             >
-              Add service / menu item
+              Add offering
             </Text>
           </Pressable>
 
@@ -1038,6 +1470,8 @@ function Field({
   multiline,
   keyboardType,
   placeholder,
+  helperText,
+  autoCapitalize,
 }: {
   label: string;
   value: string;
@@ -1045,16 +1479,19 @@ function Field({
   multiline?: boolean;
   keyboardType?: any;
   placeholder?: string;
+  helperText?: string;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
 }) {
   return (
     <View style={{ marginBottom: 16 }}>
-      <Text style={label}>{label}</Text>
+      <Text style={labelStyle}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={setValue}
         placeholder={placeholder || label}
         keyboardType={keyboardType}
         multiline={multiline}
+        autoCapitalize={autoCapitalize}
         textAlignVertical={multiline ? "top" : "center"}
         style={{
           minHeight: multiline ? 110 : 54,
@@ -1068,11 +1505,23 @@ function Field({
           color: TEXT,
         }}
       />
+      {helperText ? (
+        <Text
+          style={{
+            marginTop: 6,
+            fontSize: 13,
+            color: MUTED,
+            lineHeight: 18,
+          }}
+        >
+          {helperText}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
-const label = {
+const labelStyle = {
   marginBottom: 8,
   fontSize: 15,
   fontWeight: "800" as const,

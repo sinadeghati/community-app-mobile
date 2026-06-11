@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { isUserLoggedIn } from "./businessReviews";
+import { notifyFavoritesChanged } from "./favoritesRefresh";
 
 export type FavoriteBusiness = {
   id: string;
@@ -101,12 +102,14 @@ export const saveBusinessFavorite = async (item: FavoriteBusinessSource) => {
     favoriteBusinessDataKey(id),
     JSON.stringify(payload)
   );
+  notifyFavoritesChanged();
 };
 
 export const removeBusinessFavorite = async (id: string) => {
   if (!id) return;
   await AsyncStorage.removeItem(favoriteBusinessFlagKey(id));
   await AsyncStorage.removeItem(favoriteBusinessDataKey(id));
+  notifyFavoritesChanged();
 };
 
 export const toggleBusinessFavorite = async (
@@ -125,9 +128,7 @@ export const toggleBusinessFavorite = async (
   return true;
 };
 
-export const loadFavoriteBusinesses = async (): Promise<FavoriteBusiness[]> => {
-  if (!(await isUserLoggedIn())) return [];
-
+const readFavoriteBusinessesFromKeys = async (): Promise<FavoriteBusiness[]> => {
   const keys = await AsyncStorage.getAllKeys();
   const dataKeys = keys.filter((key) => key.startsWith(DATA_PREFIX));
   const result = await AsyncStorage.multiGet(dataKeys);
@@ -142,4 +143,13 @@ export const loadFavoriteBusinesses = async (): Promise<FavoriteBusiness[]> => {
       }
     })
     .filter((item): item is FavoriteBusiness => Boolean(item?.id));
+};
+
+/** Reads cached favorite payloads without auth or network. */
+export const loadFavoriteBusinessesFromStorage =
+  async (): Promise<FavoriteBusiness[]> => readFavoriteBusinessesFromKeys();
+
+export const loadFavoriteBusinesses = async (): Promise<FavoriteBusiness[]> => {
+  if (!(await isUserLoggedIn())) return [];
+  return readFavoriteBusinessesFromKeys();
 };

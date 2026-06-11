@@ -6,7 +6,9 @@ export type EventTimeFilter = "all" | "today" | "week" | "month" | "later";
 export type EventMapItem = DiscoverableListing & {
   event_date?: string;
   eventDate?: string;
+  eventDateIso?: string;
   starts_at?: string;
+  start_time?: string;
   start_date?: string;
   date?: string;
   datetime?: string;
@@ -22,13 +24,29 @@ const EVENT_ACCENT = "#7C3AED";
 export const isMapEvent = (item: DiscoverableListing) =>
   isEventListing(item) || getListingMarkerKind(item) === "events";
 
+export const getEventScheduleIso = (item: EventMapItem): string => {
+  const raw =
+    item.event_date ??
+    item.eventDate ??
+    item.eventDateIso ??
+    item.starts_at ??
+    item.start_time ??
+    item.datetime ??
+    item.start_date ??
+    item.date;
+
+  return String(raw || "").trim();
+};
+
 export const parseEventDate = (item: EventMapItem): Date | null => {
   const raw =
     item.event_date ??
     item.eventDate ??
+    item.eventDateIso ??
     item.starts_at ??
-    item.start_date ??
+    item.start_time ??
     item.datetime ??
+    item.start_date ??
     item.date;
 
   if (!raw) return null;
@@ -111,15 +129,38 @@ export const formatEventDateTime = (item: EventMapItem) => {
 };
 
 export const formatEventLocation = (item: EventMapItem) => {
-  const city = item.city ? String(item.city) : "";
-  const state = item.state ? String(item.state) : "";
-  const address = item.address ? String(item.address) : "";
+  const record = item as EventMapItem & {
+    street_address?: string;
+    zip_code?: string;
+    country?: string;
+  };
 
-  if (address && !city.includes(address)) {
-    return [address, state].filter(Boolean).join(", ");
+  const street = record.street_address
+    ? String(record.street_address).trim()
+    : "";
+  const city = item.city ? String(item.city).trim() : "";
+  const state = item.state ? String(item.state).trim() : "";
+  const zip = record.zip_code ? String(record.zip_code).trim() : "";
+  const country = record.country ? String(record.country).trim() : "";
+  const address = item.address ? String(item.address).trim() : "";
+
+  if (address) return address;
+
+  const cityStateZip = [city, state, zip].filter(Boolean).join(", ");
+  if (street && cityStateZip) {
+    const withStreet = `${street}, ${cityStateZip}`;
+    if (
+      !country ||
+      /^united states$/i.test(country) ||
+      country === "USA"
+    ) {
+      return withStreet;
+    }
+    return `${withStreet}, ${country}`;
   }
 
-  return [city, state].filter(Boolean).join(", ") || "San Diego area";
+  if (cityStateZip) return cityStateZip;
+  return [city, state].filter(Boolean).join(", ");
 };
 
 export const getEventMarkerVisual = (item: EventMapItem): EventMarkerVisual => {

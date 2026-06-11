@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Approved Option C Modern Map Marker — icon only -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" fill="none" role="img" aria-label="PersianMap">
+  <path fill="#111111" d="M50 82  L34 112  L66 112  Z" />
+  <path
+    fill="#0D9488"
+    d="M50 8c19.9 0 36 16.1 36 36 0 13.8-8.2 28.1-22 36.4-2.4 1.9-5.8 1.9-8.3 0C47.7 72.1 40.5 57.8 40.5 44c0-19.9 16.1-36 36-36Z"
+  />
+  <path
+    fill="#FFFFFF"
+    d="M38.5 31.5h10.8c8.5 0 15.4 6.9 15.4 15.4 0 6-3.5 11.2-8.5 13.6v.2h8.5v7.1h-8.5v6.8h-7.1v-6.8h4.3c5.2 0 9.4-4.2 9.4-9.4s-4.2-9.4-9.4-9.4h-4.3v23.7h-7.1V31.5Z"
+  />
+  <circle cx="57.6" cy="46.9" r="5.1" fill="#111111" />
+</svg>

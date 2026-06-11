@@ -1,6 +1,11 @@
 import type { Region } from "react-native-maps";
+import {
+  hasGeocodableBusinessAddress,
+  hasTrustedBusinessMapCoordinates,
+  logBusinessMapCoordinates,
+} from "./businessLocation";
 import type { DiscoverableListing } from "./discoverableListings";
-import { getListingId } from "./discoverableListings";
+import { getListingId, isEventListing } from "./discoverableListings";
 
 const SAN_DIEGO_CENTER = {
   latitude: 32.7157,
@@ -34,6 +39,32 @@ const CITY_COORDINATES: Record<string, { latitude: number; longitude: number }> 
 const CITY_MATCHERS = Object.keys(CITY_COORDINATES).sort(
   (a, b) => b.length - a.length
 );
+
+const titleCaseCityLabel = (cityKey: string) =>
+  cityKey.replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+export const DEFAULT_CITY_LABEL = "San Diego";
+
+export const getSupportedCityLabels = (): string[] => {
+  const labels = Object.keys(CITY_COORDINATES).map(titleCaseCityLabel);
+  return labels.sort((a, b) => {
+    if (a === DEFAULT_CITY_LABEL) return -1;
+    if (b === DEFAULT_CITY_LABEL) return 1;
+    return a.localeCompare(b);
+  });
+};
+
+export const getMapRegionForCity = (cityLabel: string): Region => {
+  const key = cityLabel.trim().toLowerCase();
+  const center = CITY_COORDINATES[key] ?? SAN_DIEGO_CENTER;
+
+  return {
+    latitude: center.latitude,
+    longitude: center.longitude,
+    latitudeDelta: 0.18,
+    longitudeDelta: 0.18,
+  };
+};
 
 /** County anchors used when no city can be parsed (avoids one downtown pile-up). */
 const COUNTY_FALLBACK_CITY_KEYS = CITY_MATCHERS.filter((key) => key !== "san diego");
@@ -222,11 +253,19 @@ export const getCityFallbackCoordinate = (item: DiscoverableListing) => {
   };
 };
 
-const shouldUseExactCoordinates = (
+export const shouldUseExactCoordinates = (
   item: DiscoverableListing,
   latitude: number,
   longitude: number
 ) => {
+  const coordinatesExact = (item as Record<string, unknown>).coordinates_exact;
+  if (coordinatesExact === true) {
+    return !isPlaceholderCoordinate(latitude, longitude);
+  }
+  if (coordinatesExact === false) {
+    return false;
+  }
+
   if (isPlaceholderCoordinate(latitude, longitude)) return false;
 
   const cityKey = parseCityKey(item);
@@ -260,11 +299,46 @@ export function resolveMapPoints(items: DiscoverableListing[]): ResolvedMapPoint
     }
   });
 
-  return items.map((item, index) => {
+  return items.flatMap((item, index) => {
     const lat = getMapLat(item);
     const lng = getMapLng(item);
+    const isBusiness = !isEventListing(item);
+
+    const trustedBusinessCoords =
+      isBusiness &&
+      lat != null &&
+      lng != null &&
+      hasTrustedBusinessMapCoordinates(item, lat, lng);
+
+    if (trustedBusinessCoords) {
+      const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+      const isDuplicate = (coordCounts.get(key) || 0) > 1;
+      const jitter = isDuplicate ? jitterFromId(getListingId(item)) : { dLat: 0, dLng: 0 };
+      const latitude = lat + jitter.dLat;
+      const longitude = lng + jitter.dLng;
+
+      logBusinessMapCoordinates(
+        item,
+        latitude,
+        longitude,
+        (item as Record<string, unknown>).coordinates_exact === true
+          ? "exact"
+          : "legacy_exact"
+      );
+
+      return [
+        {
+          item,
+          index,
+          latitude,
+          longitude,
+          hasExactCoordinate: true,
+        },
+      ];
+    }
 
     if (
+      !isBusiness &&
       lat != null &&
       lng != null &&
       shouldUseExactCoordinates(item, lat, lng)
@@ -273,23 +347,68 @@ export function resolveMapPoints(items: DiscoverableListing[]): ResolvedMapPoint
       const isDuplicate = (coordCounts.get(key) || 0) > 1;
       const jitter = isDuplicate ? jitterFromId(getListingId(item)) : { dLat: 0, dLng: 0 };
 
-      return {
+      return [
+        {
+          item,
+          index,
+          latitude: lat + jitter.dLat,
+          longitude: lng + jitter.dLng,
+          hasExactCoordinate: true,
+        },
+      ];
+    }
+
+    if (isEventListing(item)) {
+      const fallback = getCityFallbackCoordinate(item);
+      return [
+        {
+          item,
+          index,
+          latitude: fallback.latitude,
+          longitude: fallback.longitude,
+          hasExactCoordinate: false,
+        },
+      ];
+    }
+
+    if (isBusiness && hasGeocodableBusinessAddress(item)) {
+      const fallback = getCityFallbackCoordinate(item);
+      logBusinessMapCoordinates(
         item,
-        index,
-        latitude: lat + jitter.dLat,
-        longitude: lng + jitter.dLng,
-        hasExactCoordinate: true,
-      };
+        fallback.latitude,
+        fallback.longitude,
+        "fallback_pending_geocode"
+      );
+      return [
+        {
+          item,
+          index,
+          latitude: fallback.latitude,
+          longitude: fallback.longitude,
+          hasExactCoordinate: false,
+        },
+      ];
     }
 
     const fallback = getCityFallbackCoordinate(item);
-    return {
-      item,
-      index,
-      latitude: fallback.latitude,
-      longitude: fallback.longitude,
-      hasExactCoordinate: false,
-    };
+    if (isBusiness) {
+      logBusinessMapCoordinates(
+        item,
+        fallback.latitude,
+        fallback.longitude,
+        "fallback"
+      );
+    }
+
+    return [
+      {
+        item,
+        index,
+        latitude: fallback.latitude,
+        longitude: fallback.longitude,
+        hasExactCoordinate: false,
+      },
+    ];
   });
 }
 
@@ -341,6 +460,43 @@ export function buildMapDisplay(
 
   return display;
 }
+
+export const regionForMapPoints = (
+  points: ResolvedMapPoint[],
+  options?: { latOffset?: number; minDelta?: number; paddingFactor?: number }
+): Region | null => {
+  if (points.length === 0) return null;
+
+  const latOffset = options?.latOffset ?? 0.012;
+  const minDelta = options?.minDelta ?? 0.055;
+  const paddingFactor = options?.paddingFactor ?? 1.6;
+
+  if (points.length === 1) {
+    const point = points[0];
+    return {
+      latitude: point.latitude - latOffset,
+      longitude: point.longitude,
+      latitudeDelta: minDelta,
+      longitudeDelta: minDelta,
+    };
+  }
+
+  const lats = points.map((point) => point.latitude);
+  const lngs = points.map((point) => point.longitude);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  const latitudeDelta = Math.max((maxLat - minLat) * paddingFactor, minDelta);
+  const longitudeDelta = Math.max((maxLng - minLng) * paddingFactor, minDelta);
+
+  return {
+    latitude: (minLat + maxLat) / 2 - latOffset * 0.5,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta,
+    longitudeDelta,
+  };
+};
 
 export const regionForCluster = (
   cluster: Extract<MapMarkerDisplay, { type: "cluster" }>

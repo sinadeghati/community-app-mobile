@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,16 +14,22 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import {
+  getCommunityEventById,
+  deleteCommunityEvent,
+  isCommunityEventOwner,
+} from "../../lib/communityEvents";
 import { loadDiscoverableListings } from "../../lib/discoverableListings";
 import { isMapEvent } from "../../lib/mapEvents";
+import { getActiveUserId } from "../../lib/userSessionStorage";
 import {
   formatEventDateTime,
   formatEventLocation,
   getEventCategory,
   getEventCover,
   getEventDescription,
-  getEventMapPoint,
   getEventOrganizer,
+  openEventDirections,
   getEventTicketUrl,
   getEventTitle,
   isEventSaved,
@@ -42,37 +48,50 @@ export default function EventDetailsScreen() {
   const [event, setEvent] = useState<EventMapItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
+  const interestedPendingRef = useRef(false);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
+  const loadEvent = React.useCallback(async () => {
+    try {
+      setLoading(true);
 
-        const snapshot = await loadMapEventSnapshot(eventId);
-        if (snapshot) {
-          setEvent(snapshot);
-          setSaved(await isEventSaved(eventId));
-          return;
-        }
-
-        const listings = await loadDiscoverableListings();
-        const found =
-          listings.find(
-            (item) => String(item?.id) === eventId && isMapEvent(item)
-          ) ?? null;
-
-        setEvent(found as EventMapItem | null);
-        if (found) {
-          setSaved(await isEventSaved(eventId));
-        }
-      } catch (error) {
-        console.log("Event details load error:", error);
-      } finally {
-        setLoading(false);
+      const communityEvent = await getCommunityEventById(eventId);
+      if (communityEvent) {
+        setEvent(communityEvent);
+        setSaved(await isEventSaved(eventId));
+        const userId = await getActiveUserId();
+        setIsOwner(await isCommunityEventOwner(communityEvent, userId));
+        await saveMapEventSnapshot(communityEvent);
+        return;
       }
-    };
 
-    load();
+      const snapshot = await loadMapEventSnapshot(eventId);
+      if (snapshot) {
+        setEvent(snapshot);
+        setSaved(await isEventSaved(eventId));
+        setIsOwner(false);
+        return;
+      }
+
+      const listings = await loadDiscoverableListings();
+      const found =
+        listings.find(
+          (item) => String(item?.id) === eventId && isMapEvent(item)
+        ) ?? null;
+
+      setEvent(found as EventMapItem | null);
+      if (found) {
+        setSaved(await isEventSaved(eventId));
+        const userId = await getActiveUserId();
+        setIsOwner(await isCommunityEventOwner(found as EventMapItem, userId));
+      } else {
+        setIsOwner(false);
+      }
+    } catch (error) {
+      console.log("Event details load error:", error);
+    } finally {
+      setLoading(false);
+    }
   }, [eventId]);
 
   const refreshInterestedState = React.useCallback(async () => {
@@ -82,24 +101,23 @@ export default function EventDetailsScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      refreshInterestedState();
-    }, [refreshInterestedState])
+      void loadEvent();
+      void refreshInterestedState();
+    }, [loadEvent, refreshInterestedState])
   );
 
   const ticketUrl = getEventTicketUrl(event);
   const organizer = getEventOrganizer(event);
-  const mapPoint = event ? getEventMapPoint(event) : null;
+  const openDirections = async () => {
+    if (!event) return;
 
-  const openDirections = () => {
-    if (!mapPoint) {
-      Alert.alert("Location unavailable", "Directions are not available for this event yet.");
-      return;
+    const opened = await openEventDirections(event);
+    if (!opened) {
+      Alert.alert(
+        "Location unavailable",
+        "Directions are not available for this event yet."
+      );
     }
-
-    const label = encodeURIComponent(getEventTitle(event));
-    Linking.openURL(
-      `https://www.google.com/maps/search/?api=1&query=${mapPoint.latitude},${mapPoint.longitude}&query_place_id=${label}`
-    );
   };
 
   const shareEvent = async () => {
@@ -111,24 +129,73 @@ export default function EventDetailsScreen() {
   };
 
   const onToggleSaved = async () => {
-    if (!eventId) return;
+    if (!eventId || interestedPendingRef.current) return;
 
-    const allowed = await ensureLoggedInForSave(
-      saved ? "manage interested events" : "save events you're interested in"
-    );
-    if (!allowed) return;
+    let previous = false;
+    setSaved((current) => {
+      previous = current;
+      return !current;
+    });
+    interestedPendingRef.current = true;
 
-    if (!saved && event) {
-      await saveMapEventSnapshot(event);
+    try {
+      const allowed = await ensureLoggedInForSave(
+        previous ? "manage interested events" : "save events you're interested in"
+      );
+      if (!allowed) {
+        setSaved(previous);
+        return;
+      }
+
+      if (!previous && event) {
+        await saveMapEventSnapshot(event);
+      }
+
+      const next = await toggleEventSaved(eventId);
+      setSaved(next);
+    } catch (error) {
+      console.log("Event interested toggle error:", error);
+      setSaved(previous);
+    } finally {
+      interestedPendingRef.current = false;
     }
-
-    const next = await toggleEventSaved(eventId);
-    setSaved(next);
   };
 
   const onTickets = () => {
     if (!ticketUrl) return;
     Linking.openURL(ticketUrl);
+  };
+
+  const onEditEvent = () => {
+    router.push({
+      pathname: "/profile/edit-event",
+      params: { id: eventId },
+    } as any);
+  };
+
+  const onDeleteEvent = () => {
+    Alert.alert(
+      "Delete event",
+      "Delete this event permanently?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              const ownerId = await getActiveUserId();
+              const result = await deleteCommunityEvent(eventId, ownerId || undefined);
+              if (!result.ok) {
+                Alert.alert("Could not delete event", result.message);
+                return;
+              }
+              router.replace("/profile/events");
+            })();
+          },
+        },
+      ]
+    );
   };
 
   if (loading) {
@@ -324,6 +391,21 @@ export default function EventDetailsScreen() {
               onPress={onToggleSaved}
               accent
             />
+            {isOwner ? (
+              <>
+                <ActionChip
+                  icon="create-outline"
+                  label="Edit"
+                  onPress={onEditEvent}
+                  accent
+                />
+                <ActionChip
+                  icon="trash-outline"
+                  label="Delete"
+                  onPress={onDeleteEvent}
+                />
+              </>
+            ) : null}
             {ticketUrl ? (
               <ActionChip
                 icon="open-outline"

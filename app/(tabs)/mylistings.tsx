@@ -12,7 +12,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
-import { getActiveUserId, loadUserProfile } from "../../lib/userSessionStorage";
+import {
+  getActiveUserId,
+  loadUserProfile,
+  requireAuthenticatedUser,
+} from "../../lib/userSessionStorage";
 
 const colors = {
   bg: "#F7F5F0",
@@ -93,8 +97,13 @@ export default function MyListingsScreen() {
     React.useCallback(() => {
       const loadListings = async () => {
         try {
-          const userId = await getActiveUserId();
-          const profile = userId ? await loadUserProfile(userId) : null;
+          const userId = await requireAuthenticatedUser();
+          if (!userId) {
+            router.replace("/(tabs)");
+            return;
+          }
+
+          const profile = await loadUserProfile(userId);
 
           if (!profile) {
             setListings([]);

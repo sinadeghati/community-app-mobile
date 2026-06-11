@@ -19,6 +19,7 @@ import {
   getActiveUserId,
   loadUserBusinesses,
   loadUserProfile,
+  requireAuthenticatedUser,
 } from "../../lib/userSessionStorage";
 import { useRouter, useLocalSearchParams } from "expo-router";
 
@@ -68,6 +69,23 @@ export default function CreateListingFinal() {
   const [gallery, setGallery] = useState<string[]>([]);
   const [localBusinesses, setLocalBusinesses] = useState<any[]>([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const guard = async () => {
+      const userId = await requireAuthenticatedUser();
+      if (!cancelled && !userId) {
+        router.replace("/(tabs)");
+      }
+    };
+
+    void guard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   useEffect(() => {
     const loadBusinesses = async () => {

@@ -1,10 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import authStorage from "../app/utils/authStorage";
+import {
+  getLastSessionUserId,
+  invalidateAuthSession,
+  logAuthEvent,
+  markSessionUser,
+  resolveStoredAccessToken,
+  shouldInvalidateStoredSession,
+  tryRefreshStoredAccessToken,
+} from "./authSession";
 
 /** Legacy global keys — never delete on logout; migrate into scoped keys on login. */
 export const LEGACY_USER_PROFILE_KEY = "user_profile_v2";
 export const LEGACY_MY_BUSINESSES_KEY = "my_local_businesses";
-const LAST_SESSION_USER_KEY = "session_last_user_id";
 
 const profileKey = (userId: string) => `user_profile_v2_${userId}`;
 const profileUsernameKey = (username: string) =>
@@ -14,21 +22,143 @@ export const getMyBusinessesStorageKey = (userId: string) =>
 
 const businessesKey = getMyBusinessesStorageKey;
 
-export const getActiveUserId = async (): Promise<string | null> => {
+export type ActiveSession = {
+  userId: string;
+  access: string;
+};
+
+const resolveSessionUserId = async (access: string): Promise<string | null> => {
+  const fromToken = authStorage.getUserIdStringFromAccessToken(access);
+  if (fromToken) return fromToken;
+
+  const lastUserId = await getLastSessionUserId();
+  return lastUserId || null;
+};
+
+const buildFallbackSession = async (): Promise<ActiveSession | null> => {
+  if (await shouldInvalidateStoredSession()) {
+    return null;
+  }
+
   const tokens = await authStorage.getTokens();
-  const uid = authStorage.getUserIdFromAccessToken(tokens?.access);
-  if (uid == null) return null;
-  return String(uid);
+  const lastUserId = await getLastSessionUserId();
+  if (!lastUserId || (!tokens?.access && !tokens?.refresh)) {
+    return null;
+  }
+
+  logAuthEvent("session_fallback", { userId: lastUserId });
+  return {
+    userId: lastUserId,
+    access: tokens?.access || "",
+  };
 };
 
-export const markSessionUser = async (userId: string) => {
-  await AsyncStorage.setItem(LAST_SESSION_USER_KEY, userId);
+/** Single source of truth — valid JWT session (refreshing access token when needed). */
+export const resolveActiveSession = async (): Promise<ActiveSession | null> => {
+  const access = await resolveStoredAccessToken();
+  if (access && authStorage.isJwtNotExpired(access)) {
+    const userId = await resolveSessionUserId(access);
+    if (userId) {
+      await markSessionUser(userId);
+      return { userId, access };
+    }
+  }
+
+  return buildFallbackSession();
 };
 
-export const getLastSessionUserId = async (): Promise<string | null> => {
-  const raw = await AsyncStorage.getItem(LAST_SESSION_USER_KEY);
-  return raw || null;
+let hydrateAuthInFlight: Promise<ActiveSession | null> | null = null;
+let hydrateAuthCachedAt = 0;
+let hydrateAuthCachedResult: ActiveSession | null | undefined;
+
+const HYDRATE_AUTH_TTL_MS = 8000;
+
+export const invalidateHydrateAuthCache = () => {
+  hydrateAuthCachedAt = 0;
+  hydrateAuthCachedResult = undefined;
 };
+
+/**
+ * App-start hydration — never clears tokens on transient API/network failures.
+ * Home and Profile should call this (or resolveActiveSession) on focus.
+ */
+export const hydrateAuthSession = async (): Promise<ActiveSession | null> => {
+  const now = Date.now();
+  if (
+    hydrateAuthCachedResult !== undefined &&
+    now - hydrateAuthCachedAt < HYDRATE_AUTH_TTL_MS
+  ) {
+    return hydrateAuthCachedResult;
+  }
+
+  if (hydrateAuthInFlight) {
+    return hydrateAuthInFlight;
+  }
+
+  hydrateAuthInFlight = (async () => {
+    try {
+      if (await shouldInvalidateStoredSession()) {
+        await invalidateAuthSession("refresh_token_expired");
+        hydrateAuthCachedResult = null;
+        hydrateAuthCachedAt = Date.now();
+        return null;
+      }
+
+      const session = await resolveActiveSession();
+      if (session) {
+        await AsyncStorage.setItem("is_logged_in", "true");
+        hydrateAuthCachedResult = session;
+        hydrateAuthCachedAt = Date.now();
+        return session;
+      }
+
+      const restoredUserId = await resolveAuthenticatedUserId();
+      if (restoredUserId) {
+        const tokens = await authStorage.getTokens();
+        logAuthEvent("hydrate_restored_from_cache", { userId: restoredUserId });
+        await AsyncStorage.setItem("is_logged_in", "true");
+        const restored = {
+          userId: restoredUserId,
+          access: String(tokens?.access || "").trim(),
+        };
+        hydrateAuthCachedResult = restored;
+        hydrateAuthCachedAt = Date.now();
+        return restored;
+      }
+
+      await AsyncStorage.setItem("is_logged_in", "false");
+      hydrateAuthCachedResult = null;
+      hydrateAuthCachedAt = Date.now();
+      return null;
+    } finally {
+      hydrateAuthInFlight = null;
+    }
+  })();
+
+  return hydrateAuthInFlight;
+};
+
+/** Same user id resolution Profile tab uses — not only a live JWT session. */
+const resolveAuthenticatedUserId = async (): Promise<string | null> => {
+  const session = await resolveActiveSession();
+  if (session?.userId) return session.userId;
+
+  const tokens = await authStorage.getTokens();
+  if (!tokens?.access && !tokens?.refresh) return null;
+  if (await shouldInvalidateStoredSession()) return null;
+
+  if (tokens.access) {
+    const fromToken = authStorage.getUserIdStringFromAccessToken(tokens.access);
+    if (fromToken) return fromToken;
+  }
+
+  const lastUserId = await getLastSessionUserId();
+  return lastUserId || null;
+};
+
+export const getActiveUserId = resolveAuthenticatedUserId;
+
+export { getLastSessionUserId, markSessionUser } from "./authSession";
 
 export const profileIdFromRecord = (profile: Record<string, unknown> | null) => {
   if (!profile) return null;
@@ -862,6 +992,67 @@ export const loadUserProfile = async (
   }
 };
 
+/** Valid session user id — read-only; never clears stored tokens. */
+export const requireAuthenticatedUser = resolveAuthenticatedUserId;
+
+const resolveUserIdentity = async (userId: string) => {
+  const profile = await loadUserProfile(userId);
+  return {
+    username: String(profile?.username || "").trim() || undefined,
+    email: String(profile?.email || "").trim() || undefined,
+  };
+};
+
+export type BusinessOwnerAccessResult =
+  | { ok: true; userId: string }
+  | { ok: false; reason: "guest" | "not_owner" };
+
+/**
+ * Shared ownership gate for edit, delete, and manage flows.
+ * My Businesses list is checked first so polluted owner_id on profile_v2 does not block owners.
+ */
+export const confirmBusinessOwnerForUser = async (
+  business: Record<string, unknown>,
+  userId: string,
+  businessId?: string,
+  identity?: { username?: string; email?: string }
+): Promise<boolean> => {
+  const resolvedIdentity = identity ?? (await resolveUserIdentity(userId));
+  const id = String(businessId || business.id || "").trim();
+
+  if (id) {
+    const myBusinesses = await loadMyBusinessesForProfile(
+      userId,
+      resolvedIdentity
+    );
+    if (myBusinesses.some((item) => String(item.id || "") === id)) {
+      return true;
+    }
+  }
+
+  return isMyBusinessForUser(business, userId, resolvedIdentity);
+};
+
+/** Ownership must match My Businesses — catalog owner_id alone is not trusted. */
+export const verifyBusinessOwnerAccess = async (
+  business: Record<string, unknown>,
+  businessId?: string
+): Promise<BusinessOwnerAccessResult> => {
+  const userId = await requireAuthenticatedUser();
+  if (!userId) {
+    return { ok: false, reason: "guest" };
+  }
+
+  const identity = await resolveUserIdentity(userId);
+  const id = String(businessId || business.id || "");
+
+  if (await confirmBusinessOwnerForUser(business, userId, id, identity)) {
+    return { ok: true, userId };
+  }
+
+  return { ok: false, reason: "not_owner" };
+};
+
 /** After API identity is known, recover legacy global profile for the matching user only. */
 export const adoptLegacyBusinessesIfMatching = async (
   userId: string,
@@ -1317,6 +1508,7 @@ export const deleteUserBusiness = async (
     return { ok: false, reason: "missing_ids" };
   }
 
+  const resolvedIdentity = identity ?? (await resolveUserIdentity(userId));
   const profileStorageKey = `profile_v2_${id}`;
   let record: Record<string, unknown> | null = null;
 
@@ -1330,7 +1522,7 @@ export const deleteUserBusiness = async (
   }
 
   if (!record) {
-    const owned = (await loadUserBusinesses(userId, identity)) as Record<
+    const owned = (await loadUserBusinesses(userId, resolvedIdentity)) as Record<
       string,
       unknown
     >[];
@@ -1340,14 +1532,27 @@ export const deleteUserBusiness = async (
   if (!record) {
     return { ok: false, reason: "not_found" };
   }
+  const owned = await confirmBusinessOwnerForUser(
+    record,
+    userId,
+    id,
+    resolvedIdentity
+  );
 
-  if (!isMyBusinessForUser(record, userId, identity)) {
+  if (!owned) {
+    console.log("BUSINESS_DELETE_OWNERSHIP_DENIED", {
+      userId,
+      businessId: id,
+      sessionUsername: resolvedIdentity?.username ?? null,
+      sessionEmail: resolvedIdentity?.email ?? null,
+      ...inspectBusinessOwnershipFields(record),
+    });
     return { ok: false, reason: "not_owner" };
   }
 
   await AsyncStorage.removeItem(profileStorageKey);
 
-  const ownedList = (await loadUserBusinesses(userId, identity)) as Record<
+  const ownedList = (await loadUserBusinesses(userId, resolvedIdentity)) as Record<
     string,
     unknown
   >[];
@@ -1355,7 +1560,7 @@ export const deleteUserBusiness = async (
   await saveUserBusinesses(
     userId,
     nextList,
-    identity?.username ?? businessOwnerUsername(record) ?? undefined
+    resolvedIdentity?.username ?? businessOwnerUsername(record) ?? undefined
   );
 
   await AsyncStorage.removeItem(`business_reviews_${id}`);
@@ -1371,7 +1576,7 @@ export const deleteUserBusiness = async (
     userId,
     businessId: id,
     profileStorageKey,
-    ownerUsername: identity?.username ?? businessOwnerUsername(record),
+    ownerUsername: resolvedIdentity?.username ?? businessOwnerUsername(record),
   });
 
   return { ok: true };
@@ -1379,14 +1584,16 @@ export const deleteUserBusiness = async (
 
 /** Login: profile cache only — businesses load after identity (username) is known. */
 export const prepareSessionForUser = async (userId: string) => {
+  invalidateHydrateAuthCache();
   await loadUserProfile(userId);
   await markSessionUser(userId);
+  await AsyncStorage.setItem("is_logged_in", "true");
 };
 
 /** Logout: auth + session flag only — keep all user-scoped profile/business data. */
 export const clearUserSession = async () => {
-  await authStorage.clearTokens();
-  await AsyncStorage.setItem("is_logged_in", "false");
+  invalidateHydrateAuthCache();
+  await invalidateAuthSession("manual_logout");
 };
 
 /** API supplies identity; saved local custom fields must survive login refresh. */

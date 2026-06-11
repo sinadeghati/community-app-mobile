@@ -1,88 +1,164 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import { Buffer } from "buffer";
 
 const KEY = "authTokens_v2";
+const LEGACY_ASYNC_KEY = "authTokens_v2";
 
 export type Tokens = {
   access: string;
   refresh?: string;
 };
 
+type JwtPayload = Record<string, unknown>;
+
+const decodeJwtPayload = (token: string): JwtPayload | null => {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+
+    let payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = payload.length % 4;
+    if (pad) payload += "=".repeat(4 - pad);
+
+    const jsonStr = Buffer.from(payload, "base64").toString("utf8");
+    return JSON.parse(jsonStr) as JwtPayload;
+  } catch {
+    return null;
+  }
+};
+
+const readSecure = async (): Promise<string | null> => {
+  try {
+    return await SecureStore.getItemAsync(KEY);
+  } catch {
+    return null;
+  }
+};
+
+const writeSecure = async (value: string): Promise<void> => {
+  try {
+    await SecureStore.setItemAsync(KEY, value);
+  } catch {
+    await AsyncStorage.setItem(LEGACY_ASYNC_KEY, value);
+  }
+};
+
+const removeSecure = async (): Promise<void> => {
+  try {
+    await SecureStore.deleteItemAsync(KEY);
+  } catch {
+    // ignore
+  }
+  await AsyncStorage.removeItem(LEGACY_ASYNC_KEY);
+};
+
+const migrateLegacyTokens = async (): Promise<string | null> => {
+  const legacy = await AsyncStorage.getItem(LEGACY_ASYNC_KEY);
+  if (!legacy) return null;
+
+  await writeSecure(legacy);
+  await AsyncStorage.removeItem(LEGACY_ASYNC_KEY);
+  return legacy;
+};
+
 async function setTokens(tokens: Tokens | null | undefined) {
-  // اگر توکن معتبر نداریم، پاک کن
   if (!tokens?.access) {
-    await AsyncStorage.removeItem(KEY);
+    await removeSecure();
     return;
   }
-  await AsyncStorage.setItem(KEY, JSON.stringify(tokens));
+
+  const normalized: Tokens = {
+    access: String(tokens.access).trim(),
+    ...(tokens.refresh ? { refresh: String(tokens.refresh).trim() } : {}),
+  };
+
+  await writeSecure(JSON.stringify(normalized));
+  await AsyncStorage.removeItem(LEGACY_ASYNC_KEY);
 }
 
 async function getTokens(): Promise<Tokens | null> {
-  const raw = await AsyncStorage.getItem(KEY);
+  let raw = await readSecure();
+  if (!raw) {
+    raw = await migrateLegacyTokens();
+  }
+  if (!raw) {
+    raw = await AsyncStorage.getItem(LEGACY_ASYNC_KEY);
+  }
   if (!raw) return null;
+
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw) as Tokens;
+    if (!parsed?.access) return null;
+    return parsed;
   } catch {
     return null;
   }
 }
 
 async function clearTokens() {
-  await AsyncStorage.removeItem(KEY);
+  await removeSecure();
 }
 
-// ✅ این تابع فقط همینجا و فقط یک بار تعریف بشه
 function getUserIdFromAccessToken(accessToken?: string | null): number | null {
-  try {
-    if (!accessToken) return null;
+  const data = accessToken ? decodeJwtPayload(accessToken) : null;
+  if (!data) return null;
 
-    const parts = accessToken.split(".");
-    if (parts.length < 2) return null;
+  const raw =
+    data.user_id ??
+    data.id ??
+    data.sub ??
+    data.userId ??
+    data.pk ??
+    null;
 
-    // base64url -> base64
-    let payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const pad = payload.length % 4;
-    if (pad) payload += "=".repeat(4 - pad);
+  if (raw == null || raw === "") return null;
 
-    const jsonStr = Buffer.from(payload, "base64").toString("utf8");
-    const data = JSON.parse(jsonStr);
-
-    // بعضی JWT ها user_id دارن، بعضی id
-    const uid = data.user_id ?? data.id;
-    return typeof uid === "number" ? uid : Number(uid) || null;
-  } catch {
-    return null;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw;
   }
+
+  const asNumber = Number(raw);
+  return Number.isFinite(asNumber) ? asNumber : null;
 }
 
-// برای سازگاری با کد قبلی (login.tsx و ...)
+function getUserIdStringFromAccessToken(
+  accessToken?: string | null
+): string | null {
+  const numeric = getUserIdFromAccessToken(accessToken);
+  if (numeric != null) return String(numeric);
+
+  const data = accessToken ? decodeJwtPayload(accessToken) : null;
+  if (!data) return null;
+
+  const raw =
+    data.user_id ??
+    data.id ??
+    data.sub ??
+    data.userId ??
+    data.pk ??
+    null;
+
+  if (raw == null || raw === "") return null;
+  return String(raw);
+}
+
+function isJwtNotExpired(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return false;
+
+  const exp = payload.exp;
+  if (exp == null) return true;
+
+  const expSeconds = typeof exp === "number" ? exp : Number(exp);
+  if (!Number.isFinite(expSeconds)) return true;
+
+  return Date.now() < expSeconds * 1000;
+}
+
 async function storeTokens(tokens: Tokens | null | undefined) {
   return setTokens(tokens);
 }
-
-function isJwtNotExpired(token: string): boolean{
-
-  try{
-    const payloadPart = token.split(".")[1];
-    if (!payloadPart) return false;
-
-    const payloadJson = atob (
-      payloadPart.replace(/-/g, "+").replace(/_/g,"/")
-    );
-    const payload = JSON.parse(payloadJson);
-
-    const exp = payload?.exp;
-    if (!exp) return true;
-
-    return Date.now() < exp * 1000;
-  } catch{
-    return false;
-  }
-
-  }
-
-
-
 
 export default {
   setTokens,
@@ -90,7 +166,7 @@ export default {
   getTokens,
   clearTokens,
   getUserIdFromAccessToken,
+  getUserIdStringFromAccessToken,
   isJwtNotExpired,
-
-   // ✅ حتما داخل default export باشه
+  decodeJwtPayload,
 };

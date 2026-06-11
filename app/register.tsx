@@ -184,10 +184,10 @@ export default function RegisterScreen() {
         refresh,
       });
 
-      const userId = authStorage.getUserIdFromAccessToken(access);
-      if (userId != null) {
+      const userId = authStorage.getUserIdStringFromAccessToken(access);
+      if (userId) {
         const { prepareSessionForUser } = await import("../lib/userSessionStorage");
-        await prepareSessionForUser(String(userId));
+        await prepareSessionForUser(userId);
       }
 
       router.replace("/(tabs)/explore");

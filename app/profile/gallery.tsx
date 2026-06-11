@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import {
   ScrollView,
   View,
@@ -9,15 +9,43 @@ import {
   Pressable,
   SafeAreaView,
   Modal,
+  ActivityIndicator,
 } from "react-native";
+import {
+  getBusinessGalleryUris,
+  loadBusinessProfileRecord,
+} from "../../lib/businessGallery";
 
 export default function GalleryScreen() {
+  const params = useLocalSearchParams();
+  const businessId = String(params?.id || "");
+  const [loading, setLoading] = useState(true);
+  const [business, setBusiness] = useState<Record<string, unknown> | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  const images = [
-    "https://images.unsplash.com/photo-1504674900247-0877df9cc836",
-    "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4",
-  ];
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      const record = await loadBusinessProfileRecord(businessId);
+      if (!cancelled) {
+        setBusiness(record);
+        setLoading(false);
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [businessId]);
+
+  const images = useMemo(
+    () => getBusinessGalleryUris(business),
+    [business]
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f5f5f5" }}>
@@ -44,30 +72,55 @@ export default function GalleryScreen() {
         </View>
 
         <Text style={{ fontSize: 15, color: "#666", marginBottom: 24 }}>
-          Photos, videos, offers and highlights
+          Business photos
         </Text>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-          {images.map((img, index) => (
-            <Pressable
-              key={index}
-              onPress={() => setSelectedImage(img)}
-              style={{
-                width: "48%",
-                marginBottom: 14,
-                borderRadius: 20,
-                overflow: "hidden",
-                backgroundColor: "#fff",
-              }}
-            >
-              <Image source={{ uri: img }} style={{ width: "100%", height: 180 }} resizeMode="cover" />
-            </Pressable>
-          ))}
-        </View>
+        {loading ? (
+          <ActivityIndicator size="large" color="#11998E" />
+        ) : images.length > 0 ? (
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+            }}
+          >
+            {images.map((img, index) => (
+              <Pressable
+                key={`${img}-${index}`}
+                onPress={() => setSelectedImage(img)}
+                style={{
+                  width: "48%",
+                  marginBottom: 14,
+                  borderRadius: 20,
+                  overflow: "hidden",
+                  backgroundColor: "#fff",
+                }}
+              >
+                <Image
+                  source={{ uri: img }}
+                  style={{ width: "100%", height: 180 }}
+                  resizeMode="cover"
+                />
+              </Pressable>
+            ))}
+          </View>
+        ) : (
+          <Text style={{ fontSize: 15, color: "#666" }}>
+            No gallery photos yet.
+          </Text>
+        )}
       </ScrollView>
 
       <Modal visible={!!selectedImage} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: "#000", justifyContent: "center", alignItems: "center" }}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#000",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
           <Pressable
             onPress={() => setSelectedImage(null)}
             style={{ position: "absolute", top: 60, right: 24, zIndex: 10 }}
@@ -76,7 +129,11 @@ export default function GalleryScreen() {
           </Pressable>
 
           {selectedImage ? (
-            <Image source={{ uri: selectedImage }} style={{ width: "100%", height: "80%" }} resizeMode="contain" />
+            <Image
+              source={{ uri: selectedImage }}
+              style={{ width: "100%", height: "80%" }}
+              resizeMode="contain"
+            />
           ) : null}
         </View>
       </Modal>

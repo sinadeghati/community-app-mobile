@@ -41,19 +41,22 @@ export default function LoginScreen() {
 
       
 
-     const tokens = response?.data ?? response;
+     const payload = response?.data ?? response;
+     const access = payload?.access || payload?.tokens?.access;
+     const refresh = payload?.refresh || payload?.tokens?.refresh;
 
-     if (!tokens?.access) {
-       console.log("LOGIN ERROR: token missing access", tokens);
+     if (!access) {
+       console.log("LOGIN ERROR: token missing access", payload);
        Alert.alert("ERROR", "Login response did not include tokens.");
        return;
      }
-     await authStorage.setTokens(tokens);
 
-      const userId = authStorage.getUserIdFromAccessToken(tokens.access);
-      if (userId != null) {
-        const { prepareSessionForUser } = await import("../lib/userSessionStorage");
-        await prepareSessionForUser(String(userId));
+     await authStorage.setTokens({ access, refresh });
+
+      const userId = authStorage.getUserIdStringFromAccessToken(access);
+      const { prepareSessionForUser } = await import("../lib/userSessionStorage");
+      if (userId) {
+        await prepareSessionForUser(userId);
       }
 
       Alert.alert("Success", "Logged in successfully!");

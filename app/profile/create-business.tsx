@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     View,
     Text,
@@ -8,6 +8,9 @@ import {
     Alert,
     Modal,
     Image,
+    KeyboardAvoidingView,
+    Platform,
+    Switch,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,34 +20,120 @@ import {
     loadUserProfile,
     upsertUserBusiness,
 } from "../../lib/userSessionStorage";
+import authStorage from "../utils/authStorage";
 import * as ImagePicker from "expo-image-picker";
+import { StreetAddressAutocomplete } from "../../components/business/StreetAddressAutocomplete";
+import type { ParsedAddress } from "../../lib/addressAutocomplete";
+import {
+    logBusinessCreateAddress,
+    logBusinessSavedCoordinates,
+    resolveBusinessCoordinatesForSave,
+} from "../../lib/businessLocation";
+import { requestDiscoverListingsRefresh } from "../../lib/discoverListingsRefresh";
+import { CREATE_BUSINESS_CATEGORIES } from "../../lib/discoverySearch";
+import {
+    createDefaultBusinessHours,
+    formatTime12,
+    parseTimeInput,
+    sanitizeBusinessHoursForSave,
+    WEEKDAYS,
+    type BusinessDayHours,
+    type BusinessHours,
+    type WeekdayKey,
+} from "../../lib/businessHours";
 
-const CATEGORIES = [
-    "Food",
-    "Beauty",
-    "Auto",
-    "Home Services",
-    "Real Estate",
-    "Events",
-    "Professional Services",
-    "Health & Wellness",
-    "Education",
-    "Retail",
-    "Other",
-];
+const DEFAULT_COVER =
+    "https://images.unsplash.com/photo-1518005020951-eccb494ad742?q=80&w=1600";
+
+const promptCreateBusinessLogin = (reason: "guest" | "expired") => {
+    const title = reason === "expired" ? "Session expired" : "Login required";
+    const message =
+        reason === "expired"
+            ? "Please log in again to create a business."
+            : "Please log in to create a business.";
+
+    Alert.alert(title, message, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Log in", onPress: () => router.replace("/(tabs)") },
+    ]);
+};
+
+const resolveCreateBusinessSession = async (): Promise<string | null> => {
+    const tokens = await authStorage.getTokens();
+    if (!tokens?.access) {
+        return null;
+    }
+
+    return getActiveUserId();
+};
+
+const isValidZipCode = (zipCode: string) => /^\d{5}$/.test(zipCode.trim());
 
 export default function CreateBusiness() {
+    useEffect(() => {
+        let cancelled = false;
+
+        const guard = async () => {
+            const tokens = await authStorage.getTokens();
+            if (!tokens?.access) {
+                if (!cancelled) {
+                    promptCreateBusinessLogin("guest");
+                }
+                return;
+            }
+
+            const userId = await getActiveUserId();
+            if (!cancelled && !userId) {
+                promptCreateBusinessLogin("expired");
+            }
+        };
+
+        void guard();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     const [businessName, setBusinessName] = useState("");
     const [category, setCategory] = useState("");
+    const [streetAddress, setStreetAddress] = useState("");
     const [city, setCity] = useState("");
     const [state, setState] = useState("CA");
+    const [zipCode, setZipCode] = useState("");
+    const [latitude, setLatitude] = useState<number | null>(null);
+    const [longitude, setLongitude] = useState<number | null>(null);
     const [phone, setPhone] = useState("");
-    const [address, setAddress] = useState("");
     const [instagram, setInstagram] = useState("");
     const [website, setWebsite] = useState("");
     const [description, setDescription] = useState("");
     const [showCategories, setShowCategories] = useState(false);
     const [logoImage, setLogoImage] = useState<string | null>(null);
+    const [coverImage, setCoverImage] = useState<string | null>(null);
+    const [hoursEnabled, setHoursEnabled] = useState(false);
+    const [businessHours, setBusinessHours] = useState<BusinessHours>(
+        createDefaultBusinessHours()
+    );
+    const [saving, setSaving] = useState(false);
+
+    const clearCoordinates = () => {
+        setLatitude(null);
+        setLongitude(null);
+    };
+
+    const handleStreetAddressChange = (text: string) => {
+        setStreetAddress(text);
+        clearCoordinates();
+    };
+
+    const handleAddressSelected = (parsed: ParsedAddress) => {
+        setStreetAddress(parsed.streetAddress);
+        setCity(parsed.city);
+        setState(parsed.state || "CA");
+        setZipCode(parsed.zipCode);
+        setLatitude(parsed.latitude ?? null);
+        setLongitude(parsed.longitude ?? null);
+    };
 
     const pickLogo = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -59,88 +148,170 @@ export default function CreateBusiness() {
         }
     };
 
+    const pickCover = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            allowsEditing: true,
+            aspect: [16, 9],
+            quality: 0.85,
+        });
+
+        if (!result.canceled) {
+            setCoverImage(result.assets[0].uri);
+        }
+    };
+
+    const updateDayHours = (key: WeekdayKey, patch: Partial<BusinessDayHours>) => {
+        setBusinessHours((current) => ({
+            ...current,
+            [key]: { ...current[key], ...patch },
+        }));
+    };
+
     const handleCreate = async () => {
-        console.log("CREATE BUTTON PRESSED");
-        if (!businessName || !category || !city || !phone) {
+        if (saving) return;
+
+        if (!businessName || !category || !city.trim() || !state.trim() || !phone) {
             Alert.alert(
                 "Missing info",
-                "Please fill out business name, category, city, and phone."
+                "Please fill out business name, category, city, state, and phone."
             );
+            return;
+        }
+
+        if (!isValidZipCode(zipCode)) {
+            Alert.alert(
+                "ZIP code required",
+                "Enter a 5-digit ZIP code so we can place your business accurately on the map."
+            );
+            return;
+        }
+
+        const tokens = await authStorage.getTokens();
+        if (!tokens?.access) {
+            promptCreateBusinessLogin("guest");
+            return;
+        }
+
+        const ownerId = await resolveCreateBusinessSession();
+        if (!ownerId) {
+            promptCreateBusinessLogin("expired");
             return;
         }
 
         const businessId = Date.now().toString();
 
-        const ownerId = await getActiveUserId();
-        const ownerProfile = ownerId ? await loadUserProfile(ownerId) : null;
-        const ownerUsername = String(ownerProfile?.username || "").trim();
-        const ownerEmail = String(ownerProfile?.email || "").trim();
+        try {
+            setSaving(true);
 
-        const businessData = {
-            id: businessId,
-            business_name: businessName,
-            name: businessName,
-            category,
-            business_category: category,
-            city,
-            state,
-            phone,
-            contact_info: phone,
-            address,
-            instagram,
-            website,
-            description,
-            about: description,
-            logo: logoImage,
-            avatar: logoImage,
-            profile_image: logoImage,
-            is_owner: true,
-            owner_is_current_user: true,
-            can_edit: true,
-            owner_id: ownerId ?? undefined,
-            user_id: ownerId ?? undefined,
-            owner_username: ownerUsername || undefined,
-            ownerUsername: ownerUsername || undefined,
-            owner_email: ownerEmail || undefined,
-            ownerEmail: ownerEmail || undefined,
-            created_by: ownerId ?? ownerEmail ?? ownerUsername ?? undefined,
-            createdBy: ownerId ?? ownerEmail ?? ownerUsername ?? undefined,
-        };
+            logBusinessCreateAddress({
+                streetAddress,
+                city,
+                state,
+                zipCode,
+                latitude,
+                longitude,
+            });
 
-        const profileStorageKey = `profile_v2_${businessId}`;
+            const resolved = await resolveBusinessCoordinatesForSave({
+                streetAddress,
+                city,
+                state,
+                zipCode,
+                latitude,
+                longitude,
+            });
 
-        console.log("BUSINESS_STORAGE_WRITE", {
-            writer: "create-business.tsx",
-            targetKey: profileStorageKey,
-            userId: ownerId,
-            ownerUsername,
-            ownerEmail,
-            businessId,
-            name: businessName,
-        });
+            if (!resolved.ok) {
+                Alert.alert("Address not found", resolved.message);
+                return;
+            }
 
-        await AsyncStorage.setItem(profileStorageKey, JSON.stringify(businessData));
+            const ownerProfile = await loadUserProfile(ownerId);
+            const ownerUsername = String(ownerProfile?.username || "").trim();
+            const ownerEmail = String(ownerProfile?.email || "").trim();
 
-        if (ownerId) {
+            const businessData = {
+                id: businessId,
+                business_name: businessName,
+                name: businessName,
+                category,
+                business_category: category,
+                street_address: streetAddress.trim(),
+                address: resolved.address,
+                city: city.trim(),
+                state: state.trim().toUpperCase(),
+                zip: zipCode.trim(),
+                zip_code: zipCode.trim(),
+                postal_code: zipCode.trim(),
+                coordinates_exact: true,
+                latitude: resolved.latitude,
+                longitude: resolved.longitude,
+                lat: resolved.latitude,
+                lng: resolved.longitude,
+                phone,
+                contact_info: phone,
+                instagram,
+                website,
+                description,
+                about: description,
+                logo: logoImage,
+                avatar: logoImage,
+                profile_image: logoImage,
+                cover_image: coverImage || DEFAULT_COVER,
+                image: coverImage || DEFAULT_COVER,
+                business_hours: hoursEnabled
+                    ? sanitizeBusinessHoursForSave(businessHours)
+                    : null,
+                hours_configured: hoursEnabled,
+                is_owner: true,
+                owner_is_current_user: true,
+                can_edit: true,
+                owner_id: ownerId,
+                user_id: ownerId,
+                owner_username: ownerUsername || undefined,
+                ownerUsername: ownerUsername || undefined,
+                owner_email: ownerEmail || undefined,
+                ownerEmail: ownerEmail || undefined,
+                created_by: ownerId ?? ownerEmail ?? ownerUsername ?? undefined,
+                createdBy: ownerId ?? ownerEmail ?? ownerUsername ?? undefined,
+            };
+
+            const profileStorageKey = `profile_v2_${businessId}`;
+
+            await AsyncStorage.setItem(
+                profileStorageKey,
+                JSON.stringify(businessData)
+            );
+            logBusinessSavedCoordinates(businessData);
             await upsertUserBusiness(ownerId, businessData, ownerUsername);
+            requestDiscoverListingsRefresh();
+
+            router.replace({
+              pathname: "/profile/v2",
+              params: { id: businessId, fromCreate: "1" },
+            });
+        } catch (error) {
+            console.log("CREATE BUSINESS ERROR:", error);
+            Alert.alert(
+                "Could not create business",
+                "Something went wrong while saving your business. Please try again."
+            );
+        } finally {
+            setSaving(false);
         }
-
-        console.log("BUSINESS DATA:", businessData);
-        console.log("LOCAL BUSINESSES SAVED:", businessData);
-
-        Alert.alert("Business created", "Your business profile has been created.", [
-            {
-                text: "View Profile",
-                onPress: () => router.replace(`/profile/v2?id=${businessId}`),
-            },
-        ]);
     };
 
     return (
-        <ScrollView
+        <KeyboardAvoidingView
             style={{ flex: 1, backgroundColor: "#F7F4EE" }}
-            contentContainerStyle={{ padding: 24, paddingTop: 68, paddingBottom: 44 }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+        <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 24, paddingTop: 68, paddingBottom: 160 }}
             keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
         >
             <Pressable onPress={() => router.back()} style={{ marginBottom: 28 }}>
                 <Ionicons name="chevron-back" size={32} color="#0F5F5A" />
@@ -213,11 +384,23 @@ export default function CreateBusiness() {
                     onPress={() => setShowCategories(true)}
                 />
 
+                <StreetAddressAutocomplete
+                    variant="create"
+                    label="Street Address"
+                    value={streetAddress}
+                    onChangeText={handleStreetAddressChange}
+                    onAddressSelected={handleAddressSelected}
+                    placeholder="Start typing your street address"
+                />
+
                 <Input
                     icon="location-outline"
                     label="City *"
                     value={city}
-                    onChangeText={setCity}
+                    onChangeText={(value: string) => {
+                        setCity(value);
+                        clearCoordinates();
+                    }}
                     placeholder="San Diego"
                 />
 
@@ -225,8 +408,25 @@ export default function CreateBusiness() {
                     icon="map-outline"
                     label="State *"
                     value={state}
-                    onChangeText={setState}
+                    onChangeText={(value: string) => {
+                        setState(value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2));
+                        clearCoordinates();
+                    }}
                     placeholder="CA"
+                    autoCapitalize="characters"
+                />
+
+                <Input
+                    icon="mail-outline"
+                    label="ZIP Code *"
+                    value={zipCode}
+                    onChangeText={(value: string) => {
+                        setZipCode(value.replace(/\D/g, "").slice(0, 5));
+                        clearCoordinates();
+                    }}
+                    placeholder="92101"
+                    keyboardType="number-pad"
+                    helperText="ZIP code helps us place your business accurately on the map."
                 />
 
                 <Input
@@ -236,14 +436,6 @@ export default function CreateBusiness() {
                     onChangeText={setPhone}
                     placeholder="(858) 555-1234"
                     keyboardType="phone-pad"
-                />
-
-                <Input
-                    icon="pin-outline"
-                    label="Address"
-                    value={address}
-                    onChangeText={setAddress}
-                    placeholder="Street address, optional"
                 />
 
                 <Input
@@ -271,9 +463,194 @@ export default function CreateBusiness() {
                     multiline
                 />
 
+                <Text style={{ fontSize: 15, fontWeight: "900", marginBottom: 8, color: "#111" }}>
+                    Cover Image
+                </Text>
+                <Pressable onPress={pickCover} style={{ marginBottom: 18 }}>
+                    <View>
+                        <Image
+                            source={{ uri: coverImage || DEFAULT_COVER }}
+                            style={{
+                                width: "100%",
+                                height: 150,
+                                borderRadius: 18,
+                                backgroundColor: "#E7F6F4",
+                            }}
+                            resizeMode="cover"
+                        />
+                        <View
+                            style={{
+                                position: "absolute",
+                                right: 12,
+                                bottom: 12,
+                                width: 38,
+                                height: 38,
+                                borderRadius: 19,
+                                backgroundColor: "#fff",
+                                alignItems: "center",
+                                justifyContent: "center",
+                            }}
+                        >
+                            <Ionicons name="camera" size={18} color="#111" />
+                        </View>
+                    </View>
+                </Pressable>
+                <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 18, lineHeight: 18 }}>
+                    Optional. Shown at the top of your business profile.
+                </Text>
+
+                <Text style={{ fontSize: 15, fontWeight: "900", marginBottom: 8, color: "#111" }}>
+                    Business Hours
+                </Text>
+                <View
+                    style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: 14,
+                        padding: 14,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: "#E5E7EB",
+                        backgroundColor: "#fff",
+                    }}
+                >
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                        <Text style={{ fontSize: 15, fontWeight: "800", color: "#111" }}>
+                            Set business hours
+                        </Text>
+                        <Text style={{ marginTop: 4, fontSize: 13, color: "#6B7280", lineHeight: 18 }}>
+                            Show open/closed status on your profile.
+                        </Text>
+                    </View>
+                    <Switch
+                        value={hoursEnabled}
+                        onValueChange={setHoursEnabled}
+                        trackColor={{ false: "#D1D5DB", true: "rgba(17,153,142,0.45)" }}
+                        thumbColor={hoursEnabled ? "#11998E" : "#f4f4f5"}
+                    />
+                </View>
+
+                {hoursEnabled
+                    ? WEEKDAYS.map(({ key, label }) => {
+                          const day = businessHours[key];
+
+                          return (
+                              <View
+                                  key={key}
+                                  style={{
+                                      marginBottom: 12,
+                                      padding: 14,
+                                      borderRadius: 16,
+                                      borderWidth: 1,
+                                      borderColor: "#E5E7EB",
+                                      backgroundColor: "#fff",
+                                  }}
+                              >
+                                  <View
+                                      style={{
+                                          flexDirection: "row",
+                                          alignItems: "center",
+                                          justifyContent: "space-between",
+                                          marginBottom: day.closed ? 0 : 10,
+                                      }}
+                                  >
+                                      <Text style={{ fontSize: 15, fontWeight: "800", color: "#111" }}>
+                                          {label}
+                                      </Text>
+                                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                          <Text style={{ marginRight: 8, fontSize: 13, color: "#6B7280" }}>
+                                              Closed
+                                          </Text>
+                                          <Switch
+                                              value={day.closed}
+                                              onValueChange={(closed) =>
+                                                  updateDayHours(key, { closed })
+                                              }
+                                              trackColor={{
+                                                  false: "#D1D5DB",
+                                                  true: "rgba(17,153,142,0.45)",
+                                              }}
+                                              thumbColor={day.closed ? "#11998E" : "#f4f4f5"}
+                                          />
+                                      </View>
+                                  </View>
+
+                                  {!day.closed ? (
+                                      <View style={{ flexDirection: "row", gap: 10 }}>
+                                          <View style={{ flex: 1 }}>
+                                              <Text
+                                                  style={{
+                                                      marginBottom: 6,
+                                                      fontSize: 13,
+                                                      fontWeight: "700",
+                                                      color: "#6B7280",
+                                                  }}
+                                              >
+                                                  Open
+                                              </Text>
+                                              <TextInput
+                                                  value={formatTime12(day.open)}
+                                                  onChangeText={(text) => {
+                                                      const parsed = parseTimeInput(text);
+                                                      if (parsed) updateDayHours(key, { open: parsed });
+                                                  }}
+                                                  placeholder="9:00 AM"
+                                                  style={{
+                                                      height: 48,
+                                                      borderRadius: 12,
+                                                      borderWidth: 1,
+                                                      borderColor: "#E5E7EB",
+                                                      backgroundColor: "#fff",
+                                                      paddingHorizontal: 12,
+                                                      fontSize: 15,
+                                                      color: "#111",
+                                                  }}
+                                              />
+                                          </View>
+                                          <View style={{ flex: 1 }}>
+                                              <Text
+                                                  style={{
+                                                      marginBottom: 6,
+                                                      fontSize: 13,
+                                                      fontWeight: "700",
+                                                      color: "#6B7280",
+                                                  }}
+                                              >
+                                                  Close
+                                              </Text>
+                                              <TextInput
+                                                  value={formatTime12(day.close)}
+                                                  onChangeText={(text) => {
+                                                      const parsed = parseTimeInput(text);
+                                                      if (parsed) updateDayHours(key, { close: parsed });
+                                                  }}
+                                                  placeholder="6:00 PM"
+                                                  style={{
+                                                      height: 48,
+                                                      borderRadius: 12,
+                                                      borderWidth: 1,
+                                                      borderColor: "#E5E7EB",
+                                                      backgroundColor: "#fff",
+                                                      paddingHorizontal: 12,
+                                                      fontSize: 15,
+                                                      color: "#111",
+                                                  }}
+                                              />
+                                          </View>
+                                      </View>
+                                  ) : null}
+                              </View>
+                          );
+                      })
+                    : null}
+
+                <Text style={{ fontSize: 15, fontWeight: "900", marginBottom: 8, marginTop: 8, color: "#111" }}>
+                    Business Logo
+                </Text>
                 <Pressable
                     style={{
-                        marginTop: 8,
+                        marginTop: 0,
                         borderWidth: 1,
                         borderStyle: "dashed",
                         borderColor: "#A7D8D4",
@@ -355,7 +732,8 @@ export default function CreateBusiness() {
                 </View>
 
                 <Pressable
-                    onPress={handleCreate}
+                    onPress={() => void handleCreate()}
+                    disabled={saving}
                     style={{
                         marginTop: 24,
                         height: 60,
@@ -363,13 +741,16 @@ export default function CreateBusiness() {
                         backgroundColor: "#11998E",
                         alignItems: "center",
                         justifyContent: "center",
+                        opacity: saving ? 0.7 : 1,
                     }}
                 >
                     <Text style={{ color: "#fff", fontSize: 18, fontWeight: "900" }}>
-                        Create Business Profile
+                        {saving ? "Verifying address..." : "Create Business Profile"}
                     </Text>
                 </Pressable>
             </View>
+
+        </ScrollView>
 
             <CategoryModal
                 visible={showCategories}
@@ -379,7 +760,7 @@ export default function CreateBusiness() {
                     setShowCategories(false);
                 }}
             />
-        </ScrollView>
+        </KeyboardAvoidingView>
     );
 }
 
@@ -391,6 +772,8 @@ function Input({
     placeholder,
     multiline = false,
     keyboardType = "default",
+    helperText,
+    autoCapitalize,
 }: any) {
     return (
         <View style={{ marginBottom: 18 }}>
@@ -424,6 +807,7 @@ function Input({
                     placeholder={placeholder}
                     multiline={multiline}
                     keyboardType={keyboardType}
+                    autoCapitalize={autoCapitalize}
                     placeholderTextColor="#B8BBC2"
                     style={{
                         flex: 1,
@@ -434,6 +818,19 @@ function Input({
                     }}
                 />
             </View>
+
+            {helperText ? (
+                <Text
+                    style={{
+                        fontSize: 13,
+                        color: "#6B7280",
+                        marginTop: 6,
+                        lineHeight: 18,
+                    }}
+                >
+                    {helperText}
+                </Text>
+            ) : null}
         </View>
     );
 }
@@ -504,7 +901,7 @@ function CategoryModal({ visible, onClose, onSelect }: any) {
                         Select Category
                     </Text>
 
-                    {CATEGORIES.map((item) => (
+                    {CREATE_BUSINESS_CATEGORIES.map((item) => (
                         <Pressable
                             key={item}
                             onPress={() => onSelect(item)}

@@ -1,6 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { isUserLoggedIn } from "./businessReviews";
-import { getMapLat, getMapLng, resolveMapPoints } from "./mapCoordinates";
+import { Linking, Platform } from "react-native";
+import { notifyFavoritesChanged } from "./favoritesRefresh";
+import { getActiveUserId } from "./userSessionStorage";
+import {
+  getMapLat,
+  getMapLng,
+  isPlaceholderCoordinate,
+  resolveMapPoints,
+  shouldUseExactCoordinates,
+} from "./mapCoordinates";
 import {
   formatEventDateTime,
   formatEventLocation,
@@ -61,11 +69,25 @@ export const getEventTicketUrl = (event?: EventMapItem | null): string | null =>
   return null;
 };
 
+export const getEventAddressQuery = (event: EventMapItem) => {
+  const formatted = formatEventLocation(event);
+  if (formatted) return formatted;
+
+  const location = String(event.location || "").trim();
+  if (location) return location;
+
+  return "";
+};
+
 export const getEventMapPoint = (event: EventMapItem) => {
   const lat = getMapLat(event);
   const lng = getMapLng(event);
 
-  if (lat != null && lng != null) {
+  if (
+    lat != null &&
+    lng != null &&
+    shouldUseExactCoordinates(event, lat, lng)
+  ) {
     return { latitude: lat, longitude: lng };
   }
 
@@ -76,6 +98,50 @@ export const getEventMapPoint = (event: EventMapItem) => {
     latitude: resolved.latitude,
     longitude: resolved.longitude,
   };
+};
+
+export const getEventDirectionsQuery = (event: EventMapItem): string | null => {
+  const coordinatesExact =
+    (event as Record<string, unknown>).coordinates_exact === true;
+  const lat = getMapLat(event);
+  const lng = getMapLng(event);
+
+  if (coordinatesExact && lat != null && lng != null) {
+    return `${lat},${lng}`;
+  }
+
+  const addressQuery = getEventAddressQuery(event);
+  if (addressQuery) return addressQuery;
+
+  return null;
+};
+
+export const openEventDirections = async (event: EventMapItem) => {
+  const query = getEventDirectionsQuery(event);
+  if (!query) return false;
+
+  const label = encodeURIComponent(getEventTitle(event));
+  const encodedQuery = encodeURIComponent(query);
+  const isCoordinatePair = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(query);
+
+  const googleUrl = isCoordinatePair
+    ? `https://www.google.com/maps/search/?api=1&query=${query}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodedQuery}`;
+
+  if (Platform.OS === "ios") {
+    const appleUrl = isCoordinatePair
+      ? `http://maps.apple.com/?ll=${query}&q=${label}`
+      : `http://maps.apple.com/?q=${encodedQuery}`;
+
+    const canOpenApple = await Linking.canOpenURL(appleUrl);
+    if (canOpenApple) {
+      await Linking.openURL(appleUrl);
+      return true;
+    }
+  }
+
+  await Linking.openURL(googleUrl);
+  return true;
 };
 
 export const saveMapEventSnapshot = async (event: EventMapItem) => {
@@ -115,34 +181,47 @@ const readInterestedEventIds = async (): Promise<string[]> => {
 };
 
 export const loadInterestedEventIds = async (): Promise<string[]> => {
-  if (!(await isUserLoggedIn())) return [];
+  if (!(await getActiveUserId())) return [];
   return readInterestedEventIds();
 };
 
+export const countInterestedEvents = async (): Promise<number> => {
+  const events = await loadInterestedEvents();
+  return events.length;
+};
+
 export const isEventSaved = async (eventId: string) => {
-  if (!eventId || !(await isUserLoggedIn())) return false;
+  if (!eventId || !(await getActiveUserId())) return false;
   const ids = await readInterestedEventIds();
-  return ids.includes(eventId);
+  return ids.includes(String(eventId));
 };
 
 export const toggleEventSaved = async (eventId: string) => {
+  if (!(await getActiveUserId())) {
+    return false;
+  }
+
+  const normalizedId = String(eventId);
   const ids = await readInterestedEventIds();
-  const next = ids.includes(eventId)
-    ? ids.filter((id) => id !== eventId)
-    : [...ids, eventId];
+  const next = ids.includes(normalizedId)
+    ? ids.filter((id) => id !== normalizedId)
+    : [...ids, normalizedId];
 
   await AsyncStorage.setItem(INTERESTED_EVENTS_KEY, JSON.stringify(next));
-  return !ids.includes(eventId);
+  notifyFavoritesChanged();
+  return !ids.includes(normalizedId);
 };
 
 export const removeInterestedEvent = async (eventId: string) => {
   const ids = await readInterestedEventIds();
   const next = ids.filter((id) => id !== eventId);
   await AsyncStorage.setItem(INTERESTED_EVENTS_KEY, JSON.stringify(next));
+  notifyFavoritesChanged();
 };
 
-export const loadInterestedEvents = async (): Promise<EventMapItem[]> => {
-  const ids = await loadInterestedEventIds();
+const readInterestedEventSnapshots = async (
+  ids: string[]
+): Promise<EventMapItem[]> => {
   if (!ids.length) return [];
 
   const pairs = await AsyncStorage.multiGet(
@@ -164,6 +243,42 @@ export const loadInterestedEvents = async (): Promise<EventMapItem[]> => {
   return ids
     .map((id) => byId.get(id))
     .filter((event): event is EventMapItem => Boolean(event));
+};
+
+/** Reads cached event snapshots without auth or network. */
+export const loadInterestedEventsFromStorage =
+  async (): Promise<EventMapItem[]> => {
+    const ids = await readInterestedEventIds();
+    return readInterestedEventSnapshots(ids);
+  };
+
+export const loadInterestedEvents = async (): Promise<EventMapItem[]> => {
+  const ids = await loadInterestedEventIds();
+  if (!ids.length) return [];
+
+  const byId = new Map(
+    (await readInterestedEventSnapshots(ids)).map((event) => [
+      getEventId(event),
+      event,
+    ])
+  );
+
+  const { getCommunityEventById } = await import("./communityEvents");
+
+  const resolved = await Promise.all(
+    ids.map(async (id) => {
+      const cached = byId.get(id);
+      if (cached) return cached;
+
+      const event = await getCommunityEventById(id);
+      if (!event) return null;
+
+      await saveMapEventSnapshot(event);
+      return event;
+    })
+  );
+
+  return resolved.filter((event): event is EventMapItem => Boolean(event));
 };
 
 export { formatEventDateTime, formatEventLocation };

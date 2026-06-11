@@ -1,7 +1,7 @@
 // lib/api.ts
 import axios from "axios";
 import authStorage from "../app/utils/authStorage"; // اگر مسیرت فرق دارد، فقط همین یک خط را اصلاح کن
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { resolveStoredAccessToken } from "./authSession";
 const BASE_URL = "https://community-app-backend-production.up.railway.app/api";
 
 const client = axios.create({
@@ -9,31 +9,54 @@ const client = axios.create({
   timeout: 15000,
 });
 
-client.interceptors.request.use(async (config) => {
-  try {
-    const tokens = await authStorage.getTokens();
-    const access = tokens?.access;
+/** Refresh must not pass through the auth interceptor (avoids refresh recursion). */
+const refreshClient = axios.create({
+  baseURL: BASE_URL,
+  timeout: 15000,
+});
 
-    if (!access) {
+const isTokenRefreshRequest = (url?: string) =>
+  Boolean(url && url.includes("token/refresh"));
+
+client.interceptors.request.use(async (config) => {
+  if (isTokenRefreshRequest(config.url)) {
+    return config;
+  }
+
+  try {
+    const access = await resolveStoredAccessToken();
+
+    if (!access || !authStorage.isJwtNotExpired(access)) {
       if (config.headers) delete (config.headers as any).Authorization;
       return config;
     }
-    if (!authStorage.isJwtNotExpired(access)) {
-      if (config.headers) delete (config.headers as any).Authorization;
-      return config;
-    }
+
     config.headers = config.headers ?? {};
     (config.headers as any).Authorization = `Bearer ${access.trim()}`;
-    console.log("Auth HEADER >>>", (config.headers as any).Authorization);
-
-
-  } catch (e) { }
+  } catch (e) {
+    console.log("[auth] request_interceptor_error", String(e));
+  }
 
   return config;
 });
 
 
 export const API = {
+  async refreshAccessToken(refresh: string) {
+    try {
+      const res = await refreshClient.post("/token/refresh/", { refresh });
+      return res.data;
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        const res = await refreshClient.post("/accounts/token/refresh/", {
+          refresh,
+        });
+        return res.data;
+      }
+      throw error;
+    }
+  },
+
   async login(
     usernameOrPayload: string | { username: string; password: string },
     maybePassword?: string
@@ -86,6 +109,21 @@ export const API = {
   deleteListing: async (id: number) => {
     console.log("DELETE URL:", ' /my-listing/${id}/');
     await client.delete(`/my-listing/${id}/`);
+    return true;
+  },
+
+  async createEvent(payload: Record<string, unknown>) {
+    const res = await client.post("/events/", payload);
+    return res.data;
+  },
+
+  async updateEvent(id: string, payload: Record<string, unknown>) {
+    const res = await client.patch(`/events/${id}/`, payload);
+    return res.data;
+  },
+
+  async deleteEvent(id: string) {
+    await client.delete(`/events/${id}/`);
     return true;
   },
 

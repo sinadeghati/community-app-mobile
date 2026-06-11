@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import authStorage from "../app/utils/authStorage";
+import { shouldInvalidateStoredSession } from "./authSession";
 import {
   getActiveUserId,
   loadUserProfile,
@@ -11,10 +12,12 @@ export type CurrentReviewer = {
   username: string;
 };
 
-/** Same logged-in signal as Profile/Home: access token present (no expiry gate). */
+/** Logged-in signal — respects stored refresh/access without clearing on transient failures. */
 export const isUserLoggedIn = async (): Promise<boolean> => {
   const tokens = await authStorage.getTokens();
-  return Boolean(tokens?.access);
+  if (!tokens?.access && !tokens?.refresh) return false;
+  if (await shouldInvalidateStoredSession()) return false;
+  return true;
 };
 
 const profileUserId = (profile: Record<string, unknown>): string | null => {
@@ -25,24 +28,26 @@ const profileUserId = (profile: Record<string, unknown>): string | null => {
 };
 
 export const getCurrentReviewer = async (): Promise<CurrentReviewer | null> => {
-  const tokens = await authStorage.getTokens();
-  if (!tokens?.access) {
-    return null;
-  }
+  let userId: string | null = await getActiveUserId();
 
-  let userId: string | null = null;
-  const tokenUserId = authStorage.getUserIdFromAccessToken(tokens.access);
-  if (tokenUserId != null) {
-    userId = String(tokenUserId);
+  if (!userId) {
+    const tokens = await authStorage.getTokens();
+    if (!tokens?.access && !tokens?.refresh) {
+      return null;
+    }
+
+    if (tokens?.access) {
+      const tokenUserId = authStorage.getUserIdStringFromAccessToken(
+        tokens.access
+      );
+      if (tokenUserId) userId = tokenUserId;
+    }
   }
 
   let username = userId ? `User ${userId}` : "Community member";
 
   try {
-    const activeUserId = await getActiveUserId();
-    const cachedProfile = activeUserId
-      ? await loadUserProfile(activeUserId)
-      : null;
+    const cachedProfile = userId ? await loadUserProfile(userId) : null;
     if (cachedProfile) {
       if (!userId) {
         userId = profileIdFromRecord(cachedProfile);

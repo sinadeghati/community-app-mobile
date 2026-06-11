@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { API } from "../../lib/api";
-import authStorage from "../utils/authStorage";
+import { getActiveUserId } from "../../lib/userSessionStorage";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
@@ -73,19 +73,14 @@ export default function PublicProfileScreen() {
         setLoading(true);
         setError(null);
 
-        setIsLoggedIn(false);
-        setCurrentUserId(null);
-
-        const token = await authStorage.getTokens();
-        if (token?.access && authStorage.isJwtNotExpired(token.access)) {
-  setIsLoggedIn(true);
-  const payload = JSON.parse(atob(token.access.split(".")[1]));
-  setCurrentUserId(String(payload.user_id || payload.id || payload.userId || ""));
-} else {
-  await authStorage.clearTokens();
-  setIsLoggedIn(false);
-  setCurrentUserId(null);
-}
+        const activeUserId = await getActiveUserId();
+        if (activeUserId) {
+          setIsLoggedIn(true);
+          setCurrentUserId(activeUserId);
+        } else {
+          setIsLoggedIn(false);
+          setCurrentUserId(null);
+        }
 
         const data = await API.getListings();
 

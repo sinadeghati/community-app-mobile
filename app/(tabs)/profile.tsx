@@ -1,6 +1,8 @@
 import React, { useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  DeviceEventEmitter,
   Image,
   Pressable,
   SafeAreaView,
@@ -11,8 +13,15 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { theme } from "../../lib/theme";
-import authStorage from "../utils/authStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import authStorage from "../utils/authStorage";
+import {
+  invalidateAuthSession,
+  isApiTokenInvalidResponse,
+  logAuthEvent,
+  shouldInvalidateStoredSession,
+  tryRefreshStoredAccessToken,
+} from "../../lib/authSession";
 import {
   clearUserSession,
   cleanupPollutedTestBusinessStorage,
@@ -21,8 +30,9 @@ import {
   inspectPollutedTestBusinessStorage,
   TEST_BUSINESS_NAME_NEEDLES,
   gatherRawMyBusinessCandidatesWithProvenance,
-  getActiveUserId,
   getMyBusinessesStorageKey,
+  getActiveUserId,
+  hydrateAuthSession,
   loadMyBusinessesForProfile,
   loadUserProfile,
   adoptLegacyProfileIfMatching,
@@ -32,11 +42,18 @@ import {
   toMyBusinessLogRow,
 } from "../../lib/userSessionStorage";
 import * as ImagePicker from "expo-image-picker";
+import { countCommunityEventsForOwner } from "../../lib/communityEvents";
+import { countSavedFavorites } from "../../lib/favoritesCount";
+import { FAVORITES_CHANGED_EVENT } from "../../lib/favoritesRefresh";
 
 const USER_AVATAR =
   "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=900";
 
+type AuthHydrationState = "loading" | "authenticated" | "guest";
+
 export default function ProfileV2Clean() {
+  const [authHydration, setAuthHydration] =
+    useState<AuthHydrationState>("loading");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [localBusinesses, setLocalBusinesses] = useState<any[]>([]);
@@ -45,6 +62,7 @@ export default function ProfileV2Clean() {
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [eventsCount, setEventsCount] = useState(0);
   const activeAccountKeyRef = useRef<string | null>(null);
+  const hasCompletedInitialHydrationRef = useRef(false);
 
   const loadLocalBusinesses = async (
     userId: string | null,
@@ -182,6 +200,41 @@ export default function ProfileV2Clean() {
     setProfileImage(null);
     setLocalBusinesses([]);
     setMyBusinessId(null);
+    setFavoritesCount(0);
+    setEventsCount(0);
+    setAuthHydration("guest");
+    hasCompletedInitialHydrationRef.current = false;
+  };
+
+  const syncFavoritesCount = React.useCallback(async () => {
+    try {
+      setFavoritesCount(await countSavedFavorites());
+    } catch {
+      setFavoritesCount(0);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      FAVORITES_CHANGED_EVENT,
+      () => {
+        void syncFavoritesCount();
+      }
+    );
+    return () => subscription.remove();
+  }, [syncFavoritesCount]);
+
+  const identityFromProfile = (record: Record<string, unknown> | null) => ({
+    username: String(record?.username || "").trim() || undefined,
+    email: String(record?.email || "").trim() || undefined,
+  });
+
+  const syncEventsCount = async (userId: string) => {
+    try {
+      setEventsCount(await countCommunityEventsForOwner(userId));
+    } catch {
+      setEventsCount(0);
+    }
   };
 
   const pickProfileImage = async () => {
@@ -199,37 +252,159 @@ export default function ProfileV2Clean() {
 
   useFocusEffect(
     React.useCallback(() => {
-      const checkLogin = async () => {
-        const tokens = await authStorage.getTokens();
-        const userId = await getActiveUserId();
+      let cancelled = false;
+
+      const refreshProfileFromApi = async (
+        session: Awaited<ReturnType<typeof hydrateAuthSession>>,
+        userId: string,
+        initialIdentity: ReturnType<typeof identityFromProfile>
+      ) => {
+        let identity = initialIdentity;
 
         try {
-          const favoritesRaw = await AsyncStorage.getItem("favorites");
-          const favoritesList = favoritesRaw ? JSON.parse(favoritesRaw) : [];
-          setFavoritesCount(
-            Array.isArray(favoritesList) ? favoritesList.length : 0
-          );
-        } catch {
-          setFavoritesCount(0);
-        }
+          const fetchProfile = async (accessToken: string) =>
+            fetch(
+              "https://community-app-backend-production.up.railway.app/api/accounts/profile/",
+              {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              }
+            );
 
-        if (!tokens?.access || !userId) {
-          activeAccountKeyRef.current = null;
-          setIsLoggedIn(false);
-          resetProfileState();
-          return;
-        }
+          let access = String(session?.access || "").trim();
+          if (!access) {
+            const tokens = await authStorage.getTokens();
+            access = String(tokens?.access || "").trim();
+          }
 
-        await AsyncStorage.setItem("is_logged_in", "true");
-        setIsLoggedIn(true);
-        await prepareSessionForUser(userId);
+          if (!access) {
+            logAuthEvent("profile_api_skipped_no_access_kept_cache", {
+              userId,
+            });
+            return;
+          }
 
-        try {
-          let cachedProfile = await loadUserProfile(userId);
-          const identityFromCache = {
-            username: String(cachedProfile?.username || "").trim() || undefined,
-            email: String(cachedProfile?.email || "").trim() || undefined,
+          let res = await fetchProfile(access);
+          let data: Record<string, unknown> = {};
+
+          try {
+            data = (await res.json()) as Record<string, unknown>;
+          } catch {
+            data = {};
+          }
+
+          if (isApiTokenInvalidResponse(res.status, data)) {
+            logAuthEvent("profile_api_token_invalid", { status: res.status });
+            const refreshedAccess = await tryRefreshStoredAccessToken();
+            if (refreshedAccess) {
+              access = refreshedAccess;
+              res = await fetchProfile(access);
+              try {
+                data = (await res.json()) as Record<string, unknown>;
+              } catch {
+                data = {};
+              }
+            }
+          }
+
+          identity = {
+            username:
+              String(data?.username || identity.username || "").trim() ||
+              undefined,
+            email:
+              String(data?.email || identity.email || "").trim() || undefined,
           };
+
+          if (!res.ok) {
+            logAuthEvent("profile_api_error_kept_session", {
+              status: res.status,
+              code: data?.code ?? null,
+            });
+
+            if (isApiTokenInvalidResponse(res.status, data)) {
+              if (await shouldInvalidateStoredSession()) {
+                if (cancelled) return;
+                await invalidateAuthSession(
+                  "profile_api_token_invalid_after_refresh"
+                );
+                activeAccountKeyRef.current = null;
+                setIsLoggedIn(false);
+                resetProfileState();
+                return;
+              }
+
+              if (cancelled) return;
+              await loadLocalBusinesses(userId, identity);
+              await syncEventsCount(userId);
+              return;
+            }
+
+            if (cancelled) return;
+            await loadLocalBusinesses(userId, identity);
+            await syncEventsCount(userId);
+            return;
+          }
+
+          await adoptLegacyProfileIfMatching(userId, identity);
+          const cachedProfile = (await loadUserProfile(userId, identity)) as Record<
+            string,
+            unknown
+          > | null;
+
+          const mergedProfile = mergeProfileWithApi(cachedProfile, data);
+          if (cancelled) return;
+
+          setProfile(mergedProfile);
+          setProfileImage(
+            (mergedProfile.profileImage as string) ||
+              (mergedProfile.profile_image as string) ||
+              null
+          );
+          await saveUserProfile(userId, mergedProfile);
+
+          await loadLocalBusinesses(
+            userId,
+            identityFromProfile(mergedProfile as Record<string, unknown>)
+          );
+          await syncEventsCount(userId);
+
+          if (data?.business_id) {
+            setMyBusinessId(String(data.business_id));
+          } else {
+            setMyBusinessId(null);
+          }
+        } catch (e) {
+          logAuthEvent("profile_load_error_kept_session", {
+            error: String(e),
+          });
+          if (cancelled) return;
+          await loadLocalBusinesses(userId, identity);
+          await syncEventsCount(userId);
+        }
+      };
+
+      const hydrateProfile = async () => {
+        if (hasCompletedInitialHydrationRef.current) {
+          const session = await hydrateAuthSession();
+          const userId = session?.userId || (await getActiveUserId());
+
+          if (!userId) {
+            if (cancelled) return;
+            activeAccountKeyRef.current = null;
+            setIsLoggedIn(false);
+            resetProfileState();
+            return;
+          }
+
+          if (cancelled) return;
+
+          setIsLoggedIn(true);
+          const cachedProfile = (await loadUserProfile(userId)) as Record<
+            string,
+            unknown
+          > | null;
+          const identity = identityFromProfile(cachedProfile);
 
           if (cachedProfile) {
             setProfile(cachedProfile);
@@ -240,63 +415,67 @@ export default function ProfileV2Clean() {
             );
           }
 
-          const res = await fetch(
-            "https://community-app-backend-production.up.railway.app/api/accounts/profile/",
-            {
-              headers: {
-                Authorization: `Bearer ${tokens.access}`,
-              },
-            }
-          );
+          void loadLocalBusinesses(userId, identity);
+          void syncEventsCount(userId);
+          void syncFavoritesCount();
+          void refreshProfileFromApi(session, userId, identity);
+          return;
+        }
 
-          const data = await res.json();
-          const identity = {
-            username:
-              String(data?.username || identityFromCache.username || "").trim() ||
-              undefined,
-            email:
-              String(data?.email || identityFromCache.email || "").trim() ||
-              undefined,
-          };
+        const showBlockingLoader = !hasCompletedInitialHydrationRef.current;
+        if (showBlockingLoader) {
+          setAuthHydration("loading");
+        }
 
-          if (!res.ok || data?.code === "token_not_valid") {
-            console.log("PROFILE API INVALID, USING SCOPED CACHE:", data);
-            await loadLocalBusinesses(userId, identityFromCache);
-            return;
-          }
+        const session = await hydrateAuthSession();
+        const userId = session?.userId || (await getActiveUserId());
 
-          await adoptLegacyProfileIfMatching(userId, identity);
-          cachedProfile = await loadUserProfile(userId, identity);
+        if (!userId) {
+          if (cancelled) return;
+          activeAccountKeyRef.current = null;
+          setIsLoggedIn(false);
+          resetProfileState();
+          return;
+        }
 
-          const mergedProfile = mergeProfileWithApi(cachedProfile, data);
-          setProfile(mergedProfile);
+        if (cancelled) return;
+
+        setIsLoggedIn(true);
+        await prepareSessionForUser(userId);
+
+        let cachedProfile = (await loadUserProfile(userId)) as Record<
+          string,
+          unknown
+        > | null;
+        let identity = identityFromProfile(cachedProfile);
+
+        if (cachedProfile) {
+          setProfile(cachedProfile);
           setProfileImage(
-            (mergedProfile.profileImage as string) ||
-              (mergedProfile.profile_image as string) ||
+            (cachedProfile.profileImage as string) ||
+              (cachedProfile.profile_image as string) ||
               null
           );
-          await saveUserProfile(userId, mergedProfile);
-
-          await loadLocalBusinesses(userId, {
-            username: String(mergedProfile.username || identity.username || ""),
-            email: String(mergedProfile.email || identity.email || ""),
-          });
-
-          if (data?.business_id) {
-            setMyBusinessId(String(data.business_id));
-          } else {
-            setMyBusinessId(null);
-          }
-        } catch (e) {
-          console.log("PROFILE LOAD ERROR:", e);
-          await loadLocalBusinesses(userId, {
-            username: profile?.username,
-            email: profile?.email,
-          });
         }
+
+        await loadLocalBusinesses(userId, identity);
+        await syncEventsCount(userId);
+        if (!cancelled) {
+          await syncFavoritesCount();
+        }
+
+        if (cancelled) return;
+        setAuthHydration("authenticated");
+        hasCompletedInitialHydrationRef.current = true;
+
+        await refreshProfileFromApi(session, userId, identity);
       };
 
-      checkLogin();
+      void hydrateProfile();
+
+      return () => {
+        cancelled = true;
+      };
     }, [])
   );
 
@@ -405,7 +584,34 @@ export default function ProfileV2Clean() {
     </View>
   );
 
-  if (!isLoggedIn) {
+  if (authHydration === "loading") {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+          }}
+        >
+          <ActivityIndicator size="large" color={theme.colors.turquoise} />
+          <Text
+            style={{
+              marginTop: 14,
+              fontSize: 15,
+              fontWeight: "700",
+              color: theme.colors.muted,
+            }}
+          >
+            Loading your profile...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isLoggedIn || authHydration === "guest") {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
         <View
@@ -498,9 +704,9 @@ export default function ProfileV2Clean() {
       >
         <View
           style={{
-            paddingTop: 18,
+            paddingTop: 24,
             paddingHorizontal: 18,
-            paddingBottom: 24,
+            paddingBottom: 72,
             backgroundColor: theme.colors.turquoise,
             borderBottomLeftRadius: 32,
             borderBottomRightRadius: 32,
@@ -700,7 +906,10 @@ export default function ProfileV2Clean() {
                 <Pressable
                   key={String(biz?.id || index)}
                   onPress={() =>
-                    router.push(`/profile/v2?id=${biz.id}` as any)
+                    router.navigate({
+                      pathname: "/profile/v2",
+                      params: { id: String(biz.id) },
+                    })
                   }
                   style={{
                     flexDirection: "row",

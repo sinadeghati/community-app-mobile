@@ -1,11 +1,11 @@
 import { Alert } from "react-native";
 import { router } from "expo-router";
-import { isUserLoggedIn } from "./businessReviews";
+import { getActiveUserId } from "./userSessionStorage";
 
 export async function ensureLoggedInForSave(
   actionLabel = "save favorites"
 ): Promise<boolean> {
-  if (await isUserLoggedIn()) return true;
+  if (await getActiveUserId()) return true;
 
   Alert.alert("Login required", `Please log in to ${actionLabel}.`, [
     { text: "Cancel", style: "cancel" },

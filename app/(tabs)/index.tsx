@@ -1,176 +1,506 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  ImageBackground,
-  KeyboardAvoidingView,
+  Animated,
+  Easing,
+  Keyboard,
+  PanResponder,
   Platform,
   Pressable,
-  SafeAreaView,
-  ScrollView,
+  StyleSheet,
+  type KeyboardEvent,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { router, useFocusEffect } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import authStorage from "../utils/authStorage";
 import {
-  getActiveUserId,
+  hydrateAuthSession,
   loadUserProfile,
   prepareSessionForUser,
 } from "../../lib/userSessionStorage";
 import { API } from "../../lib/api";
+import {
+  getActiveHomeHeroSlides,
+  getHeroImagePrimaryUri,
+  HOME_HERO_CHANNEL_LABELS,
+  HOME_HERO_FALLBACK_IMAGE,
+  HOME_HERO_FALLBACK_SLIDE,
+  logHeroImageLoadFailure,
+  type HomeHeroItem,
+} from "../../lib/homeHeroData";
+import {
+  logLoaderDone,
+  logLoaderStart,
+  withTimeout,
+} from "../../lib/asyncGuards";
+import { PersianMapHeroLogo } from "../../components/brand/PersianMapHeroLogo";
 import { theme } from "../../lib/theme";
 
-const DISCOVER_CATEGORIES = [
-  "Restaurants",
-  "Events",
-  "Services",
-  "Culture",
-  "Markets",
-];
+const SLIDE_INTERVAL_MS = 5000;
+const SLIDE_FADE_MS = 900;
+const LOGIN_FADE_MS = 260;
+const BOTTOM_GRADIENT_HEIGHT = 340;
+const SWIPE_THRESHOLD = 48;
+const DOT_WINDOW = 7;
 
-const heroSlides = [
-  {
-    id: "hafez",
-    title: "Welcome to Persian Map",
-    subtitle: "Discover Persian businesses, events, and community near you.",
-    image:
-      "https://images.unsplash.com/photo-1605723517503-3cadb5818a0c?q=80&w=1200",
-    badge: "Persian Community",
-  },
-  {
-    id: "persepolis",
-    title: "Persian culture, everywhere",
-    subtitle: "From San Diego to LA, Toronto, and beyond.",
-    image:
-      "https://images.unsplash.com/photo-1578898886225-c7c894047899?q=80&w=1200",
-    badge: "Culture",
-  },
-  {
-    id: "event",
-    title: "Find what’s happening tonight",
-    subtitle: "Concerts, Nowruz, Yalda, festivals, and community events.",
-    image:
-      "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=1200",
-    badge: "Events",
-  },
-];
+const normalizeUsername = (value: string) => value.trim().toLowerCase();
+const normalizePassword = (value: string) => value.trim();
 
-const featuredCards = [
-  {
-    id: "1",
-    title: "Fair Auto Repair",
-    subtitle: "Featured business",
-    image:
-      "https://images.unsplash.com/photo-1487754180451-c456f719a1fc?q=80&w=900",
-    tag: "FEATURED",
-  },
-  {
-    id: "2",
-    title: "Persian Events",
-    subtitle: "Tonight & this weekend",
-    image:
-      "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=900",
-    tag: "EVENT",
-  },
-];
-
-const normalizeUsername = (value: string) => {
-  return value.trim().toLowerCase();
+const resolveDisplayName = (profile: Record<string, unknown> | null) => {
+  const raw = String(
+    profile?.name || profile?.username || profile?.email || ""
+  ).trim();
+  if (!raw) return "there";
+  return raw.split("@")[0];
 };
 
-const normalizePassword = (value: string) => {
-  return value.trim();
-};
+/**
+ * Resolves slide image with runtime fallback — caption stays on slide; display swaps on error.
+ */
+function HeroImageLayer({
+  slide,
+  layer,
+  onLoad,
+}: {
+  slide: HomeHeroItem;
+  layer: "base" | "top";
+  onLoad?: () => void;
+}) {
+  const primaryUri = getHeroImagePrimaryUri(slide);
+  const [uri, setUri] = useState(primaryUri);
+
+  useEffect(() => {
+    setUri(primaryUri);
+  }, [slide.id, primaryUri]);
+
+  const handleError = useCallback(() => {
+    if (uri === HOME_HERO_FALLBACK_IMAGE) {
+      onLoad?.();
+      return;
+    }
+    logHeroImageLoadFailure(slide.id, slide.title, primaryUri);
+    void Image.prefetch(HOME_HERO_FALLBACK_IMAGE);
+    setUri(HOME_HERO_FALLBACK_IMAGE);
+  }, [slide.id, slide.title, primaryUri, uri, onLoad]);
+
+  return (
+    <Image
+      recyclingKey={`hero-${layer}-${slide.id}`}
+      source={{ uri }}
+      style={StyleSheet.absoluteFillObject}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      transition={0}
+      onLoad={onLoad}
+      onError={handleError}
+    />
+  );
+}
+
+/**
+ * Two-layer crossfade: base stays visible until next image is loaded, then fades in.
+ * Caption commits in parent on onTransitionEnd — one slide object end-to-end.
+ */
+function HeroCrossfade({
+  visibleSlide,
+  targetSlide,
+  transitioning,
+  onTransitionEnd,
+}: {
+  visibleSlide: HomeHeroItem;
+  targetSlide: HomeHeroItem;
+  transitioning: boolean;
+  onTransitionEnd: () => void;
+}) {
+  const [baseSlide, setBaseSlide] = useState(visibleSlide);
+  const [topSlide, setTopSlide] = useState(visibleSlide);
+  const [topLoaded, setTopLoaded] = useState(true);
+  const topOpacity = useRef(new Animated.Value(1)).current;
+  const animRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    if (!transitioning) {
+      setBaseSlide(visibleSlide);
+      setTopSlide(visibleSlide);
+      setTopLoaded(true);
+      topOpacity.setValue(1);
+    }
+  }, [visibleSlide.id, transitioning, topOpacity]);
+
+  useEffect(() => {
+    if (!transitioning) return;
+
+    let cancelled = false;
+    animRef.current?.stop();
+    topOpacity.stopAnimation();
+    topOpacity.setValue(0);
+    setTopLoaded(false);
+    setTopSlide(targetSlide);
+
+    void Image.prefetch(getHeroImagePrimaryUri(targetSlide));
+
+    const loadFallback = setTimeout(() => {
+      if (!cancelled) setTopLoaded(true);
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(loadFallback);
+    };
+  }, [transitioning, targetSlide.id, topOpacity]);
+
+  useEffect(() => {
+    if (!transitioning || !topLoaded) return;
+
+    animRef.current = Animated.timing(topOpacity, {
+      toValue: 1,
+      duration: SLIDE_FADE_MS,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    });
+
+    animRef.current.start(({ finished }) => {
+      if (!finished) return;
+      setBaseSlide(targetSlide);
+      setTopSlide(targetSlide);
+      topOpacity.setValue(1);
+      onTransitionEnd();
+    });
+
+    return () => {
+      animRef.current?.stop();
+    };
+  }, [transitioning, topLoaded, targetSlide.id, onTransitionEnd, topOpacity]);
+
+  return (
+    <View style={[StyleSheet.absoluteFillObject, styles.heroImageBackdrop]}>
+      <HeroImageLayer slide={baseSlide} layer="base" />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          { opacity: transitioning ? topOpacity : 0 },
+        ]}
+      >
+        <HeroImageLayer
+          slide={topSlide}
+          layer="top"
+          onLoad={() => setTopLoaded(true)}
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+function PersianMapBrandHeader({
+  topInset,
+  isLoggedIn,
+  displayName,
+}: {
+  topInset: number;
+  isLoggedIn: boolean;
+  displayName: string;
+}) {
+  return (
+    <View style={[styles.headerOverlay, { paddingTop: topInset + 8, paddingHorizontal: 22 }]}>
+      <View style={styles.brandRow}>
+        <PersianMapHeroLogo size={40} />
+        <View style={styles.brandTextCol}>
+          <Text style={styles.brandTitle}>PersianMap</Text>
+          <Text style={styles.brandSubtitle}>
+            Your Persian community, connected
+          </Text>
+        </View>
+      </View>
+      {isLoggedIn ? (
+        <View style={styles.greetingPill}>
+          <Text style={styles.greetingText}>Hi {displayName}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function BottomHeroGradient() {
+  return (
+    <View pointerEvents="none" style={styles.bottomGradientWrap}>
+      <View style={[styles.gradientBand, { opacity: 0 }]} />
+      <View style={[styles.gradientBand, { opacity: 0.12 }]} />
+      <View style={[styles.gradientBand, { opacity: 0.28 }]} />
+      <View style={[styles.gradientBand, { opacity: 0.48 }]} />
+      <View style={[styles.gradientBand, { opacity: 0.68 }]} />
+    </View>
+  );
+}
 
 export default function HomeLoginV2() {
-  const [slideIndex, setSlideIndex] = useState(0);
-  const [mode, setMode] = useState<"home" | "login">("home");
-
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  /** Committed slide index — image + caption always use this until transition completes */
+  const [visibleIndex, setVisibleIndex] = useState(0);
+  const [targetIndex, setTargetIndex] = useState<number | null>(null);
+  const visibleIndexRef = useRef(0);
+  const targetIndexRef = useRef<number | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [displayName, setDisplayName] = useState("there");
   const [authChecked, setAuthChecked] = useState(false);
+  const [showLoginOverlay, setShowLoginOverlay] = useState(true);
+  const loginOpacity = useRef(new Animated.Value(1)).current;
+  const loginLift = useRef(new Animated.Value(0)).current;
+  const autoplayRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasAuthCheckedRef = useRef(false);
 
-  const loadAuthState = async () => {
-    const tokens = await authStorage.getTokens();
+  const heroItems = useMemo(() => {
+    const slides = getActiveHomeHeroSlides();
+    return slides.length > 0 ? slides : [HOME_HERO_FALLBACK_SLIDE];
+  }, []);
 
-    if (tokens?.access) {
-      setIsLoggedIn(true);
+  const clampedVisibleIndex =
+    heroItems.length > 0
+      ? Math.min(visibleIndex, heroItems.length - 1)
+      : 0;
 
-      try {
-        const userId = await getActiveUserId();
-        if (userId) {
-          const saved = await loadUserProfile(userId);
-          if (saved) {
-            setDisplayName(
-              String(saved.username || saved.email || "").split("@")[0] || "there"
-            );
-          }
-        }
-      } catch {
-        // keep default display name
+  const visibleSlide: HomeHeroItem | undefined = heroItems[clampedVisibleIndex];
+  const transitioning =
+    targetIndex !== null && targetIndex !== clampedVisibleIndex;
+  const targetSlide: HomeHeroItem | undefined =
+    transitioning && targetIndex !== null
+      ? heroItems[targetIndex]
+      : visibleSlide;
+
+  visibleIndexRef.current = clampedVisibleIndex;
+  targetIndexRef.current = targetIndex;
+
+  const commitTransition = useCallback(() => {
+    setTargetIndex((pending) => {
+      if (pending !== null) {
+        setVisibleIndex(pending);
       }
-    } else {
-      setIsLoggedIn(false);
-    }
+      return null;
+    });
+  }, []);
 
-    setAuthChecked(true);
+  const requestSlide = useCallback(
+    (index: number) => {
+      if (heroItems.length <= 1) return;
+      const next =
+        ((index % heroItems.length) + heroItems.length) % heroItems.length;
+      if (next === visibleIndexRef.current && targetIndexRef.current === null) {
+        return;
+      }
+      setTargetIndex(next);
+    },
+    [heroItems.length]
+  );
+
+  const resetAutoplay = useCallback(() => {
+    if (autoplayRef.current) {
+      clearInterval(autoplayRef.current);
+      autoplayRef.current = null;
+    }
+    if (heroItems.length <= 1) return;
+
+    autoplayRef.current = setInterval(() => {
+      if (targetIndexRef.current !== null) return;
+      const next = (visibleIndexRef.current + 1) % heroItems.length;
+      setTargetIndex(next);
+    }, SLIDE_INTERVAL_MS);
+  }, [heroItems.length]);
+
+  const goToNextSlide = useCallback(() => {
+    requestSlide(visibleIndexRef.current + 1);
+    resetAutoplay();
+  }, [requestSlide, resetAutoplay]);
+
+  const goToPrevSlide = useCallback(() => {
+    requestSlide(visibleIndexRef.current - 1);
+    resetAutoplay();
+  }, [requestSlide, resetAutoplay]);
+
+  const swipeActionsRef = useRef({
+    goNext: goToNextSlide,
+    goPrev: goToPrevSlide,
+  });
+  swipeActionsRef.current = {
+    goNext: goToNextSlide,
+    goPrev: goToPrevSlide,
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 14 && Math.abs(gesture.dy) < 28,
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx <= -SWIPE_THRESHOLD) {
+          swipeActionsRef.current.goNext();
+        } else if (gesture.dx >= SWIPE_THRESHOLD) {
+          swipeActionsRef.current.goPrev();
+        }
+      },
+    })
+  ).current;
+
+  const loadAuthState = async (background = false) => {
+    if (background && hasAuthCheckedRef.current) {
+      logLoaderStart("home.hydrateAuthSession.background");
+    } else {
+      logLoaderStart("home.hydrateAuthSession");
+    }
+    try {
+      const session = await withTimeout(
+        hydrateAuthSession(),
+        8000,
+        "home.hydrateAuthSession",
+        null
+      );
+
+      if (session) {
+        setIsLoggedIn(true);
+        setShowLoginOverlay(false);
+        loginOpacity.setValue(0);
+        try {
+          const saved = await loadUserProfile(session.userId);
+          setDisplayName(resolveDisplayName(saved as Record<string, unknown>));
+        } catch {
+          // keep default
+        }
+      } else {
+        const tokens = await authStorage.getTokens();
+        if (tokens?.access || tokens?.refresh) {
+          setIsLoggedIn(true);
+          setShowLoginOverlay(false);
+          loginOpacity.setValue(0);
+        } else {
+          setIsLoggedIn(false);
+          setDisplayName("there");
+          setShowLoginOverlay(true);
+          loginOpacity.setValue(1);
+        }
+      }
+    } catch (error) {
+      console.log("[loader] home.hydrateAuthSession error:", error);
+      setIsLoggedIn(false);
+      setDisplayName("there");
+      setShowLoginOverlay(true);
+      loginOpacity.setValue(1);
+    } finally {
+      logLoaderDone(
+        background && hasAuthCheckedRef.current
+          ? "home.hydrateAuthSession.background"
+          : "home.hydrateAuthSession"
+      );
+      hasAuthCheckedRef.current = true;
+      setAuthChecked(true);
+    }
   };
 
   useFocusEffect(
     React.useCallback(() => {
-      loadAuthState();
+      void loadAuthState(hasAuthCheckedRef.current);
     }, [])
   );
 
-  const activeSlide = heroSlides[slideIndex];
+  useEffect(() => {
+    if (visibleIndex >= heroItems.length) {
+      setVisibleIndex(0);
+      setTargetIndex(null);
+    }
+  }, [heroItems.length, visibleIndex]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setSlideIndex((prev) => (prev + 1) % heroSlides.length);
-    }, 4500);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  const passwordHints = useMemo(() => {
-    const p = password;
-
-    return {
-      length: p.length >= 8,
-      upper: /[A-Z]/.test(p),
-      lower: /[a-z]/.test(p),
-      number: /\d/.test(p),
-      symbol: /[^A-Za-z0-9]/.test(p),
+    resetAutoplay();
+    return () => {
+      if (autoplayRef.current) {
+        clearInterval(autoplayRef.current);
+      }
     };
-  }, [password]);
+  }, [resetAutoplay]);
+
+  useEffect(() => {
+    heroItems.forEach((slide) => {
+      void Image.prefetch(getHeroImagePrimaryUri(slide));
+    });
+  }, [heroItems]);
+
+  useEffect(() => {
+    if (heroItems.length <= 1) return;
+    const next = heroItems[(clampedVisibleIndex + 1) % heroItems.length];
+    const after = heroItems[(clampedVisibleIndex + 2) % heroItems.length];
+    if (next) void Image.prefetch(getHeroImagePrimaryUri(next));
+    if (after) void Image.prefetch(getHeroImagePrimaryUri(after));
+  }, [clampedVisibleIndex, heroItems]);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const onShow = (event: KeyboardEvent) => {
+      const lift = Math.max(0, event.endCoordinates.height - tabBarHeight);
+      Animated.timing(loginLift, {
+        toValue: -lift,
+        duration: Platform.OS === "ios" ? event.duration || 250 : 200,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const onHide = (event: KeyboardEvent) => {
+      Animated.timing(loginLift, {
+        toValue: 0,
+        duration: Platform.OS === "ios" ? event.duration || 250 : 200,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onShow);
+    const hideSub = Keyboard.addListener(hideEvent, onHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [loginLift, tabBarHeight]);
+
+  const dismissLoginOverlay = () => {
+    Animated.timing(loginOpacity, {
+      toValue: 0,
+      duration: LOGIN_FADE_MS,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setShowLoginOverlay(false);
+      }
+    });
+  };
 
   const handleLogin = async () => {
     const cleanUsername = normalizeUsername(username);
     const cleanPassword = normalizePassword(password);
 
     if (!cleanUsername || !cleanPassword) {
-      Alert.alert("Missing information", "Please enter your username/email and password.");
+      Alert.alert(
+        "Missing information",
+        "Please enter your username/email and password."
+      );
       return;
     }
 
     try {
       setLoading(true);
 
-      const result = await API.login(
-        cleanUsername,
-        cleanPassword,
-      );
-
+      const result = await API.login(cleanUsername, cleanPassword);
       const access = result?.access || result?.tokens?.access;
       const refresh = result?.refresh || result?.tokens?.refresh;
 
@@ -179,25 +509,26 @@ export default function HomeLoginV2() {
         return;
       }
 
-      await authStorage.setTokens({
-        access,
-        refresh,
-      });
+      await authStorage.setTokens({ access, refresh });
 
-      const userId = authStorage.getUserIdFromAccessToken(access);
-      if (userId != null) {
-        await prepareSessionForUser(String(userId));
+      const userId = authStorage.getUserIdStringFromAccessToken(access);
+      if (userId) {
+        await prepareSessionForUser(userId);
+        const saved = await loadUserProfile(userId);
+        setDisplayName(resolveDisplayName(saved as Record<string, unknown>));
+      } else {
+        setDisplayName(cleanUsername);
       }
 
-      setDisplayName(cleanUsername);
       setIsLoggedIn(true);
       setAuthChecked(true);
-      setMode("home");
-    } catch (e: any) {
-      console.log("Login V2 error:", e?.response?.data || e);
+      Keyboard.dismiss();
+      dismissLoginOverlay();
+    } catch (e: unknown) {
+      console.log("Login V2 error:", e);
       Alert.alert(
         "Login failed",
-        "Please check your username/password. Usernames are not case-sensitive, but passwords must match exactly."
+        "Please check your username and password and try again."
       );
     } finally {
       setLoading(false);
@@ -206,908 +537,456 @@ export default function HomeLoginV2() {
 
   if (!authChecked) {
     return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: theme.colors.ivory,
-        }}
-      >
+      <View style={styles.loadingScreen}>
         <ActivityIndicator size="large" color={theme.colors.turquoise} />
       </View>
     );
   }
 
-  if (isLoggedIn) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ padding: 22, paddingBottom: 48 }}
-        >
-          <Text
-            style={{
-              fontSize: 32,
-              fontWeight: "900",
-              color: theme.colors.charcoal,
-            }}
-          >
-            Welcome back, {displayName}
-          </Text>
+  const activeVisibleSlide = visibleSlide ?? HOME_HERO_FALLBACK_SLIDE;
+  const activeTargetSlide = targetSlide ?? activeVisibleSlide;
 
-          <Text
-            style={{
-              marginTop: 10,
-              fontSize: 16,
-              lineHeight: 24,
-              color: theme.colors.muted,
-              fontWeight: "600",
-            }}
-          >
-            Discover Persian businesses, events, and places near you
-          </Text>
-
-          <View
-            style={{
-              marginTop: 24,
-              borderRadius: 30,
-              overflow: "hidden",
-              borderWidth: 1,
-              borderColor: theme.colors.gold,
-              backgroundColor: theme.colors.deepTeal,
-              ...theme.shadow.medium,
-            }}
-          >
-            <ImageBackground
-              source={{
-                uri: "https://images.unsplash.com/photo-1578898886225-c7c894047899?q=80&w=1200",
-              }}
-              resizeMode="cover"
-              style={{ minHeight: 220 }}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  minHeight: 220,
-                  padding: 22,
-                  justifyContent: "flex-end",
-                  backgroundColor: "rgba(6,59,62,0.72)",
-                }}
-              >
-                <View
-                  style={{
-                    alignSelf: "flex-start",
-                    backgroundColor: "rgba(230,194,122,0.22)",
-                    borderRadius: 999,
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderWidth: 1,
-                    borderColor: "rgba(230,194,122,0.45)",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: theme.colors.gold,
-                      fontWeight: "900",
-                      fontSize: 12,
-                      letterSpacing: 0.6,
-                    }}
-                  >
-                    PERSIAN DISCOVER
-                  </Text>
-                </View>
-
-                <Text
-                  style={{
-                    marginTop: 14,
-                    fontSize: 26,
-                    fontWeight: "900",
-                    color: "#fff",
-                    lineHeight: 32,
-                  }}
-                >
-                  Your community, beautifully connected
-                </Text>
-
-                <Text
-                  style={{
-                    marginTop: 8,
-                    color: "rgba(255,255,255,0.88)",
-                    fontSize: 15,
-                    lineHeight: 22,
-                    fontWeight: "600",
-                  }}
-                >
-                  Explore trusted businesses, cultural events, and local favorites.
-                </Text>
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    marginTop: 18,
-                    gap: 10,
-                  }}
-                >
-                  <Pressable
-                    onPress={() => router.push("/(tabs)/explore")}
-                    style={{
-                      flex: 1,
-                      height: 52,
-                      borderRadius: 16,
-                      backgroundColor: theme.colors.turquoise,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#fff",
-                        fontWeight: "900",
-                        fontSize: 15,
-                      }}
-                    >
-                      Explore
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => router.push("/(tabs)/map")}
-                    style={{
-                      flex: 1,
-                      height: 52,
-                      borderRadius: 16,
-                      backgroundColor: "rgba(255,255,255,0.14)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.28)",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#fff",
-                        fontWeight: "900",
-                        fontSize: 15,
-                      }}
-                    >
-                      Map
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-            </ImageBackground>
-          </View>
-
-          <Text
-            style={{
-              marginTop: 26,
-              fontSize: 18,
-              fontWeight: "900",
-              color: theme.colors.charcoal,
-            }}
-          >
-            Browse by category
-          </Text>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ marginTop: 14, gap: 10 }}
-          >
-            {DISCOVER_CATEGORIES.map((label) => (
-              <Pressable
-                key={label}
-                onPress={() => router.push("/(tabs)/explore")}
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 10,
-                  borderRadius: 999,
-                  backgroundColor: theme.colors.card,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.deepTeal,
-                    fontWeight: "800",
-                    fontSize: 14,
-                  }}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
+  const topInset = Math.max(insets.top, Platform.OS === "ios" ? 12 : 8);
+  const dotWindowStart = Math.max(
+    0,
+    Math.min(
+      clampedVisibleIndex - Math.floor(DOT_WINDOW / 2),
+      Math.max(0, heroItems.length - DOT_WINDOW)
+    )
+  );
+  const visibleDots = heroItems.slice(
+    dotWindowStart,
+    dotWindowStart + DOT_WINDOW
+  );
 
   return (
-    <ImageBackground
-      source={{ uri: activeSlide.image }}
-      resizeMode="cover"
-      style={{ flex: 1 }}
-    >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.48)",
-        }}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={{ flex: 1 }}
-        >
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{
-              flexGrow: 1,
-              paddingBottom: 40,
-            }}
+    <View style={styles.root}>
+      <HeroCrossfade
+        visibleSlide={activeVisibleSlide}
+        targetSlide={activeTargetSlide}
+        transitioning={transitioning}
+        onTransitionEnd={commitTransition}
+      />
+
+      <BottomHeroGradient />
+
+      <View style={styles.topVignette} pointerEvents="none" />
+
+      <View style={styles.flex}>
+        <View style={styles.flex} {...panResponder.panHandlers}>
+          <PersianMapBrandHeader
+            topInset={topInset}
+            isLoggedIn={isLoggedIn}
+            displayName={displayName}
+          />
+
+          <View style={styles.heroSpacer} />
+
+          <View
+            style={[
+              styles.captionBlock,
+              {
+                paddingHorizontal: 22,
+                paddingBottom: showLoginOverlay ? 14 : Math.max(insets.bottom, 16),
+              },
+            ]}
+            pointerEvents="box-none"
           >
-            <View
-              style={{
-                paddingTop: 72,
-                paddingHorizontal: 24,
-              }}
-            >
-              <View
-                style={{
-                  alignSelf: "flex-start",
-                  backgroundColor: "rgba(255,255,255,0.16)",
-                  borderRadius: 999,
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.18)",
-                }}
-              >
-                <Text
-                  style={{
-                    color: "#fff",
-                    fontWeight: "900",
-                    fontSize: 12,
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  {activeSlide.badge}
+            {!transitioning ? (
+              <>
+                <View style={styles.tierPill}>
+                  <Text style={styles.tierText}>
+                    {HOME_HERO_CHANNEL_LABELS[activeVisibleSlide.channel].toUpperCase()}
+                  </Text>
+                </View>
+
+                <Text style={styles.slideTitle} numberOfLines={2}>
+                  {activeVisibleSlide.title}
                 </Text>
-              </View>
+                <Text style={styles.slideSubtitle} numberOfLines={3}>
+                  {activeVisibleSlide.subtitle}
+                </Text>
+              </>
+            ) : (
+              <View style={styles.captionPlaceholder} />
+            )}
 
-              <Text
-                style={{
-                  marginTop: 22,
-                  fontSize: 38,
-                  lineHeight: 44,
-                  fontWeight: "900",
-                  color: "#fff",
-                }}
-              >
-                {activeSlide.title}
-              </Text>
-
-              <Text
-                style={{
-                  marginTop: 14,
-                  color: "rgba(255,255,255,0.92)",
-                  fontSize: 16,
-                  lineHeight: 25,
-                }}
-              >
-                {activeSlide.subtitle}
-              </Text>
-
-              <View
-                style={{
-                  flexDirection: "row",
-                  marginTop: 22,
-                }}
-              >
-                {heroSlides.map((_, index) => (
-                  <View
-                    key={index}
-                    style={{
-                      width: slideIndex === index ? 28 : 8,
-                      height: 8,
-                      borderRadius: 999,
-                      backgroundColor:
-                        slideIndex === index ? "#fff" : "rgba(255,255,255,0.35)",
-                      marginRight: 8,
-                    }}
-                  />
-                ))}
-              </View>
-            </View>
-
-            <View style={{ marginTop: "auto", paddingHorizontal: 18 }}>
-              {mode === "home" ? (
-                <View
-                  style={{
-                    backgroundColor: "rgba(255,255,255,0.96)",
-                    borderRadius: 34,
-                    padding: 22,
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.3)",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 28,
-                      fontWeight: "900",
-                      color: "#111",
-                    }}
-                  >
-                    Explore the Persian community
-                  </Text>
-
-                  <Text
-                    style={{
-                      marginTop: 10,
-                      color: "#666",
-                      lineHeight: 24,
-                      fontSize: 15,
-                    }}
-                  >
-                    Businesses, concerts, events, food, services, and everything
-                    Persian — all in one place.
-                  </Text>
-
-                  <View style={{ marginTop: 22 }}>
-                    {featuredCards.map((card) => (
-                      <View
-                        key={card.id}
-                        style={{
-                          height: 86,
-                          borderRadius: 22,
-                          overflow: "hidden",
-                          marginBottom: 12,
+            {heroItems.length > 1 ? (
+              <View style={styles.pagination}>
+                <View style={styles.progressTrack}>
+                  {heroItems.map((item, index) => {
+                    const active = index === clampedVisibleIndex;
+                    return (
+                      <Pressable
+                        key={`progress-${item.id}`}
+                        onPress={() => {
+                          requestSlide(index);
+                          resetAutoplay();
                         }}
+                        hitSlop={{ top: 8, bottom: 8 }}
+                        style={styles.progressSegment}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Go to slide ${index + 1}`}
                       >
-                        <ImageBackground
-                          source={{ uri: card.image }}
-                          style={{
-                            flex: 1,
-                            justifyContent: "flex-end",
-                          }}
-                        >
-                          <View
-                            style={{
-                              flex: 1,
-                              backgroundColor: "rgba(0,0,0,0.35)",
-                              justifyContent: "flex-end",
-                              padding: 14,
-                            }}
-                          >
-                            <View
-                              style={{
-                                alignSelf: "flex-start",
-                                backgroundColor:
-                                  card.tag === "FEATURED"
-                                    ? "#d4af37"
-                                    : "#7c3aed",
-                                borderRadius: 999,
-                                paddingHorizontal: 10,
-                                paddingVertical: 4,
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  color: "#fff",
-                                  fontSize: 11,
-                                  fontWeight: "900",
-                                }}
-                              >
-                                {card.tag}
-                              </Text>
-                            </View>
-
-                            <Text
-                              style={{
-                                marginTop: 8,
-                                color: "#fff",
-                                fontWeight: "900",
-                                fontSize: 17,
-                              }}
-                            >
-                              {card.title}
-                            </Text>
-
-                            <Text
-                              style={{
-                                color: "rgba(255,255,255,0.88)",
-                                marginTop: 2,
-                              }}
-                            >
-                              {card.subtitle}
-                            </Text>
-                          </View>
-                        </ImageBackground>
-                      </View>
-                    ))}
-                  </View>
-
-                  <Pressable
-                    onPress={() => setMode("login")}
-                    style={{
-                      height: 58,
-                      borderRadius: 18,
-                      backgroundColor: "#111",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginTop: 8,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#fff",
-                        fontWeight: "900",
-                        fontSize: 16,
-                      }}
-                    >
-                      Continue
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => router.replace("/(tabs)/explore")}
-                    style={{
-                      marginTop: 16,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#555",
-                        fontWeight: "700",
-                      }}
-                    >
-                      Continue as guest
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <View
-                  style={{
-                    backgroundColor: "rgba(255,255,255,0.97)",
-                    borderRadius: 34,
-                    padding: 22,
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.3)",
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        flex: 1,
-                        fontSize: 30,
-                        fontWeight: "900",
-                        color: "#111",
-                      }}
-                    >
-                      Welcome back
-                    </Text>
-
-                    <Pressable onPress={() => setMode("home")}>
-                      <Ionicons name="close" size={28} color="#111" />
-                    </Pressable>
-                  </View>
-
-                  <Text
-                    style={{
-                      marginTop: 8,
-                      color: "#666",
-                      lineHeight: 22,
-                    }}
-                  >
-                    Sign in to manage your business, events, favorites, and community profile.
-                  </Text>
-
-                  <View
-                    style={{
-                      marginTop: 22,
-                      height: 58,
-                      borderRadius: 18,
-                      backgroundColor: "#f5f6f8",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      paddingHorizontal: 16,
-                    }}
-                  >
-                    <Ionicons name="person-outline" size={22} color="#666" />
-
-                    <TextInput
-                      value={username}
-                      onChangeText={setUsername}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      placeholder="Username or email"
-                      placeholderTextColor="#888"
-                      style={{
-                        flex: 1,
-                        marginLeft: 12,
-                        fontSize: 16,
-                        color: "#111",
-                      }}
-                    />
-                  </View>
-
-                  <View
-                    style={{
-                      marginTop: 14,
-                      height: 58,
-                      borderRadius: 18,
-                      backgroundColor: "#f5f6f8",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      paddingHorizontal: 16,
-                    }}
-                  >
-                    <Ionicons name="lock-closed-outline" size={22} color="#666" />
-
-                    <TextInput
-                      value={password}
-                      onChangeText={setPassword}
-                      secureTextEntry={!showPassword}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      textContentType="password"
-                      passwordRules="minlength: 8;"
-                      placeholder="Password"
-                      placeholderTextColor="#888"
-                      style={{
-                        flex: 1,
-                        marginLeft: 12,
-                        fontSize: 16,
-                        color: "#111",
-                      }}
-                    />
-
-                    <Pressable onPress={() => setShowPassword(!showPassword)}>
-                      <Ionicons
-                        name={showPassword ? "eye-off-outline" : "eye-outline"}
-                        size={22}
-                        color="#666"
-                      />
-                    </Pressable>
-                  </View>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginTop: 14,
-                    }}
-                  >
-                    <Pressable
-                      onPress={() => setRememberMe(!rememberMe)}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 7,
-                          backgroundColor: rememberMe ? "#111" : "#e5e7eb",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        {rememberMe ? (
-                          <Ionicons name="checkmark" size={15} color="#fff" />
-                        ) : null}
-                      </View>
-
-                      <Text
-                        style={{
-                          marginLeft: 9,
-                          color: "#444",
-                          fontWeight: "600",
-                        }}
-                      >
-                        Remember me
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() =>
-                        Alert.alert(
-                          "Forgot password",
-                          "Password reset flow will be connected next."
-                        )
-                      }
-                    >
-                      <Text
-                        style={{
-                          color: "#2563eb",
-                          fontWeight: "800",
-                        }}
-                      >
-                        Forgot password?
-                      </Text>
-                    </Pressable>
-                  </View>
-
-                  <View style={{ marginTop: 18 }}>
-                    <Text
-                      style={{
-                        color: "#666",
-                        fontSize: 12,
-                        marginBottom: 8,
-                        fontWeight: "700",
-                      }}
-                    >
-                      Password requirements
-                    </Text>
-
-                    <View style={{ gap: 5 }}>
-                      {[
-                        {
-                          ok: passwordHints.length,
-                          label: "At least 8 characters",
-                        },
-                        {
-                          ok: passwordHints.upper,
-                          label: "Uppercase letter",
-                        },
-                        {
-                          ok: passwordHints.lower,
-                          label: "Lowercase letter",
-                        },
-                        {
-                          ok: passwordHints.number,
-                          label: "Number",
-                        },
-                        {
-                          ok: passwordHints.symbol,
-                          label: "Special character",
-                        },
-                      ].map((item) => (
                         <View
-                          key={item.label}
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                          }}
-                        >
-                          <Ionicons
-                            name={
-                              item.ok
-                                ? "checkmark-circle"
-                                : "ellipse-outline"
-                            }
-                            size={16}
-                            color={item.ok ? "#16a34a" : "#999"}
-                          />
-
-                          <Text
-                            style={{
-                              marginLeft: 7,
-                              color: item.ok ? "#16a34a" : "#777",
-                              fontSize: 12,
-                              fontWeight: "600",
-                            }}
-                          >
-                            {item.label}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-
-                  <Pressable
-                    onPress={handleLogin}
-                    disabled={loading}
-                    style={{
-                      height: 58,
-                      borderRadius: 18,
-                      backgroundColor: "#111",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginTop: 22,
-                      opacity: loading ? 0.7 : 1,
-                    }}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text
-                        style={{
-                          color: "#fff",
-                          fontWeight: "900",
-                          fontSize: 16,
-                        }}
-                      >
-                        Sign In
-                      </Text>
-                    )}
-                  </Pressable>
-
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "center",
-                      marginTop: 18,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#666",
-                        fontSize: 14,
-                      }}
-                    >
-                      Don’t have an account?
-                    </Text>
-
-                    <Pressable onPress={() => router.push("/register")}>
-                      <Text
-                        style={{
-                          marginLeft: 6,
-                          color: "#0f9d91",
-                          fontWeight: "800",
-                          fontSize: 14,
-                        }}
-                      >
-                        Create Account
-                      </Text>
-                    </Pressable>
-                  </View>
-
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      marginTop: 22,
-                    }}
-                  >
-                    <View
-                      style={{
-                        flex: 1,
-                        height: 1,
-                        backgroundColor: "#e5e7eb",
-                      }}
-                    />
-
-                    <Text
-                      style={{
-                        marginHorizontal: 10,
-                        color: "#777",
-                        fontWeight: "700",
-                      }}
-                    >
-                      OR
-                    </Text>
-
-                    <View
-                      style={{
-                        flex: 1,
-                        height: 1,
-                        backgroundColor: "#e5e7eb",
-                      }}
-                    />
-                  </View>
-
-                  <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
-                    <Pressable
-                      onPress={() =>
-                        Alert.alert("Google Login", "Coming soon.")
-                      }
-                      style={{
-                        flex: 1,
-                        height: 54,
-                        borderRadius: 18,
-                        backgroundColor: "#f5f6f8",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexDirection: "row",
-                      }}
-                    >
-                      <Ionicons
-                        name="logo-google"
-                        size={20}
-                        color="#111"
-                      />
-                      <Text
-                        style={{
-                          marginLeft: 8,
-                          fontWeight: "800",
-                          color: "#111",
-                        }}
-                      >
-                        Google
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() =>
-                        Alert.alert("Apple Login", "Coming soon.")
-                      }
-                      style={{
-                        flex: 1,
-                        height: 54,
-                        borderRadius: 18,
-                        backgroundColor: "#f5f6f8",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexDirection: "row",
-                      }}
-                    >
-                      <Ionicons
-                        name="logo-apple"
-                        size={20}
-                        color="#111"
-                      />
-                      <Text
-                        style={{
-                          marginLeft: 8,
-                          fontWeight: "800",
-                          color: "#111",
-                        }}
-                      >
-                        Apple
-                      </Text>
-                    </Pressable>
-                  </View>
-
-                  <Pressable
-                    onPress={() =>
-                      Alert.alert(
-                        "Create Business",
-                        "Business onboarding flow will be connected next."
-                      )
-                    }
-                    style={{
-                      marginTop: 18,
-                      height: 54,
-                      borderRadius: 18,
-                      backgroundColor: "#ede9fe",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#5b21b6",
-                        fontWeight: "900",
-                        fontSize: 15,
-                      }}
-                    >
-                      Add Your Business
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => router.replace("/(tabs)/explore")}
-                    style={{
-                      marginTop: 18,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#666",
-                        fontWeight: "700",
-                      }}
-                    >
-                      Continue as guest
-                    </Text>
-                  </Pressable>
+                          style={[
+                            styles.progressSegmentFill,
+                            active ? styles.progressSegmentFillActive : null,
+                          ]}
+                        />
+                      </Pressable>
+                    );
+                  })}
                 </View>
-              )}
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+                <View style={styles.dotsRow}>
+                  {visibleDots.map((item, offset) => {
+                    const index = dotWindowStart + offset;
+                    const active = index === clampedVisibleIndex;
+
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onPress={() => {
+                          requestSlide(index);
+                          resetAutoplay();
+                        }}
+                        hitSlop={8}
+                        style={[
+                          styles.dot,
+                          active ? styles.dotActive : styles.dotIdle,
+                        ]}
+                      />
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        {showLoginOverlay ? (
+          <Animated.View
+            style={[
+              styles.loginDock,
+              {
+                paddingBottom: Math.max(insets.bottom, 6),
+                transform: [{ translateY: loginLift }],
+              },
+            ]}
+          >
+            <Animated.View
+              style={[styles.loginOverlayCard, { opacity: loginOpacity }]}
+              pointerEvents={isLoggedIn ? "none" : "auto"}
+            >
+              <View style={styles.inputRow}>
+                <Ionicons
+                  name="person-outline"
+                  size={16}
+                  color={theme.colors.muted}
+                />
+                <TextInput
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="Email or username"
+                  placeholderTextColor="rgba(107,114,128,0.8)"
+                  style={styles.input}
+                  returnKeyType="next"
+                />
+              </View>
+
+              <View style={[styles.inputRow, styles.inputRowSecond]}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={16}
+                  color={theme.colors.muted}
+                />
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="Password"
+                  placeholderTextColor="rgba(107,114,128,0.8)"
+                  style={styles.input}
+                  returnKeyType="done"
+                  onSubmitEditing={handleLogin}
+                />
+                <Pressable onPress={() => setShowPassword(!showPassword)}>
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={16}
+                    color={theme.colors.muted}
+                  />
+                </Pressable>
+              </View>
+
+              <Pressable
+                onPress={handleLogin}
+                disabled={loading}
+                style={[styles.signInButton, loading && styles.signInDisabled]}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.signInText}>Sign in</Text>
+                )}
+              </Pressable>
+
+              <View style={styles.footerLinksRow}>
+                <Pressable onPress={() => router.push("/register")}>
+                  <Text style={styles.footerPrimaryText}>Create account</Text>
+                </Pressable>
+                <Text style={styles.footerDivider}>·</Text>
+                <Pressable onPress={() => router.replace("/(tabs)/explore")}>
+                  <Text style={styles.footerSecondaryText}>Guest</Text>
+                </Pressable>
+              </View>
+            </Animated.View>
+          </Animated.View>
+        ) : (
+          <View style={{ height: Math.max(insets.bottom, 12) }} />
+        )}
       </View>
-    </ImageBackground>
+    </View>
   );
 }
+
+const SLIDE_TITLE_HEIGHT = 64;
+const SLIDE_SUBTITLE_HEIGHT = 54;
+const PROGRESS_HEIGHT = 24;
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.deepTeal,
+  },
+  flex: {
+    flex: 1,
+  },
+  loadingScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.ivory,
+  },
+  topVignette: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 160,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  bottomGradientWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: BOTTOM_GRADIENT_HEIGHT,
+    justifyContent: "flex-end",
+  },
+  gradientBand: {
+    height: BOTTOM_GRADIENT_HEIGHT / 5,
+    backgroundColor: "#000",
+  },
+  heroImageBackdrop: {
+    backgroundColor: theme.colors.deepTeal,
+  },
+  headerOverlay: {
+    zIndex: 2,
+  },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  brandTextCol: {
+    flex: 1,
+    flexShrink: 1,
+  },
+  heroSpacer: {
+    flex: 1,
+    minHeight: 8,
+  },
+  loginDock: {
+    paddingHorizontal: 22,
+    paddingTop: 10,
+  },
+  captionBlock: {
+    zIndex: 2,
+  },
+  captionPlaceholder: {
+    minHeight: SLIDE_TITLE_HEIGHT + SLIDE_SUBTITLE_HEIGHT + 40,
+  },
+  brandTitle: {
+    fontSize: 30,
+    fontWeight: "900",
+    color: "#fff",
+    letterSpacing: -0.5,
+  },
+  brandSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.88)",
+    fontWeight: "600",
+  },
+  tierPill: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
+  tierText: {
+    color: theme.colors.gold,
+    fontWeight: "800",
+    fontSize: 11,
+    letterSpacing: 0.6,
+  },
+  slideTitle: {
+    marginTop: 10,
+    minHeight: SLIDE_TITLE_HEIGHT,
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "900",
+    color: "#fff",
+  },
+  slideSubtitle: {
+    marginTop: 4,
+    minHeight: SLIDE_SUBTITLE_HEIGHT,
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "500",
+  },
+  pagination: {
+    marginTop: 14,
+    minHeight: PROGRESS_HEIGHT,
+  },
+  progressTrack: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    minHeight: 18,
+  },
+  progressSegment: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  progressSegmentFill: {
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.28)",
+  },
+  progressSegmentFillActive: {
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.95)",
+  },
+  dotsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 10,
+    gap: 6,
+  },
+  dot: {
+    height: 6,
+    borderRadius: 999,
+  },
+  dotActive: {
+    width: 22,
+    backgroundColor: "#fff",
+  },
+  dotIdle: {
+    width: 6,
+    backgroundColor: "rgba(255,255,255,0.38)",
+  },
+  loginOverlayCard: {
+    backgroundColor: "rgba(255,255,255,0.88)",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.55)",
+  },
+  inputRow: {
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(232,226,216,0.9)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+  },
+  inputRowSecond: {
+    marginTop: 6,
+  },
+  input: {
+    flex: 1,
+    marginLeft: 6,
+    fontSize: 14,
+    color: theme.colors.charcoal,
+    paddingVertical: 0,
+  },
+  signInButton: {
+    marginTop: 8,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: theme.colors.turquoise,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signInDisabled: {
+    opacity: 0.75,
+  },
+  signInText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  footerLinksRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  footerPrimaryText: {
+    color: theme.colors.turquoise,
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  footerDivider: {
+    color: theme.colors.muted,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  footerSecondaryText: {
+    color: theme.colors.muted,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  greetingPill: {
+    alignSelf: "flex-start",
+    marginTop: 12,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+  },
+  greetingText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+    letterSpacing: 0.2,
+  },
+});
