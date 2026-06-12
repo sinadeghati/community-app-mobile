@@ -45,6 +45,7 @@ import * as ImagePicker from "expo-image-picker";
 import { countCommunityEventsForOwner } from "../../lib/communityEvents";
 import { countSavedFavorites } from "../../lib/favoritesCount";
 import { FAVORITES_CHANGED_EVENT } from "../../lib/favoritesRefresh";
+import { resolveProfileDisplayName } from "../../lib/profileDisplay";
 
 const USER_AVATAR =
   "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=900";
@@ -61,8 +62,11 @@ export default function ProfileV2Clean() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [eventsCount, setEventsCount] = useState(0);
+  const [profileIdentityLoading, setProfileIdentityLoading] = useState(false);
   const activeAccountKeyRef = useRef<string | null>(null);
   const hasCompletedInitialHydrationRef = useRef(false);
+
+  const profileDisplayName = resolveProfileDisplayName(profile);
 
   const loadLocalBusinesses = async (
     userId: string | null,
@@ -202,6 +206,7 @@ export default function ProfileV2Clean() {
     setMyBusinessId(null);
     setFavoritesCount(0);
     setEventsCount(0);
+    setProfileIdentityLoading(false);
     setAuthHydration("guest");
     hasCompletedInitialHydrationRef.current = false;
   };
@@ -406,19 +411,36 @@ export default function ProfileV2Clean() {
           > | null;
           const identity = identityFromProfile(cachedProfile);
 
-          if (cachedProfile) {
+          const hasCachedIdentity = Boolean(
+            resolveProfileDisplayName(cachedProfile)
+          );
+
+          if (cachedProfile && hasCachedIdentity) {
             setProfile(cachedProfile);
             setProfileImage(
               (cachedProfile.profileImage as string) ||
                 (cachedProfile.profile_image as string) ||
                 null
             );
+            void loadLocalBusinesses(userId, identity);
+            void syncEventsCount(userId);
+            void syncFavoritesCount();
+            void refreshProfileFromApi(session, userId, identity);
+            return;
           }
 
-          void loadLocalBusinesses(userId, identity);
-          void syncEventsCount(userId);
-          void syncFavoritesCount();
-          void refreshProfileFromApi(session, userId, identity);
+          setProfileIdentityLoading(true);
+          try {
+            await refreshProfileFromApi(session, userId, identity);
+            if (cancelled) return;
+            void loadLocalBusinesses(userId, identity);
+            void syncEventsCount(userId);
+            void syncFavoritesCount();
+          } finally {
+            if (!cancelled) {
+              setProfileIdentityLoading(false);
+            }
+          }
           return;
         }
 
@@ -449,13 +471,19 @@ export default function ProfileV2Clean() {
         > | null;
         let identity = identityFromProfile(cachedProfile);
 
-        if (cachedProfile) {
+        const hasCachedIdentity = Boolean(
+          resolveProfileDisplayName(cachedProfile)
+        );
+
+        if (cachedProfile && hasCachedIdentity) {
           setProfile(cachedProfile);
           setProfileImage(
             (cachedProfile.profileImage as string) ||
               (cachedProfile.profile_image as string) ||
               null
           );
+        } else if (!hasCachedIdentity) {
+          setProfileIdentityLoading(true);
         }
 
         await loadLocalBusinesses(userId, identity);
@@ -465,10 +493,17 @@ export default function ProfileV2Clean() {
         }
 
         if (cancelled) return;
+
+        if (!hasCachedIdentity) {
+          await refreshProfileFromApi(session, userId, identity);
+          if (cancelled) return;
+          setProfileIdentityLoading(false);
+        } else {
+          void refreshProfileFromApi(session, userId, identity);
+        }
+
         setAuthHydration("authenticated");
         hasCompletedInitialHydrationRef.current = true;
-
-        await refreshProfileFromApi(session, userId, identity);
       };
 
       void hydrateProfile();
@@ -584,7 +619,11 @@ export default function ProfileV2Clean() {
     </View>
   );
 
-  if (authHydration === "loading") {
+  if (
+    authHydration === "loading" ||
+    profileIdentityLoading ||
+    (isLoggedIn && authHydration === "authenticated" && !profileDisplayName)
+  ) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
         <View
@@ -772,10 +811,7 @@ export default function ProfileV2Clean() {
                   color: theme.colors.charcoal,
                 }}
               >
-                {profile?.name ||
-                  profile?.username ||
-                  profile?.email ||
-                  "User"}
+                {profileDisplayName}
               </Text>
 
               <Text

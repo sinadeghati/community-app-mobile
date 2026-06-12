@@ -1,166 +1,213 @@
-// app/login.tsx
-import { Link } from "expo-router";
 import React, { useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
-  Alert,
-  StyleSheet,
-  ActivityIndicator,
+  View,
 } from "react-native";
-
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import authStorage from "./utils/authStorage";
-import {API}  from "../lib/api";
+import { API } from "../lib/api";
+import { formatAuthError } from "../lib/authErrors";
 
 export default function LoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
   const handleLogin = async () => {
-    if (!username || !password) {
-      Alert.alert("Error", "Please enter both username and password");
+    const cleanUsername = username.trim().toLowerCase();
+    const cleanPassword = password;
+
+    if (!cleanUsername || !cleanPassword) {
+      Alert.alert("Missing information", "Please enter your username and password.");
       return;
     }
 
     try {
       setLoading(true);
-      console.log("LOGIN.TSX VERSION: 2025-12-29 A");
 
-      const cleanUsername = username.trim().toLowerCase();
-      const cleanPassword = password.trim();
+      const payload = await API.login(cleanUsername, cleanPassword);
+      const access = payload?.access || payload?.tokens?.access;
+      const refresh = payload?.refresh || payload?.tokens?.refresh;
 
-      console.log("SENDING LOGIN TO BACKEND...", { username: cleanUsername, password: "***" });
+      if (!access) {
+        Alert.alert("Login failed", "Invalid username or password.");
+        return;
+      }
 
-      const response = await API.login(cleanUsername, cleanPassword);
-
-      console.log("LOGIN RESPONSE DATA:", response.data);
-
-      
-
-     const payload = response?.data ?? response;
-     const access = payload?.access || payload?.tokens?.access;
-     const refresh = payload?.refresh || payload?.tokens?.refresh;
-
-     if (!access) {
-       console.log("LOGIN ERROR: token missing access", payload);
-       Alert.alert("ERROR", "Login response did not include tokens.");
-       return;
-     }
-
-     await authStorage.setTokens({ access, refresh });
+      await authStorage.setTokens({ access, refresh });
 
       const userId = authStorage.getUserIdStringFromAccessToken(access);
-      const { prepareSessionForUser } = await import("../lib/userSessionStorage");
       if (userId) {
+        const { prepareSessionForUser } = await import("../lib/userSessionStorage");
         await prepareSessionForUser(userId);
       }
 
-      Alert.alert("Success", "Logged in successfully!");
-      router.replace("/(tabs)/explore"); // بعد از لاگین برو توی تب‌ها
-
-    } catch (error: any) {
-      console.log("LOGIN ERROR OBJECT:", error);
-      console.log(
-        "LOGIN ERROR RESPONSE DATA:",
-        error?.response?.data || "NO RESPONSE DATA"
+      router.replace("/(tabs)/explore");
+    } catch (error) {
+      Alert.alert(
+        "Login failed",
+        formatAuthError(error, "Please check your username and password and try again.")
       );
-
-      if (error?.response?.status === 400) {
-        Alert.alert("Error", "Username or password is incorrect.");
-      } else {
-        Alert.alert("Error", "There was a problem connecting to the server.");
-      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={styles.title}>Sign in</Text>
 
-      <TextInput
-        placeholder="Username"
-        value={username}
-        onChangeText={setUsername}
-        style={styles.input}
-        autoCapitalize="none"
-      />
+          <View style={styles.inputRow}>
+            <Ionicons name="person-outline" size={20} color="#6B7280" />
+            <TextInput
+              placeholder="Username or email"
+              value={username}
+              onChangeText={setUsername}
+              style={styles.input}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
 
-      <TextInput
-        placeholder="Password"
-        secureTextEntry={!showPassword}
-        value={password}
-        onChangeText={setPassword}
-        style={styles.input}
-      />
-      <TouchableOpacity
-  onPress={() => setShowPassword(!showPassword)}
-  style={{
-    backgroundColor: "#EAF3FF",
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 14,
-    alignItems: "center",
-  }}
->
-  <Text style={{ color: "#007AFF", fontSize: 16, fontWeight: "700" }}>
-    {showPassword ? "Hide password" : "Show password"}
-  </Text>
-</TouchableOpacity>
+          <View style={styles.inputRow}>
+            <Ionicons name="lock-closed-outline" size={20} color="#6B7280" />
+            <TextInput
+              placeholder="Password"
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+              style={styles.input}
+              autoCapitalize="none"
+              autoCorrect={false}
+              onSubmitEditing={handleLogin}
+            />
+            <Pressable onPress={() => setShowPassword(!showPassword)}>
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color="#6B7280"
+              />
+            </Pressable>
+          </View>
 
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        {loading ? (
-          <ActivityIndicator color="white" />
-        ) : (
-          <Text style={styles.buttonText}>Login</Text>
-        )}
-      </TouchableOpacity>
-      <Text
-  style={{
-    marginTop: 16,
-    textAlign: "center",
-    color: "#007AFF",
-  }}
-  onPress={() => router.push("/register")}
->
-  Create account
-</Text>
+          <Pressable
+            onPress={() => router.push("/forgot-password")}
+            style={styles.forgotLink}
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </Pressable>
 
-    </View>
+          <Pressable
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Sign in</Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.push("/register")}
+            style={styles.footerLink}
+          >
+            <Text style={styles.footerText}>Create account</Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
+    backgroundColor: "#F7F5F0",
+  },
+  flex: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
-    padding: 20,
+    padding: 24,
   },
   title: {
-    fontSize: 26,
-    fontWeight: "bold",
+    fontSize: 32,
+    fontWeight: "900",
     textAlign: "center",
-    marginBottom: 30,
+    marginBottom: 28,
+    color: "#111111",
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E0D8",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    minHeight: 56,
   },
   input: {
-    backgroundColor: "#eee",
-    padding: 12,
-    borderRadius: 6,
-    marginBottom: 15,
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 16,
+    color: "#111111",
+    fontWeight: "600",
+  },
+  forgotLink: {
+    alignSelf: "flex-end",
+    marginBottom: 18,
+  },
+  forgotText: {
+    color: "#0D9488",
+    fontSize: 14,
+    fontWeight: "800",
   },
   button: {
-    backgroundColor: "#1C67F6",
-    padding: 15,
-    borderRadius: 6,
+    backgroundColor: "#0D9488",
+    padding: 16,
+    borderRadius: 16,
     alignItems: "center",
   },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
   buttonText: {
-    color: "white",
-    fontSize: 18,
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  footerLink: {
+    marginTop: 20,
+    alignItems: "center",
+  },
+  footerText: {
+    color: "#0D9488",
+    fontSize: 15,
+    fontWeight: "800",
   },
 });

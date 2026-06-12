@@ -26,6 +26,7 @@ import {
   prepareSessionForUser,
 } from "../../lib/userSessionStorage";
 import { API } from "../../lib/api";
+import { formatAuthError } from "../../lib/authErrors";
 import {
   getActiveHomeHeroSlides,
   getHeroImagePrimaryUri,
@@ -525,10 +526,12 @@ export default function HomeLoginV2() {
       Keyboard.dismiss();
       dismissLoginOverlay();
     } catch (e: unknown) {
-      console.log("Login V2 error:", e);
       Alert.alert(
         "Login failed",
-        "Please check your username and password and try again."
+        formatAuthError(
+          e,
+          "Please check your username and password and try again."
+        )
       );
     } finally {
       setLoading(false);
@@ -722,6 +725,13 @@ export default function HomeLoginV2() {
                   />
                 </Pressable>
               </View>
+
+              <Pressable
+                onPress={() => router.push("/forgot-password")}
+                style={styles.forgotPasswordLink}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+              </Pressable>
 
               <Pressable
                 onPress={handleLogin}
@@ -934,6 +944,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.charcoal,
     paddingVertical: 0,
+  },
+  forgotPasswordLink: {
+    alignSelf: "flex-end",
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  forgotPasswordText: {
+    color: theme.colors.turquoise,
+    fontWeight: "800",
+    fontSize: 12,
   },
   signInButton: {
     marginTop: 8,

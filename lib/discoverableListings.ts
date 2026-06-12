@@ -3,7 +3,6 @@ import { API } from "./api";
 import { logLoaderDone, logLoaderStart, withTimeout } from "./asyncGuards";
 import { normalizeBusinessUpdates } from "./businessUpdates";
 import {
-  categoryLabelMatchesProfessionalServices,
   DISCOVERY_CATEGORY_FILTERS,
   discoveryQueryMatchesHaystack,
   findDiscoveryFilterKey,
@@ -98,10 +97,34 @@ const listingCategoryMatchesExploreFilter = (
       return (
         category === "food" ||
         category.includes("persian food") ||
+        category.includes("iranian food") ||
         category.includes("restaurant") ||
-        category.includes("catering") ||
-        category.includes("home catering")
+        (category.includes("dining") && !category.includes("catering"))
       );
+    case "Home Catering":
+      return (
+        category.includes("home catering") ||
+        category.includes("home chef") ||
+        category.includes("home food") ||
+        category === "catering"
+      );
+    case "Legal":
+      return (
+        category.includes("lawyer") ||
+        category.includes("legal") ||
+        category.includes("attorney") ||
+        category.includes("immigration")
+      );
+    case "Medical":
+      return (
+        category.includes("doctor") ||
+        category.includes("medical") ||
+        category.includes("clinic") ||
+        category.includes("dentist") ||
+        category.includes("health")
+      );
+    case "Insurance":
+      return category.includes("insurance");
     case "Cafe":
       return (
         category.includes("cafe") ||
@@ -114,16 +137,28 @@ const listingCategoryMatchesExploreFilter = (
       return (
         category.includes("real estate") ||
         category.includes("property") ||
-        category.includes("mortgage")
+        category.includes("realtor")
       );
     case "Services":
       return (
-        category.includes("home service") ||
-        category.includes("professional service") ||
-        category.includes("professional") ||
-        category.includes("legal") ||
-        category.includes("construction") ||
-        categoryLabelMatchesProfessionalServices(getListingCategory(item))
+        (category.includes("home service") ||
+          category.includes("professional service") ||
+          category.includes("construction") ||
+          category.includes("accounting") ||
+          category.includes("tutor") ||
+          category.includes("tax") ||
+          category.includes("mortgage") ||
+          category.includes("retail") ||
+          category.includes("education") ||
+          category === "other") &&
+        !category.includes("lawyer") &&
+        !category.includes("legal") &&
+        !category.includes("attorney") &&
+        !category.includes("immigration") &&
+        !category.includes("insurance") &&
+        !category.includes("doctor") &&
+        !category.includes("medical") &&
+        !category.includes("clinic")
       );
     default: {
       const selected = selectedCategory.toLowerCase();
@@ -220,19 +255,40 @@ const matchesAuto = (category: string, haystack: string) => {
   );
 };
 
-const matchesFood = (category: string, haystack: string) =>
-  category.includes("restaurant") ||
-  category.includes("food") ||
-  category.includes("dining") ||
-  category.includes("catering") ||
+const matchesHomeCatering = (category: string, haystack: string) =>
+  category.includes("home catering") ||
+  category.includes("home chef") ||
   category.includes("home food") ||
-  haystack.includes("restaurant") ||
-  haystack.includes("persian food") ||
-  haystack.includes("catering") ||
-  haystack.includes("tahchin") ||
-  haystack.includes("home food") ||
-  haystack.includes("kabob") ||
-  haystack.includes("kebab");
+  category === "catering" ||
+  haystack.includes("home catering") ||
+  haystack.includes("homemade food") ||
+  haystack.includes("home chef") ||
+  haystack.includes("ghazaye khanegi") ||
+  haystack.includes("ashpazi khanegi");
+
+const matchesFood = (category: string, haystack: string) => {
+  if (
+    matchesHomeCatering(category, haystack) &&
+    !category.includes("restaurant") &&
+    !haystack.includes("restaurant")
+  ) {
+    return false;
+  }
+
+  return (
+    category.includes("restaurant") ||
+    category === "food" ||
+    category.includes("persian food") ||
+    category.includes("iranian food") ||
+    category.includes("dining") ||
+    haystack.includes("restaurant") ||
+    haystack.includes("persian food") ||
+    haystack.includes("iranian food") ||
+    haystack.includes("tahchin") ||
+    haystack.includes("kabob") ||
+    haystack.includes("kebab")
+  );
+};
 
 const matchesCafe = (category: string, haystack: string) =>
   category.includes("cafe") ||
@@ -280,41 +336,57 @@ const matchesBeauty = (category: string, haystack: string) =>
 const matchesRealEstate = (category: string, haystack: string) =>
   category.includes("real estate") ||
   category.includes("property") ||
+  category.includes("realtor") ||
   haystack.includes("real estate") ||
+  haystack.includes("realtor") ||
   haystack.includes("property");
+
+const matchesLegal = (category: string, haystack: string) =>
+  category.includes("lawyer") ||
+  category.includes("legal") ||
+  category.includes("attorney") ||
+  category.includes("immigration") ||
+  haystack.includes("lawyer") ||
+  haystack.includes("attorney") ||
+  haystack.includes("legal") ||
+  haystack.includes("immigration lawyer") ||
+  haystack.includes("immigration");
+
+const matchesMedical = (category: string, haystack: string) =>
+  matchesHealth(category, haystack);
+
+const matchesInsurance = (category: string, haystack: string) =>
+  category.includes("insurance") || haystack.includes("insurance");
 
 const matchesServices = (category: string, haystack: string) => {
   if (
     matchesAuto(category, haystack) ||
     matchesFood(category, haystack) ||
-    matchesCafe(category, haystack)
+    matchesCafe(category, haystack) ||
+    matchesHomeCatering(category, haystack) ||
+    matchesBeauty(category, haystack) ||
+    matchesMedical(category, haystack) ||
+    matchesLegal(category, haystack) ||
+    matchesInsurance(category, haystack) ||
+    matchesRealEstate(category, haystack)
   ) {
     return false;
   }
 
   return (
-    matchesBeauty(category, haystack) ||
-    matchesHealth(category, haystack) ||
-    matchesRealEstate(category, haystack) ||
-    categoryLabelMatchesProfessionalServices(category) ||
-    category.includes("service") ||
-    category.includes("legal") ||
-    category.includes("law") ||
+    category.includes("home service") ||
+    category.includes("professional service") ||
     category.includes("construction") ||
-    category.includes("professional") ||
-    category.includes("insurance") ||
-    category.includes("mortgage") ||
     category.includes("accounting") ||
-    category.includes("immigration") ||
     category.includes("tutor") ||
     category.includes("tax") ||
+    category.includes("mortgage") ||
+    category.includes("retail") ||
+    category.includes("education") ||
+    category === "other" ||
+    category.includes("service") ||
     haystack.includes("home service") ||
-    haystack.includes("legal") ||
     haystack.includes("construction") ||
-    haystack.includes("lawyer") ||
-    haystack.includes("attorney") ||
-    haystack.includes("immigration") ||
-    haystack.includes("insurance") ||
     haystack.includes("mortgage") ||
     haystack.includes("accounting") ||
     haystack.includes("tutor") ||
@@ -527,6 +599,14 @@ const matchesCategoryKey = (
       return matchesServices(category, haystack);
     case "Real Estate":
       return matchesRealEstate(category, haystack);
+    case "Legal":
+      return matchesLegal(category, haystack);
+    case "Medical":
+      return matchesMedical(category, haystack);
+    case "Insurance":
+      return matchesInsurance(category, haystack);
+    case "Home Catering":
+      return matchesHomeCatering(category, haystack);
     default: {
       const selected = selectedCategory.toLowerCase();
       return category.includes(selected) || haystack.includes(selected);

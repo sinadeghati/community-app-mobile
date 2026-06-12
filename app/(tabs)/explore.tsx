@@ -30,6 +30,7 @@ import {
 import { logLoadedListingEventIds } from "../../lib/eventDiagnostics";
 import {
   formatEventDateTime,
+  formatEventHostLine,
   getEventCover,
   getEventTitle,
 } from "../../lib/mapEventDetails";
@@ -52,6 +53,7 @@ import { theme } from "../../lib/theme";
 import {
   APP_LOCATION_CHANGED_EVENT,
   DEFAULT_APP_LOCATION,
+  bootstrapAppLocation,
   detectCurrentAppLocation,
   getLocationBarLabel,
   loadAppLocationState,
@@ -66,6 +68,9 @@ import {
   logLoaderStart,
   withTimeout,
 } from "../../lib/asyncGuards";
+import { CategoryIconBadge } from "../../components/category/CategoryIconBadge";
+import { getCategoryChipVisual } from "../../lib/categoryChipTheme";
+import { QUICK_DISCOVERY_CATEGORY_CHIPS } from "../../lib/discoverySearch";
 
 type Listing = {
   id: number | string;
@@ -110,16 +115,7 @@ const exploreHeroShadow = {
   elevation: 3,
 } as const;
 
-const categories = [
-  { key: "All", label: "All", icon: "apps-outline" },
-  { key: "Restaurant", label: "Restaurant", icon: "restaurant-outline" },
-  { key: "Cafe", label: "Cafe", icon: "cafe-outline" },
-  { key: "Auto Repair", label: "Auto", icon: "car-outline" },
-  { key: "Beauty", label: "Beauty", icon: "sparkles-outline" },
-  { key: "Real Estate", label: "Real Estate", icon: "home-outline" },
-  { key: "Events", label: "Events", icon: "calendar-outline" },
-  { key: "Services", label: "Services", icon: "briefcase-outline" },
-];
+const categories = [...QUICK_DISCOVERY_CATEGORY_CHIPS];
 
 const getId = (item: Listing) => String(item?.id || "");
 
@@ -385,16 +381,13 @@ export default function ExploreScreen() {
     void (async () => {
       logLoaderStart("explore.location");
       try {
-        const stored = await loadAppLocationState();
-        setLocationState(stored);
-        if (stored.source === "current") {
-          await withTimeout(
-            refreshCurrentLocation(),
-            10000,
-            "explore.detectCurrentLocation",
-            false
-          );
-        }
+        const state = await withTimeout(
+          bootstrapAppLocation(),
+          12000,
+          "explore.bootstrapAppLocation",
+          DEFAULT_APP_LOCATION
+        );
+        setLocationState(state);
       } finally {
         logLoaderDone("explore.location");
       }
@@ -629,35 +622,33 @@ export default function ExploreScreen() {
 
   const CategoryPill = ({ item }: { item: any }) => {
     const active = selectedCategory === item.key;
+    const visual = getCategoryChipVisual(item.key);
 
     return (
       <Pressable
         onPress={() => setSelectedCategory(item.key)}
         style={{
-          width: 80,
-          height: 72,
+          width: 84,
+          height: 88,
           borderRadius: theme.radius.md,
           backgroundColor: active ? "rgba(13,148,136,0.10)" : theme.colors.card,
-          borderWidth: 1,
-          borderColor: active ? "rgba(13,148,136,0.28)" : theme.colors.border,
+          borderWidth: 1.5,
+          borderColor: active ? theme.colors.turquoise : theme.colors.border,
           alignItems: "center",
           justifyContent: "center",
+          paddingHorizontal: 4,
           marginRight: 10,
           ...exploreCardShadow,
         }}
       >
-        <Ionicons
-          name={item.icon as any}
-          size={22}
-          color={active ? theme.colors.turquoise : theme.colors.charcoal}
-        />
+        <CategoryIconBadge visual={visual} size="regular" active={active} />
         <Text
           numberOfLines={1}
           style={{
-            marginTop: 6,
-            fontSize: 12,
+            marginTop: 8,
+            fontSize: 11,
             fontWeight: "700",
-            color: theme.colors.charcoal,
+            color: active ? theme.colors.turquoise : theme.colors.charcoal,
           }}
         >
           {item.label}
@@ -678,6 +669,7 @@ export default function ExploreScreen() {
     const saved = favorites[id];
     const reviewLine = formatMapPreviewReviewText(reviewSummaries[id]);
     const eventItem = item as EventMapItem;
+    const hostLine = isEvent ? formatEventHostLine(eventItem) : null;
 
     return (
       <Pressable
@@ -734,6 +726,20 @@ export default function ExploreScreen() {
           >
             {isEvent ? formatEventDateTime(eventItem) : getCategory(item)}
           </Text>
+
+          {hostLine ? (
+            <Text
+              numberOfLines={1}
+              style={{
+                marginTop: 3,
+                fontSize: 12,
+                fontWeight: "600",
+                color: theme.colors.muted,
+              }}
+            >
+              {hostLine}
+            </Text>
+          ) : null}
 
           {!isEvent && reviewLine ? (
             <Text
@@ -1127,6 +1133,19 @@ export default function ExploreScreen() {
                         >
                           {formatEventDateTime(item as EventMapItem)}
                         </Text>
+                        {formatEventHostLine(item as EventMapItem) ? (
+                          <Text
+                            numberOfLines={1}
+                            style={{
+                              marginTop: 3,
+                              color: "rgba(255,255,255,0.88)",
+                              fontSize: 11,
+                              fontWeight: "600",
+                            }}
+                          >
+                            {formatEventHostLine(item as EventMapItem)}
+                          </Text>
+                        ) : null}
                       </View>
                     </ImageBackground>
                   </Pressable>

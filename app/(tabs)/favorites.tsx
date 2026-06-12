@@ -26,6 +26,7 @@ import {
 } from "../../lib/businessFavorites";
 import {
   formatEventDateTime,
+  formatEventHostLine,
   formatEventLocation,
   getEventCover,
   getEventTitle,
@@ -532,6 +533,18 @@ export default function FavoritesScreen() {
               >
                 {formatEventDateTime(item)}
               </Text>
+              {formatEventHostLine(item) ? (
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    marginTop: 2,
+                    fontSize: 12,
+                    color: theme.colors.muted,
+                  }}
+                >
+                  {formatEventHostLine(item)}
+                </Text>
+              ) : null}
               <Text
                 numberOfLines={1}
                 style={{

@@ -27,6 +27,13 @@ export default function RootLayout() {
         }}
       />
 
+      <Stack.Screen
+        name="forgot-password"
+        options={{
+          title: "Forgot Password",
+        }}
+      />
+
       {/* هر مودالی که خود Expo گذاشته بود */}
       <Stack.Screen
         name="modal"

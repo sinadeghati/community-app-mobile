@@ -25,13 +25,14 @@ import {
   saveCommunityEvent,
 } from "../../lib/communityEvents";
 import { EVENT_FALLBACK_COVER } from "../../lib/mapEventDetails";
-import { getActiveUserId, loadUserProfile } from "../../lib/userSessionStorage";
+import { getActiveUserId } from "../../lib/userSessionStorage";
 
 export default function EditEventScreen() {
   const params = useLocalSearchParams();
   const eventId = String(params?.id || "");
 
   const [title, setTitle] = useState("");
+  const [organizerName, setOrganizerName] = useState("");
   const [description, setDescription] = useState("");
   const [streetAddress, setStreetAddress] = useState("");
   const [city, setCity] = useState("");
@@ -72,6 +73,7 @@ export default function EditEventScreen() {
         }
 
         setTitle(event.title || "");
+        setOrganizerName(String(event.organizer || "").trim());
         setDescription(String(event.description || event.about || ""));
         const legacyLocation = String(event.location || event.address || "").trim();
         const legacyParsed = legacyLocation
@@ -166,14 +168,6 @@ export default function EditEventScreen() {
 
     setSaving(true);
     try {
-      const profile = await loadUserProfile(ownerId);
-      const organizer = String(
-        profile?.business_name ||
-          profile?.name ||
-          profile?.username ||
-          ""
-      ).trim();
-
       const result = await saveCommunityEvent(
         {
           title,
@@ -194,7 +188,7 @@ export default function EditEventScreen() {
         {
           eventId,
           ownerId,
-          organizer: organizer || undefined,
+          organizer: organizerName.trim() || undefined,
         }
       );
 
@@ -283,6 +277,16 @@ export default function EditEventScreen() {
                 value={title}
                 onChangeText={setTitle}
                 style={inputStyle}
+              />
+
+              <Text style={labelStyle}>Organizer / Host Name</Text>
+              <TextInput
+                value={organizerName}
+                onChangeText={setOrganizerName}
+                placeholder="Farir Auto, Tapesh TV, PCC, Iranian Society of San Diego"
+                placeholderTextColor="#999"
+                style={inputStyle}
+                autoCapitalize="words"
               />
 
               <Text style={labelStyle}>Description</Text>

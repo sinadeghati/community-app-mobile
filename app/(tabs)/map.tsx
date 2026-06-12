@@ -32,6 +32,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Region } from "react-native-maps";
 import {
   buildMapDisplay,
+  clampMapRegion,
+  MAP_MIN_ZOOM_LEVEL,
+  regionExceedsMapLimits,
   regionForCluster,
   regionForMapPoints,
   resolveMapPoints,
@@ -41,6 +44,7 @@ import {
 import {
   APP_LOCATION_CHANGED_EVENT,
   DEFAULT_APP_LOCATION,
+  bootstrapAppLocation,
   detectCurrentAppLocation,
   loadAppLocationState,
   regionFromAppLocationState,
@@ -62,7 +66,12 @@ import {
   matchesListingCategory,
   matchesListingSearch,
 } from "../../lib/discoverableListings";
-import { findDiscoveryFilterKey } from "../../lib/discoverySearch";
+import { CategoryIconBadge } from "../../components/category/CategoryIconBadge";
+import { getCategoryChipVisual } from "../../lib/categoryChipTheme";
+import {
+  findDiscoveryFilterKey,
+  QUICK_DISCOVERY_CATEGORY_CHIPS,
+} from "../../lib/discoverySearch";
 import {
   formatEventDateTime,
   formatEventLocation,
@@ -84,6 +93,7 @@ import {
 } from "../../lib/businessLocation";
 import { logLoadedListingEventIds } from "../../lib/eventDiagnostics";
 import {
+  formatEventHostLine,
   getEventCover,
   getEventTitle,
   openEventDirections,
@@ -161,15 +171,7 @@ const SAN_DIEGO_REGION: Region = {
   longitudeDelta: 0.18,
 };
 
-const categoryFilters = [
-  { key: "All", label: "All", icon: "apps-outline" },
-  { key: "Restaurant", label: "Food", icon: "restaurant-outline" },
-  { key: "Cafe", label: "Cafe", icon: "cafe-outline" },
-  { key: "Auto Repair", label: "Auto", icon: "car-outline" },
-  { key: "Beauty", label: "Beauty", icon: "sparkles-outline" },
-  { key: "Events", label: "Events", icon: "calendar-outline" },
-  { key: "Services", label: "Services", icon: "briefcase-outline" },
-];
+const categoryFilters = [...QUICK_DISCOVERY_CATEGORY_CHIPS];
 
 const offsetEventDate = (days = 0, months = 0) => {
   const date = new Date();
@@ -411,6 +413,7 @@ function MapEventPreviewCard({
   onDirections: () => void;
 }) {
   const visual = getEventMarkerVisual(event as EventMapItem);
+  const hostLine = formatEventHostLine(event as EventMapItem);
 
   return (
     <View
@@ -483,6 +486,19 @@ function MapEventPreviewCard({
             >
               {formatEventDateTime(event as EventMapItem)}
             </Text>
+            {hostLine ? (
+              <Text
+                numberOfLines={1}
+                style={{
+                  marginTop: 3,
+                  fontSize: 11,
+                  color: theme.colors.muted,
+                  fontWeight: "600",
+                }}
+              >
+                {hostLine}
+              </Text>
+            ) : null}
           </View>
 
           <Pressable onPress={onOpenDetails} hitSlop={8}>
@@ -1094,6 +1110,9 @@ export default function MapScreenV25() {
   const [locating, setLocating] = useState(false);
   const [locationState, setLocationState] =
     useState<AppLocationState>(DEFAULT_APP_LOCATION);
+  const [mapFilterLocation, setMapFilterLocation] =
+    useState<AppLocationState>(DEFAULT_APP_LOCATION);
+  const [viewportAreaRefreshing, setViewportAreaRefreshing] = useState(false);
   const [viewportDirty, setViewportDirty] = useState(false);
   const suppressViewportDirtyRef = useRef(false);
   const isFocused = useIsFocused();
@@ -1108,7 +1127,7 @@ export default function MapScreenV25() {
   } | null>(null);
   const [mapLayout, setMapLayout] = useState({ width: 0, height: 0 });
   const mapLayoutReady = mapLayout.width > 0 && mapLayout.height > 0;
-  const mapSurfaceKey = locationState.locationKey;
+  const MAP_SURFACE_KEY = "map-main";
   const [mapSurfaceMounted, setMapSurfaceMounted] = useState(false);
   const [mapRegion, setMapRegion] = useState<Region>(SAN_DIEGO_REGION);
   const mapRegionRef = useRef<Region>(SAN_DIEGO_REGION);
@@ -1134,8 +1153,9 @@ export default function MapScreenV25() {
   };
 
   const commitMapRegion = useCallback((region: Region) => {
-    mapRegionRef.current = region;
-    setMapRegion((prev) => (regionsAreSimilar(prev, region) ? prev : region));
+    const clamped = clampMapRegion(region);
+    mapRegionRef.current = clamped;
+    setMapRegion((prev) => (regionsAreSimilar(prev, clamped) ? prev : clamped));
   }, []);
 
   const resolveViewportRegion = useCallback(
@@ -1162,8 +1182,9 @@ export default function MapScreenV25() {
   const scheduleMapViewport = useCallback(
     (region: Region, animate = true) => {
       suppressViewportDirtyRef.current = true;
-      commitMapRegion(region);
-      pendingViewportRef.current = { region, animate };
+      const clamped = clampMapRegion(region);
+      commitMapRegion(clamped);
+      pendingViewportRef.current = { region: clamped, animate };
 
       InteractionManager.runAfterInteractions(() => {
         requestAnimationFrame(() => {
@@ -1199,11 +1220,6 @@ export default function MapScreenV25() {
   }, [flushPendingMapViewport]);
 
   useEffect(() => {
-    mapReadyRef.current = false;
-    pendingViewportRef.current = null;
-  }, [mapSurfaceKey]);
-
-  useEffect(() => {
     if (isFocused) return;
     mapReadyRef.current = false;
     pendingViewportRef.current = null;
@@ -1232,7 +1248,27 @@ export default function MapScreenV25() {
       task.cancel();
       setMapSurfaceMounted(false);
     };
-  }, [isFocused, mapLayoutReady, mapSurfaceKey]);
+  }, [isFocused, mapLayoutReady]);
+
+  const applyMapLocationState = useCallback(
+    (next: AppLocationState, options?: { immediate?: boolean }) => {
+      setLocationState(next);
+
+      if (options?.immediate) {
+        setMapFilterLocation(next);
+        setViewportAreaRefreshing(false);
+        return;
+      }
+
+      InteractionManager.runAfterInteractions(() => {
+        requestAnimationFrame(() => {
+          setMapFilterLocation(next);
+          setViewportAreaRefreshing(false);
+        });
+      });
+    },
+    []
+  );
 
   const goToCurrentLocation = async () => {
     dismissKeyboard();
@@ -1258,14 +1294,18 @@ export default function MapScreenV25() {
 
       const locationChanged =
         result.state.locationKey !== locationState.locationKey;
-      setLocationState(result.state);
-      setFilterVisible(false);
-      if (!locationChanged) {
+      if (locationChanged) {
+        applyMapLocationState(result.state);
+        scheduleMapViewport(regionFromAppLocationState(result.state), true);
+      } else {
+        setLocationState(result.state);
+        setMapFilterLocation(result.state);
         scheduleMapViewport(
           resolveViewportRegion(result.state, mapPoints),
           true
         );
       }
+      setFilterVisible(false);
     } catch (error) {
       console.log("Map current location error:", error);
       Alert.alert(
@@ -1325,30 +1365,40 @@ export default function MapScreenV25() {
       latitude: place.latitude,
       longitude: place.longitude,
     });
-    setLocationState(next);
+    applyMapLocationState(next);
+    scheduleMapViewport(regionFromAppLocationState(next), true);
     setViewportDirty(false);
     setFilterVisible(false);
   };
 
   const handleSearchThisArea = async () => {
+    if (viewportAreaRefreshing) return;
+
     dismissKeyboard();
     clearSelectedMapItem();
-    const region = mapRegionRef.current;
-    const next = await saveViewportAppLocation(
-      "Selected map area",
-      regionToBounds(region),
-      {
-        latitude: region.latitude,
-        longitude: region.longitude,
-      },
-      {
-        latitudeDelta: region.latitudeDelta,
-        longitudeDelta: region.longitudeDelta,
-      }
-    );
-    setLocationState(next);
-    setViewportDirty(false);
-    setFilterVisible(false);
+    setViewportAreaRefreshing(true);
+
+    try {
+      const region = mapRegionRef.current;
+      const next = await saveViewportAppLocation(
+        "Selected map area",
+        regionToBounds(region),
+        {
+          latitude: region.latitude,
+          longitude: region.longitude,
+        },
+        {
+          latitudeDelta: region.latitudeDelta,
+          longitudeDelta: region.longitudeDelta,
+        }
+      );
+      applyMapLocationState(next);
+      setViewportDirty(false);
+      setFilterVisible(false);
+    } catch (error) {
+      console.log("Search this area error:", error);
+      setViewportAreaRefreshing(false);
+    }
   };
 
   const applyMapTypeFilter = (typeFilter: MapTypeFilter) => {
@@ -1509,36 +1559,31 @@ export default function MapScreenV25() {
     void (async () => {
       logLoaderStart("map.location");
       try {
-        let state = await loadAppLocationState();
-        setLocationState(state);
-
-        if (state.source === "current") {
-          const result = await withTimeout(
-            detectCurrentAppLocation(),
-            10000,
-            "map.detectCurrentLocation",
-            { ok: false as const, reason: "unavailable" as const }
-          );
-          if (result.ok) {
-            state = result.state;
-            setLocationState(state);
-          }
+        const state = await withTimeout(
+          bootstrapAppLocation(),
+          12000,
+          "map.bootstrapAppLocation",
+          DEFAULT_APP_LOCATION
+        );
+        applyMapLocationState(state, { immediate: true });
+        if (state.source !== "viewport") {
+          scheduleMapViewport(regionFromAppLocationState(state), false);
         }
       } finally {
         logLoaderDone("map.location");
       }
     })();
-  }, [loadMapItems]);
+  }, [applyMapLocationState, loadMapItems, scheduleMapViewport]);
 
   useFocusEffect(
     useCallback(() => {
       void loadAppLocationState().then((state) => {
-        setLocationState(state);
+        applyMapLocationState(state, { immediate: true });
       });
       if (hasDisplayedMapItemsRef.current) {
         void loadMapItems({ background: true });
       }
-    }, [loadMapItems])
+    }, [applyMapLocationState, loadMapItems])
   );
 
   useEffect(() => {
@@ -1556,13 +1601,16 @@ export default function MapScreenV25() {
       APP_LOCATION_CHANGED_EVENT,
       () => {
         void loadAppLocationState().then((state) => {
-          setLocationState(state);
+          applyMapLocationState(state);
+          if (state.source !== "viewport") {
+            scheduleMapViewport(regionFromAppLocationState(state), true);
+          }
           setViewportDirty(false);
         });
       }
     );
     return () => sub.remove();
-  }, []);
+  }, [applyMapLocationState, scheduleMapViewport]);
 
   useEffect(() => {
     setViewportDirty(false);
@@ -1572,7 +1620,7 @@ export default function MapScreenV25() {
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
-      const matchesLocation = listingMatchesActiveLocation(item, locationState);
+      const matchesLocation = listingMatchesActiveLocation(item, mapFilterLocation);
       if (!matchesLocation) return false;
 
       if (!matchesMapTypeFilter(item, mapTypeFilter)) return false;
@@ -1589,7 +1637,7 @@ export default function MapScreenV25() {
     items,
     search,
     selectedCategory,
-    locationState,
+    mapFilterLocation,
     isSearchMode,
     mapTypeFilter,
     openNowOnly,
@@ -1615,8 +1663,8 @@ export default function MapScreenV25() {
   );
 
   const mapInitialRegion = useMemo(
-    () => resolveViewportRegion(locationState, mapPoints),
-    [locationState, mapPoints, resolveViewportRegion]
+    () => clampMapRegion(regionFromAppLocationState(locationState)),
+    [locationState]
   );
 
   useEffect(() => {
@@ -1690,12 +1738,25 @@ export default function MapScreenV25() {
   const isDiscoveryActive = isSearchMode || selectedCategory !== "All";
 
   const handleMapRegionChangeComplete = useCallback((region: Region) => {
-    mapRegionRef.current = region;
-    if (businessPreviewOpenRef.current) {
-      pendingMapRegionRef.current = region;
+    const clamped = clampMapRegion(region);
+
+    if (regionExceedsMapLimits(region)) {
+      suppressViewportDirtyRef.current = true;
+      mapRegionRef.current = clamped;
+      mapRef.current?.animateToRegion(clamped, 150);
+      setMapRegion((prev) => (regionsAreSimilar(prev, clamped) ? prev : clamped));
+      setTimeout(() => {
+        suppressViewportDirtyRef.current = false;
+      }, 200);
       return;
     }
-    setMapRegion((prev) => (regionsAreSimilar(prev, region) ? prev : region));
+
+    mapRegionRef.current = clamped;
+    if (businessPreviewOpenRef.current) {
+      pendingMapRegionRef.current = clamped;
+      return;
+    }
+    setMapRegion((prev) => (regionsAreSimilar(prev, clamped) ? prev : clamped));
     if (!suppressViewportDirtyRef.current) {
       setViewportDirty(true);
     }
@@ -2178,6 +2239,7 @@ export default function MapScreenV25() {
 
   const FilterPill = ({ item }: { item: any }) => {
     const active = !isSearchMode && selectedCategory === item.key;
+    const visual = getCategoryChipVisual(item.key);
 
     return (
       <Pressable
@@ -2190,8 +2252,9 @@ export default function MapScreenV25() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          height: 30,
-          paddingHorizontal: 10,
+          height: 32,
+          paddingLeft: 5,
+          paddingRight: 10,
           borderRadius: 999,
           backgroundColor: active ? theme.colors.turquoise : "rgba(255,255,255,0.94)",
           marginRight: 6,
@@ -2204,15 +2267,11 @@ export default function MapScreenV25() {
           elevation: 1,
         }}
       >
-        <Ionicons
-          name={item.icon as any}
-          size={14}
-          color={active ? "#fff" : theme.colors.muted}
-        />
+        <CategoryIconBadge visual={visual} size="compact" active={active} />
 
         <Text
           style={{
-            marginLeft: 5,
+            marginLeft: 6,
             fontSize: 12,
             fontWeight: "600",
             color: active ? "#fff" : theme.colors.charcoal,
@@ -2246,13 +2305,15 @@ export default function MapScreenV25() {
     >
       {isFocused && mapLayoutReady && mapSurfaceMounted ? (
         <MapView
-          key={`map-surface-${mapSurfaceKey}`}
+          key={MAP_SURFACE_KEY}
           ref={mapRef}
           style={{
             width: mapLayout.width,
             height: mapLayout.height,
           }}
           initialRegion={mapInitialRegion}
+          minZoomLevel={MAP_MIN_ZOOM_LEVEL}
+          maxZoomLevel={20}
           showsUserLocation
           showsMyLocationButton={false}
           onMapReady={handleMapReady}
@@ -2413,6 +2474,7 @@ export default function MapScreenV25() {
                 onPress={() => {
                   void handleSearchThisArea();
                 }}
+                disabled={viewportAreaRefreshing}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -2427,13 +2489,21 @@ export default function MapScreenV25() {
                   shadowRadius: 6,
                   shadowOffset: { width: 0, height: 2 },
                   elevation: 3,
+                  opacity: viewportAreaRefreshing ? 0.85 : 1,
                 }}
               >
-                <Ionicons
-                  name="refresh-outline"
-                  size={15}
-                  color={theme.colors.deepTeal}
-                />
+                {viewportAreaRefreshing ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={theme.colors.deepTeal}
+                  />
+                ) : (
+                  <Ionicons
+                    name="refresh-outline"
+                    size={15}
+                    color={theme.colors.deepTeal}
+                  />
+                )}
                 <Text
                   style={{
                     marginLeft: 6,
@@ -2442,7 +2512,7 @@ export default function MapScreenV25() {
                     fontSize: 13,
                   }}
                 >
-                  Search this area
+                  {viewportAreaRefreshing ? "Searching…" : "Search this area"}
                 </Text>
               </Pressable>
             </View>
@@ -2887,7 +2957,10 @@ export default function MapScreenV25() {
                   No events found
                 </Text>
               ) : (
-                displayedEvents.map((event) => (
+                displayedEvents.map((event) => {
+                  const hostLine = formatEventHostLine(event as EventMapItem);
+
+                  return (
                   <Pressable
                     key={`event-${getId(event)}`}
                     onPress={() => openEventDetails(event)}
@@ -2930,6 +3003,18 @@ export default function MapScreenV25() {
                       >
                         {formatEventDateTime(event as EventMapItem)}
                       </Text>
+                      {hostLine ? (
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            marginTop: 3,
+                            fontSize: 12,
+                            color: theme.colors.muted,
+                          }}
+                        >
+                          {hostLine}
+                        </Text>
+                      ) : null}
                       <Text
                         numberOfLines={1}
                         style={{
@@ -2953,7 +3038,8 @@ export default function MapScreenV25() {
                       />
                     </Pressable>
                   </Pressable>
-                ))
+                  );
+                })
               )}
             </ScrollView>
           )}

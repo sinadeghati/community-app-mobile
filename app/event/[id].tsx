@@ -124,7 +124,14 @@ export default function EventDetailsScreen() {
     if (!event) return;
 
     await Share.share({
-      message: `${getEventTitle(event)}\n${formatEventDateTime(event)}\n${formatEventLocation(event)}`,
+      message: [
+        getEventTitle(event),
+        formatEventDateTime(event),
+        organizer ? `Hosted by ${organizer}` : null,
+        formatEventLocation(event),
+      ]
+        .filter(Boolean)
+        .join("\n"),
     });
   };
 
@@ -332,7 +339,7 @@ export default function EventDetailsScreen() {
             {organizer ? (
               <DetailRow
                 icon="business-outline"
-                label="Organizer"
+                label="Organizer / Host"
                 value={organizer}
                 isLast
               />

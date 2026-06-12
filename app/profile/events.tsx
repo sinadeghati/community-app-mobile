@@ -15,7 +15,7 @@ import {
   listCommunityEventsForOwner,
   type CommunityEvent,
 } from "../../lib/communityEvents";
-import { formatEventDateTime } from "../../lib/mapEventDetails";
+import { formatEventDateTime, formatEventHostLine } from "../../lib/mapEventDetails";
 import { getActiveUserId } from "../../lib/userSessionStorage";
 
 export default function EventsScreen() {
@@ -226,6 +226,17 @@ export default function EventsScreen() {
               >
                 {formatEventDateTime(event)}
               </Text>
+              {formatEventHostLine(event) ? (
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: "#6B7280",
+                    marginBottom: 4,
+                  }}
+                >
+                  {formatEventHostLine(event)}
+                </Text>
+              ) : null}
               <Text
                 style={{
                   fontSize: 14,

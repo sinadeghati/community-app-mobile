@@ -15,6 +15,72 @@ const SAN_DIEGO_CENTER = {
 /** Zoomed-out threshold — cluster when latitude span is wider than this. */
 export const MAP_CLUSTER_LAT_DELTA = 0.1;
 
+/**
+ * Safe camera span limits — prevents extreme zoom-out tile collapse on MapView.
+ * ~8° latitude ≈ 550+ mi; enough for metro discovery without world-scale deltas.
+ */
+export const MAP_REGION_LIMITS = {
+  minLatitudeDelta: 0.006,
+  maxLatitudeDelta: 8,
+  minLongitudeDelta: 0.006,
+  maxLongitudeDelta: 8,
+} as const;
+
+/** Native map zoom floor — blocks pinch zoom-out past a multi-metro level. */
+export const MAP_MIN_ZOOM_LEVEL = 4;
+
+const isValidMapDelta = (value: number) => Number.isFinite(value) && value > 0;
+
+export const regionExceedsMapLimits = (region: Region): boolean => {
+  if (
+    !isValidMapDelta(region.latitudeDelta) ||
+    !isValidMapDelta(region.longitudeDelta)
+  ) {
+    return true;
+  }
+
+  return (
+    region.latitudeDelta < MAP_REGION_LIMITS.minLatitudeDelta ||
+    region.latitudeDelta > MAP_REGION_LIMITS.maxLatitudeDelta ||
+    region.longitudeDelta < MAP_REGION_LIMITS.minLongitudeDelta ||
+    region.longitudeDelta > MAP_REGION_LIMITS.maxLongitudeDelta
+  );
+};
+
+export const clampMapRegion = (region: Region): Region => {
+  let latitudeDelta = region.latitudeDelta;
+  let longitudeDelta = region.longitudeDelta;
+
+  if (!isValidMapDelta(latitudeDelta)) {
+    latitudeDelta = 0.18;
+  }
+  if (!isValidMapDelta(longitudeDelta)) {
+    longitudeDelta = 0.18;
+  }
+
+  latitudeDelta = Math.min(
+    MAP_REGION_LIMITS.maxLatitudeDelta,
+    Math.max(MAP_REGION_LIMITS.minLatitudeDelta, latitudeDelta)
+  );
+  longitudeDelta = Math.min(
+    MAP_REGION_LIMITS.maxLongitudeDelta,
+    Math.max(MAP_REGION_LIMITS.minLongitudeDelta, longitudeDelta)
+  );
+
+  const latitude = Math.min(85, Math.max(-85, region.latitude));
+  let longitude = region.longitude;
+  if (!Number.isFinite(longitude)) {
+    longitude = SAN_DIEGO_CENTER.longitude;
+  }
+
+  return {
+    latitude,
+    longitude,
+    latitudeDelta,
+    longitudeDelta,
+  };
+};
+
 /** Backend/listings often default to downtown San Diego — not real business coords. */
 const PLACEHOLDER_COORDINATES = [{ latitude: 32.7157, longitude: -117.1611 }];
 
@@ -473,12 +539,12 @@ export const regionForMapPoints = (
 
   if (points.length === 1) {
     const point = points[0];
-    return {
+    return clampMapRegion({
       latitude: point.latitude - latOffset,
       longitude: point.longitude,
       latitudeDelta: minDelta,
       longitudeDelta: minDelta,
-    };
+    });
   }
 
   const lats = points.map((point) => point.latitude);
@@ -490,12 +556,12 @@ export const regionForMapPoints = (
   const latitudeDelta = Math.max((maxLat - minLat) * paddingFactor, minDelta);
   const longitudeDelta = Math.max((maxLng - minLng) * paddingFactor, minDelta);
 
-  return {
+  return clampMapRegion({
     latitude: (minLat + maxLat) / 2 - latOffset * 0.5,
     longitude: (minLng + maxLng) / 2,
     latitudeDelta,
     longitudeDelta,
-  };
+  });
 };
 
 export const regionForCluster = (
@@ -510,10 +576,10 @@ export const regionForCluster = (
   const latitudeDelta = Math.max((maxLat - minLat) * 1.8, 0.035);
   const longitudeDelta = Math.max((maxLng - minLng) * 1.8, 0.035);
 
-  return {
+  return clampMapRegion({
     latitude: (minLat + maxLat) / 2,
     longitude: (minLng + maxLng) / 2,
     latitudeDelta,
     longitudeDelta,
-  };
+  });
 };

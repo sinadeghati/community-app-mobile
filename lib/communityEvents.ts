@@ -356,7 +356,12 @@ export const saveCommunityEvent = async (
     business_category: category,
     owner_id: ownerId,
     business_id: input.businessId || events[existingIndex]?.business_id,
-    organizer: options?.organizer,
+    organizer:
+      options && "organizer" in options
+        ? options.organizer?.trim() || undefined
+        : existingIndex >= 0
+          ? events[existingIndex].organizer
+          : undefined,
     is_public: input.isPublic !== false,
     is_active: true,
     is_published: true,

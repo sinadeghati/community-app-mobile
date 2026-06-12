@@ -122,7 +122,7 @@ export const CATEGORY_SEARCH_PROFILES: CategorySearchProfile[] = [
   },
   {
     categoryLabels: ["Home Catering", "Catering", "Home Food", "Home Chef"],
-    filterKey: "Restaurant",
+    filterKey: "Home Catering",
     persian: ["غذای خانگی", "کیترینگ", "کترینگ", "آشپزی خانگی", "غذای مهمانی"],
     finglish: [
       "ghazaye khanegi",
@@ -180,7 +180,7 @@ export const CATEGORY_SEARCH_PROFILES: CategorySearchProfile[] = [
   },
   {
     categoryLabels: ["Lawyers", "Legal", "Attorney", "Immigration"],
-    filterKey: "Services",
+    filterKey: "Legal",
     persian: ["وکیل", "حقوقی", "مهاجرت"],
     finglish: ["vakil", "hoghoghi", "mohajerat", "lawyer"],
     english: ["lawyer", "attorney", "legal", "immigration lawyer", "immigration"],
@@ -193,14 +193,14 @@ export const CATEGORY_SEARCH_PROFILES: CategorySearchProfile[] = [
       "Clinic",
       "Dentist",
     ],
-    filterKey: "Services",
+    filterKey: "Medical",
     persian: ["دکتر", "پزشک", "دندانپزشک", "کلینیک"],
     finglish: ["doctor", "pezeshk", "dandaanpezeshk", "clinic", "doktor"],
     english: ["doctor", "dentist", "medical", "clinic", "health", "physician"],
   },
   {
     categoryLabels: ["Insurance"],
-    filterKey: "Services",
+    filterKey: "Insurance",
     persian: ["بیمه"],
     finglish: ["bimeh", "bime"],
     english: ["insurance", "insurer", "coverage"],
@@ -269,17 +269,24 @@ export const CATEGORY_SEARCH_PROFILES: CategorySearchProfile[] = [
   },
 ];
 
-/** Shared category filter keys for Map-style search intent (Explore + Map). */
-export const DISCOVERY_CATEGORY_FILTERS = [
+/** Quick-filter chips shown on Map + Explore (primary categories only). */
+export const QUICK_DISCOVERY_CATEGORY_CHIPS = [
   { key: "All", label: "All" },
-  { key: "Restaurant", label: "Restaurant" },
+  { key: "Restaurant", label: "Food" },
   { key: "Cafe", label: "Cafe" },
   { key: "Auto Repair", label: "Auto" },
   { key: "Beauty", label: "Beauty" },
-  { key: "Real Estate", label: "Real Estate" },
   { key: "Events", label: "Events" },
   { key: "Services", label: "Services" },
+  { key: "Real Estate", label: "Real Estate" },
+  { key: "Legal", label: "Legal" },
+  { key: "Medical", label: "Medical" },
+  { key: "Insurance", label: "Insurance" },
+  { key: "Home Catering", label: "Home Catering" },
 ] as const;
+
+/** Shared category filter keys for Map-style search intent (Explore + Map). */
+export const DISCOVERY_CATEGORY_FILTERS = QUICK_DISCOVERY_CATEGORY_CHIPS;
 
 export const CREATE_BUSINESS_CATEGORIES = [
   "Food",
@@ -438,46 +445,23 @@ export const getInferredDiscoveryTags = (
   CATEGORY_SEARCH_PROFILES.forEach((profile) => {
     if (!profileStronglyMatchesListing(profile, haystack, category)) return;
 
-    if (profile.filterKey === "Restaurant") {
-      tags.add("Food");
+    const tagByFilterKey: Record<string, string> = {
+      Restaurant: "Food",
+      "Auto Repair": "Auto",
+      Cafe: "Cafe",
+      Beauty: "Beauty",
+      "Real Estate": "Real Estate",
+      Events: "Events",
+      Services: "Services",
+      Legal: "Legal",
+      Medical: "Medical",
+      Insurance: "Insurance",
+      "Home Catering": "Home Catering",
+    };
+
+    if (profile.filterKey && tagByFilterKey[profile.filterKey]) {
+      tags.add(tagByFilterKey[profile.filterKey]);
       return;
-    }
-    if (profile.filterKey === "Auto Repair") {
-      tags.add("Auto");
-      return;
-    }
-    if (
-      profile.categoryLabels.some((label) =>
-        ["Lawyers", "Legal", "Attorney", "Immigration"].includes(label)
-      )
-    ) {
-      tags.add("Legal");
-      return;
-    }
-    if (profile.filterKey === "Cafe") {
-      tags.add("Cafe");
-      return;
-    }
-    if (profile.filterKey === "Beauty") {
-      tags.add("Beauty");
-      return;
-    }
-    if (profile.filterKey === "Real Estate") {
-      tags.add("Real Estate");
-      return;
-    }
-    if (profile.filterKey === "Events") {
-      tags.add("Events");
-      return;
-    }
-    if (
-      profile.categoryLabels.some((label) =>
-        ["Doctors", "Health & Wellness", "Medical", "Clinic", "Dentist"].includes(
-          label
-        )
-      )
-    ) {
-      tags.add("Health");
     }
   });
 

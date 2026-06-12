@@ -9,6 +9,7 @@ import {
   shouldInvalidateStoredSession,
   tryRefreshStoredAccessToken,
 } from "./authSession";
+import { isPlaceholderProfileName } from "./profileDisplay";
 
 /** Legacy global keys — never delete on logout; migrate into scoped keys on login. */
 export const LEGACY_USER_PROFILE_KEY = "user_profile_v2";
@@ -905,7 +906,14 @@ export const mergeStoredUserProfiles = (
     ...base,
     id: userId,
     user_id: userId,
-    name: pickNonEmpty(...defined.map((layer) => layer.name)),
+    name: pickNonEmpty(
+      ...defined.map((layer) =>
+        layer.name && !isPlaceholderProfileName(layer.name)
+          ? layer.name
+          : undefined
+      ),
+      ...defined.map((layer) => layer.username)
+    ),
     username: pickNonEmpty(...defined.map((layer) => layer.username)),
     email: pickNonEmpty(...defined.map((layer) => layer.email)),
     bio: pickNonEmpty(...defined.map((layer) => layer.bio)),
@@ -1605,13 +1613,21 @@ export const mergeProfileWithApi = (
     pickNonEmpty(api.user_id, api.id, cached?.user_id, cached?.id) ?? ""
   );
 
+  const cachedName =
+    cached?.name && !isPlaceholderProfileName(cached.name)
+      ? cached.name
+      : undefined;
+  const apiName = pickNonEmpty(api.name, api.first_name);
+  const resolvedApiName =
+    apiName && !isPlaceholderProfileName(apiName) ? apiName : undefined;
+
   return mergeStoredUserProfiles(userId, cached, {
     ...api,
     id: userId,
     user_id: userId,
     username: pickNonEmpty(api.username, cached?.username),
     email: pickNonEmpty(api.email, cached?.email),
-    name: pickNonEmpty(cached?.name, api.name, api.first_name),
+    name: pickNonEmpty(cachedName, api.username, cached?.username, resolvedApiName),
     business_id: pickNonEmpty(api.business_id, cached?.business_id),
   });
 };

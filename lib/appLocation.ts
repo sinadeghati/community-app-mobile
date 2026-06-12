@@ -324,6 +324,37 @@ export const detectCurrentAppLocation =
     return detectLocationInFlight;
   };
 
+/**
+ * First-session location: prefer GPS when available, avoid stale legacy city picks.
+ * Saved v3 state (explicit user choice) is always respected.
+ */
+export const bootstrapAppLocation = async (): Promise<AppLocationState> => {
+  try {
+    const stored = await AsyncStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY);
+    const parsed = parseStoredState(stored);
+    if (parsed) {
+      if (parsed.source === "current") {
+        const refreshed = await detectCurrentAppLocation();
+        if (refreshed.ok) return refreshed.state;
+      }
+      return parsed;
+    }
+
+    const current = await detectCurrentAppLocation();
+    if (current.ok) return current.state;
+
+    const migrated = await migrateLegacyLocation();
+    if (migrated?.source === "current") {
+      await persistAppLocationState(migrated);
+      return migrated;
+    }
+  } catch {
+    // fall through
+  }
+
+  return DEFAULT_APP_LOCATION;
+};
+
 export const regionToMapCenter = (
   state: AppLocationState
 ): AppLocationCoordinates => state.coordinates;

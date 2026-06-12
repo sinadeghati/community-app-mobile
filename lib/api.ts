@@ -1,6 +1,10 @@
 // lib/api.ts
 import axios from "axios";
 import authStorage from "../app/utils/authStorage"; // اگر مسیرت فرق دارد، فقط همین یک خط را اصلاح کن
+import {
+  AUTH_PASSWORD_CHANGE_PATH,
+  AUTH_PASSWORD_RESET_PATH,
+} from "./authApiContract";
 import { resolveStoredAccessToken } from "./authSession";
 const BASE_URL = "https://community-app-backend-production.up.railway.app/api";
 
@@ -78,6 +82,23 @@ export const API = {
       username,
       email,
       password,
+    });
+    return res.data;
+  },
+
+  /** See lib/authApiContract.ts for the backend contract. */
+  async requestPasswordReset(email: string) {
+    const res = await client.post(AUTH_PASSWORD_RESET_PATH, {
+      email: email.trim().toLowerCase(),
+    });
+    return res.data;
+  },
+
+  /** See lib/authApiContract.ts for the backend contract. */
+  async changePassword(currentPassword: string, newPassword: string) {
+    const res = await client.post(AUTH_PASSWORD_CHANGE_PATH, {
+      old_password: currentPassword,
+      new_password: newPassword,
     });
     return res.data;
   },

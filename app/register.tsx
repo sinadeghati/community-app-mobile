@@ -14,6 +14,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { API } from "../lib/api";
+import { formatAuthError } from "../lib/authErrors";
+import {
+  evaluatePasswordStrength,
+  passwordsMatch,
+} from "../lib/authValidation";
 import authStorage from "./utils/authStorage";
 
 const colors = {
@@ -106,6 +111,39 @@ const Field = ({
   </View>
 );
 
+const Requirement = ({
+  ok,
+  label,
+}: {
+  ok: boolean;
+  label: string;
+}) => (
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 8,
+    }}
+  >
+    <Ionicons
+      name={ok ? "checkmark-circle" : "ellipse-outline"}
+      size={18}
+      color={ok ? colors.success : colors.muted}
+    />
+
+    <Text
+      style={{
+        marginLeft: 8,
+        color: ok ? colors.text : colors.muted,
+        fontSize: 13,
+        fontWeight: "700",
+      }}
+    >
+      {label}
+    </Text>
+  </View>
+);
+
 export default function RegisterScreen() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -116,31 +154,20 @@ export default function RegisterScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const checks = useMemo(() => {
-    return {
-      length: password.length >= 8,
-      upper: /[A-Z]/.test(password),
-      lower: /[a-z]/.test(password),
-      number: /[0-9]/.test(password),
-      special: /[^A-Za-z0-9]/.test(password),
-      match: password.length > 0 && password === confirmPassword,
-    };
-  }, [password, confirmPassword]);
+  const strength = useMemo(
+    () => evaluatePasswordStrength(password),
+    [password]
+  );
 
-  const strengthCount = [
-    checks.length,
-    checks.upper,
-    checks.lower,
-    checks.number,
-    checks.special,
-  ].filter(Boolean).length;
+  const checks = useMemo(
+    () => ({
+      ...strength.checks,
+      match: passwordsMatch(password, confirmPassword),
+    }),
+    [strength.checks, password, confirmPassword]
+  );
 
-  const strengthLabel =
-    strengthCount <= 1
-      ? "Weak"
-      : strengthCount <= 3
-        ? "Good"
-        : "Strong";
+  const { strengthCount, strengthLabel } = strength;
 
   const canSubmit =
     username.trim().length >= 3 &&
@@ -165,8 +192,7 @@ export default function RegisterScreen() {
       const cleanUsername = username.trim();
       const cleanEmail = email.trim();
 
-      const created = await API.register(cleanUsername, cleanEmail, password);
-      console.log("REGISTER CREATED:", created);
+      await API.register(cleanUsername, cleanEmail, password);
 
       const loginResult = await API.login(cleanUsername, password);
 
@@ -186,53 +212,29 @@ export default function RegisterScreen() {
 
       const userId = authStorage.getUserIdStringFromAccessToken(access);
       if (userId) {
-        const { prepareSessionForUser } = await import("../lib/userSessionStorage");
+        const { prepareSessionForUser, saveUserProfile } = await import(
+          "../lib/userSessionStorage"
+        );
         await prepareSessionForUser(userId);
+        await saveUserProfile(userId, {
+          id: userId,
+          user_id: userId,
+          username: cleanUsername,
+          email: cleanEmail,
+        });
       }
 
-      router.replace("/(tabs)/explore");
+      router.replace("/(tabs)/profile");
       return;
-    } catch (error: any) {
-      console.log("REGISTER ERROR:", error?.response?.data);
+    } catch (error) {
       Alert.alert(
-        "Error",
-        JSON.stringify(error?.response?.data || "Could not create account.")
+        "Could not create account",
+        formatAuthError(error, "Please check your details and try again.")
       );
     } finally {
       setLoading(false);
     }
-  }; const Requirement = ({
-    ok,
-    label,
-  }: {
-    ok: boolean;
-    label: string;
-  }) => (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        marginTop: 8,
-      }}
-    >
-      <Ionicons
-        name={ok ? "checkmark-circle" : "ellipse-outline"}
-        size={18}
-        color={ok ? colors.success : colors.muted}
-      />
-
-      <Text
-        style={{
-          marginLeft: 8,
-          color: ok ? colors.text : colors.muted,
-          fontSize: 13,
-          fontWeight: "700",
-        }}
-      >
-        {label}
-      </Text>
-    </View>
-  );
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -372,7 +374,9 @@ export default function RegisterScreen() {
               secureTextEntry={!showConfirmPassword}
               rightIcon={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
               onRightPress={() => setShowConfirmPassword(!showConfirmPassword)}
-            />            <View style={{ marginTop: 18 }}>
+            />
+
+            <View style={{ marginTop: 18 }}>
               <View
                 style={{
                   flexDirection: "row",
@@ -482,68 +486,6 @@ export default function RegisterScreen() {
                 </Text>
               )}
             </Pressable>
-
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginTop: 22,
-              }}
-            >
-              <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-              <Text
-                style={{
-                  marginHorizontal: 12,
-                  color: colors.muted,
-                  fontWeight: "800",
-                }}
-              >
-                OR
-              </Text>
-              <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-            </View>
-
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
-              <Pressable
-                onPress={() => Alert.alert("Google", "Google sign up will be connected later.")}
-                style={{
-                  flex: 1,
-                  height: 54,
-                  borderRadius: 18,
-                  backgroundColor: "#F8FAFC",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexDirection: "row",
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Ionicons name="logo-google" size={20} color={colors.text} />
-                <Text style={{ marginLeft: 8, fontWeight: "900", color: colors.text }}>
-                  Google
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => Alert.alert("Apple", "Apple sign up will be connected later.")}
-                style={{
-                  flex: 1,
-                  height: 54,
-                  borderRadius: 18,
-                  backgroundColor: "#F8FAFC",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexDirection: "row",
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Ionicons name="logo-apple" size={20} color={colors.text} />
-                <Text style={{ marginLeft: 8, fontWeight: "900", color: colors.text }}>
-                  Apple
-                </Text>
-              </Pressable>
-            </View>
 
             <Text
               style={{

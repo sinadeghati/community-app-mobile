@@ -107,12 +107,7 @@ export default function AccountScreen() {
             icon="lock-closed-outline"
             title="Change Password"
             subtitle="Update and secure your password"
-            onPress={() =>
-              showComingSoon(
-                "Change Password",
-                "Secure password updates will be available here soon. For now, use the sign-in screen if you need to access your account."
-              )
-            }
+            onPress={() => router.push("/profile/change-password")}
           />
         </View>
 

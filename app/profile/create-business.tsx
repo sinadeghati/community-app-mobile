@@ -11,7 +11,9 @@ import {
     KeyboardAvoidingView,
     Platform,
     Switch,
+    Dimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -30,6 +32,8 @@ import {
     resolveBusinessCoordinatesForSave,
 } from "../../lib/businessLocation";
 import { requestDiscoverListingsRefresh } from "../../lib/discoverListingsRefresh";
+import { CategoryIconBadge } from "../../components/category/CategoryIconBadge";
+import { getCategoryChipVisual } from "../../lib/categoryChipTheme";
 import { CREATE_BUSINESS_CATEGORIES } from "../../lib/discoverySearch";
 import {
     createDefaultBusinessHours,
@@ -836,6 +840,14 @@ function Input({
 }
 
 function CategoryInput({ value, onPress }: any) {
+    const visual = value
+        ? getCategoryChipVisual(value)
+        : {
+              icon: "grid-outline" as const,
+              color: "#9CA3AF",
+              tint: "rgba(156,163,175,0.14)",
+          };
+
     return (
         <View style={{ marginBottom: 18 }}>
             <Text style={{ fontSize: 15, fontWeight: "900", marginBottom: 8, color: "#111" }}>
@@ -855,7 +867,13 @@ function CategoryInput({ value, onPress }: any) {
                     paddingHorizontal: 14,
                 }}
             >
-                <Ionicons name="grid-outline" size={22} color="#11998E" style={{ marginRight: 12 }} />
+                <View style={{ marginRight: 12 }}>
+                    <CategoryIconBadge
+                        visual={visual}
+                        size="compact"
+                        active={false}
+                    />
+                </View>
 
                 <Text style={{ flex: 1, fontSize: 16, color: value ? "#111" : "#B8BBC2" }}>
                     {value || "Select a category"}
@@ -868,6 +886,9 @@ function CategoryInput({ value, onPress }: any) {
 }
 
 function CategoryModal({ visible, onClose, onSelect }: any) {
+    const insets = useSafeAreaInsets();
+    const maxSheetHeight = Dimensions.get("window").height * 0.85;
+
     return (
         <Modal visible={visible} transparent animationType="slide">
             <View
@@ -877,13 +898,21 @@ function CategoryModal({ visible, onClose, onSelect }: any) {
                     justifyContent: "flex-end",
                 }}
             >
+                <Pressable
+                    style={{ flex: 1 }}
+                    onPress={onClose}
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss category picker"
+                />
+
                 <View
                     style={{
+                        maxHeight: maxSheetHeight,
                         backgroundColor: "#fff",
                         borderTopLeftRadius: 28,
                         borderTopRightRadius: 28,
-                        padding: 22,
-                        paddingBottom: 36,
+                        paddingTop: 12,
+                        paddingBottom: Math.max(insets.bottom, 16),
                     }}
                 >
                     <View
@@ -897,44 +926,78 @@ function CategoryModal({ visible, onClose, onSelect }: any) {
                         }}
                     />
 
-                    <Text style={{ fontSize: 22, fontWeight: "900", color: "#111", marginBottom: 16 }}>
+                    <Text
+                        style={{
+                            fontSize: 22,
+                            fontWeight: "900",
+                            color: "#111",
+                            marginBottom: 8,
+                            paddingHorizontal: 22,
+                        }}
+                    >
                         Select Category
                     </Text>
 
-                    {CREATE_BUSINESS_CATEGORIES.map((item) => (
+                    <ScrollView
+                        style={{ flexShrink: 1 }}
+                        contentContainerStyle={{ paddingHorizontal: 22 }}
+                        showsVerticalScrollIndicator
+                        keyboardShouldPersistTaps="handled"
+                    >
+                        {CREATE_BUSINESS_CATEGORIES.map((item) => {
+                            const visual = getCategoryChipVisual(item);
+
+                            return (
+                                <Pressable
+                                    key={item}
+                                    onPress={() => onSelect(item)}
+                                    style={{
+                                        paddingVertical: 13,
+                                        borderBottomWidth: 1,
+                                        borderBottomColor: "#F1F1F1",
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                    }}
+                                >
+                                    <View style={{ marginRight: 12 }}>
+                                        <CategoryIconBadge
+                                            visual={visual}
+                                            size="compact"
+                                            active={false}
+                                        />
+                                    </View>
+                                    <Text
+                                        style={{
+                                            flex: 1,
+                                            fontSize: 16,
+                                            fontWeight: "700",
+                                            color: "#111",
+                                        }}
+                                    >
+                                        {item}
+                                    </Text>
+                                    <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                                </Pressable>
+                            );
+                        })}
+                    </ScrollView>
+
+                    <View style={{ paddingHorizontal: 22, paddingTop: 12 }}>
                         <Pressable
-                            key={item}
-                            onPress={() => onSelect(item)}
+                            onPress={onClose}
                             style={{
-                                paddingVertical: 15,
-                                borderBottomWidth: 1,
-                                borderBottomColor: "#F1F1F1",
-                                flexDirection: "row",
+                                height: 50,
+                                borderRadius: 16,
+                                backgroundColor: "#F3F4F6",
                                 alignItems: "center",
+                                justifyContent: "center",
                             }}
                         >
-                            <Text style={{ flex: 1, fontSize: 16, fontWeight: "700", color: "#111" }}>
-                                {item}
+                            <Text style={{ fontSize: 16, fontWeight: "800", color: "#111" }}>
+                                Cancel
                             </Text>
-                            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
                         </Pressable>
-                    ))}
-
-                    <Pressable
-                        onPress={onClose}
-                        style={{
-                            marginTop: 18,
-                            height: 50,
-                            borderRadius: 16,
-                            backgroundColor: "#F3F4F6",
-                            alignItems: "center",
-                            justifyContent: "center",
-                        }}
-                    >
-                        <Text style={{ fontSize: 16, fontWeight: "800", color: "#111" }}>
-                            Cancel
-                        </Text>
-                    </Pressable>
+                    </View>
                 </View>
             </View>
         </Modal>

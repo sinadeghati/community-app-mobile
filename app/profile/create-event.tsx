@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -20,8 +20,9 @@ import { EventAddressFields } from "../../components/events/EventAddressFields";
 import { EventDateTimeFields } from "../../components/events/EventDateTimeFields";
 import type { ParsedAddress } from "../../lib/addressAutocomplete";
 import { saveCommunityEvent } from "../../lib/communityEvents";
+import { resolveDefaultEventOrganizer } from "../../lib/eventOrganizer";
 import { EVENT_FALLBACK_COVER } from "../../lib/mapEventDetails";
-import { getActiveUserId, loadUserProfile } from "../../lib/userSessionStorage";
+import { getActiveUserId } from "../../lib/userSessionStorage";
 
 export default function CreateEventScreen() {
   const params = useLocalSearchParams();
@@ -29,6 +30,7 @@ export default function CreateEventScreen() {
   const categoryParam = String(params?.category || "").trim() || undefined;
 
   const [title, setTitle] = useState("");
+  const [organizerName, setOrganizerName] = useState("");
   const [description, setDescription] = useState("");
   const [streetAddress, setStreetAddress] = useState("");
   const [city, setCity] = useState("");
@@ -39,6 +41,28 @@ export default function CreateEventScreen() {
   const [longitude, setLongitude] = useState<number | null>(null);
   const [flyerImage, setFlyerImage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const ownerId = await getActiveUserId();
+      if (!ownerId || cancelled) return;
+
+      const defaultOrganizer = await resolveDefaultEventOrganizer({
+        ownerId,
+        businessId,
+      });
+
+      if (!cancelled && defaultOrganizer) {
+        setOrganizerName(defaultOrganizer);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [businessId]);
+
   const eventDateRef = useRef<{
     eventDateIso: string | null;
     dateText: string;
@@ -99,14 +123,6 @@ export default function CreateEventScreen() {
 
     setSaving(true);
     try {
-      const profile = await loadUserProfile(ownerId);
-      const organizer = String(
-        profile?.business_name ||
-          profile?.name ||
-          profile?.username ||
-          ""
-      ).trim();
-
       const result = await saveCommunityEvent(
         {
           title,
@@ -128,7 +144,7 @@ export default function CreateEventScreen() {
         },
         {
           ownerId,
-          organizer: organizer || undefined,
+          organizer: organizerName.trim() || undefined,
         }
       );
 
@@ -233,6 +249,16 @@ export default function CreateEventScreen() {
                 placeholder="Persian Night San Diego"
                 placeholderTextColor="#999"
                 style={inputStyle}
+              />
+
+              <Text style={labelStyle}>Organizer / Host Name</Text>
+              <TextInput
+                value={organizerName}
+                onChangeText={setOrganizerName}
+                placeholder="Farir Auto, Tapesh TV, PCC, Iranian Society of San Diego"
+                placeholderTextColor="#999"
+                style={inputStyle}
+                autoCapitalize="words"
               />
 
               <Text style={labelStyle}>Description</Text>

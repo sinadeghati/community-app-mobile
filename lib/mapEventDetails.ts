@@ -40,17 +40,10 @@ export const getEventDescription = (event?: EventMapItem | null) => {
   );
 };
 
-export const getEventOrganizer = (event?: EventMapItem | null) => {
-  const organizer = String(
-    (event as Record<string, unknown>)?.organizer ||
-      (event as Record<string, unknown>)?.organizer_name ||
-      event?.business_name ||
-      (event as Record<string, unknown>)?.businessName ||
-      ""
-  ).trim();
-
-  return organizer || null;
-};
+export {
+  formatEventHostLine,
+  getEventOrganizer,
+} from "./eventOrganizer";
 
 export const getEventTicketUrl = (event?: EventMapItem | null): string | null => {
   const candidates = [

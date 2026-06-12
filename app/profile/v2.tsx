@@ -2558,31 +2558,6 @@ export default function BusinessProfileV2() {
                 />
               </Pressable>
 
-              {isBusinessOwner ? (
-                <Pressable
-                  onPress={openEdit}
-                  disabled={editNavigating}
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 14,
-                    backgroundColor: "rgba(255,255,255,0.97)",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginRight: 8,
-                    borderWidth: 1,
-                    borderColor: "rgba(229,231,235,0.95)",
-                    opacity: editNavigating ? 0.55 : 1,
-                  }}
-                >
-                  <Ionicons
-                    name="create-outline"
-                    size={20}
-                    color={theme.colors.turquoise}
-                  />
-                </Pressable>
-              ) : null}
-
               <Pressable
                 onPress={toggleFavorite}
                 style={{
@@ -2671,26 +2646,6 @@ export default function BusinessProfileV2() {
                   }}
                 />
 
-                {isBusinessOwner ? (
-                  <Pressable
-                    onPress={pickLogoImage}
-                    style={{
-                      position: "absolute",
-                      right: -2,
-                      bottom: -2,
-                      width: 32,
-                      height: 32,
-                      borderRadius: 16,
-                      backgroundColor: theme.colors.turquoise,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderWidth: 3,
-                      borderColor: "#fff",
-                    }}
-                  >
-                    <Ionicons name="camera" size={15} color="#fff" />
-                  </Pressable>
-                ) : null}
               </View>
 
               <View style={{ flex: 1, marginLeft: 14, paddingTop: 2 }}>
