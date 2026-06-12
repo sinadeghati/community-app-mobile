@@ -16,17 +16,36 @@ const SAN_DIEGO_CENTER = {
 export const MAP_CLUSTER_LAT_DELTA = 0.1;
 
 /**
- * Safe camera span limits — prevents extreme zoom-out tile collapse on MapView.
- * ~8° latitude ≈ 550+ mi; enough for metro discovery without world-scale deltas.
+ * Safe camera span limits — allow country-level pan/zoom without fighting the user.
+ * Nearby search / marker work is gated separately via MAP_NEARBY_SEARCH_MAX_*.
  */
 export const MAP_REGION_LIMITS = {
   minLatitudeDelta: 0.006,
-  maxLatitudeDelta: 8,
+  maxLatitudeDelta: 55,
   minLongitudeDelta: 0.006,
-  maxLongitudeDelta: 8,
+  maxLongitudeDelta: 55,
 } as const;
 
-/** Native map zoom floor — blocks pinch zoom-out past a multi-metro level. */
+/** Skip nearby filtering, markers, and "Search this area" above this span (~metro). */
+export const MAP_NEARBY_SEARCH_MAX_LATITUDE_DELTA = 2.5;
+export const MAP_NEARBY_SEARCH_MAX_LONGITUDE_DELTA = 2.5;
+
+export const isMapRegionTooWideForNearby = (
+  region: Pick<Region, "latitudeDelta" | "longitudeDelta">
+): boolean => {
+  if (
+    !isValidMapDelta(region.latitudeDelta) ||
+    !isValidMapDelta(region.longitudeDelta)
+  ) {
+    return true;
+  }
+  return (
+    region.latitudeDelta > MAP_NEARBY_SEARCH_MAX_LATITUDE_DELTA ||
+    region.longitudeDelta > MAP_NEARBY_SEARCH_MAX_LONGITUDE_DELTA
+  );
+};
+
+/** Native map zoom floor — country-level allowed; heavy work is gated in JS. */
 export const MAP_MIN_ZOOM_LEVEL = 4;
 
 const isValidMapDelta = (value: number) => Number.isFinite(value) && value > 0;
@@ -484,6 +503,7 @@ export function buildMapDisplay(
   region: Pick<Region, "latitudeDelta" | "longitudeDelta">
 ): MapMarkerDisplay[] {
   if (points.length === 0) return [];
+  if (isMapRegionTooWideForNearby(region)) return [];
 
   if (region.latitudeDelta <= MAP_CLUSTER_LAT_DELTA) {
     return points.map((point) => ({ type: "point", point }));

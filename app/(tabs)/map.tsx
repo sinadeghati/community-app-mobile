@@ -33,6 +33,7 @@ import MapView, { Marker, Region } from "react-native-maps";
 import {
   buildMapDisplay,
   clampMapRegion,
+  isMapRegionTooWideForNearby,
   MAP_MIN_ZOOM_LEVEL,
   regionExceedsMapLimits,
   regionForCluster,
@@ -1114,7 +1115,13 @@ export default function MapScreenV25() {
     useState<AppLocationState>(DEFAULT_APP_LOCATION);
   const [viewportAreaRefreshing, setViewportAreaRefreshing] = useState(false);
   const [viewportDirty, setViewportDirty] = useState(false);
+  const [regionTooWideForNearby, setRegionTooWideForNearby] = useState(
+    () => isMapRegionTooWideForNearby(SAN_DIEGO_REGION)
+  );
   const suppressViewportDirtyRef = useRef(false);
+  const regionChangeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const isFocused = useIsFocused();
   const isFocusedRef = useRef(isFocused);
   isFocusedRef.current = isFocused;
@@ -1155,6 +1162,11 @@ export default function MapScreenV25() {
   const commitMapRegion = useCallback((region: Region) => {
     const clamped = clampMapRegion(region);
     mapRegionRef.current = clamped;
+    const tooWide = isMapRegionTooWideForNearby(clamped);
+    setRegionTooWideForNearby((prev) => (prev === tooWide ? prev : tooWide));
+    if (tooWide) {
+      setViewportDirty(false);
+    }
     setMapRegion((prev) => (regionsAreSimilar(prev, clamped) ? prev : clamped));
   }, []);
 
@@ -1373,6 +1385,7 @@ export default function MapScreenV25() {
 
   const handleSearchThisArea = async () => {
     if (viewportAreaRefreshing) return;
+    if (isMapRegionTooWideForNearby(mapRegionRef.current)) return;
 
     dismissKeyboard();
     clearSelectedMapItem();
@@ -1737,29 +1750,60 @@ export default function MapScreenV25() {
 
   const isDiscoveryActive = isSearchMode || selectedCategory !== "All";
 
-  const handleMapRegionChangeComplete = useCallback((region: Region) => {
+  const applyMapRegionFromGesture = useCallback((region: Region) => {
     const clamped = clampMapRegion(region);
-
-    if (regionExceedsMapLimits(region)) {
-      suppressViewportDirtyRef.current = true;
-      mapRegionRef.current = clamped;
-      mapRef.current?.animateToRegion(clamped, 150);
-      setMapRegion((prev) => (regionsAreSimilar(prev, clamped) ? prev : clamped));
-      setTimeout(() => {
-        suppressViewportDirtyRef.current = false;
-      }, 200);
-      return;
-    }
-
     mapRegionRef.current = clamped;
+
+    const tooWide = isMapRegionTooWideForNearby(clamped);
+    setRegionTooWideForNearby((prev) => (prev === tooWide ? prev : tooWide));
+
     if (businessPreviewOpenRef.current) {
       pendingMapRegionRef.current = clamped;
       return;
     }
+
     setMapRegion((prev) => (regionsAreSimilar(prev, clamped) ? prev : clamped));
+
+    if (tooWide) {
+      setViewportDirty(false);
+      return;
+    }
+
     if (!suppressViewportDirtyRef.current) {
       setViewportDirty(true);
     }
+  }, []);
+
+  const handleMapRegionChangeComplete = useCallback(
+    (region: Region) => {
+      if (regionChangeDebounceRef.current) {
+        clearTimeout(regionChangeDebounceRef.current);
+      }
+
+      regionChangeDebounceRef.current = setTimeout(() => {
+        regionChangeDebounceRef.current = null;
+
+        if (regionExceedsMapLimits(region)) {
+          suppressViewportDirtyRef.current = true;
+          applyMapRegionFromGesture(clampMapRegion(region));
+          setTimeout(() => {
+            suppressViewportDirtyRef.current = false;
+          }, 100);
+          return;
+        }
+
+        applyMapRegionFromGesture(region);
+      }, 200);
+    },
+    [applyMapRegionFromGesture]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (regionChangeDebounceRef.current) {
+        clearTimeout(regionChangeDebounceRef.current);
+      }
+    };
   }, []);
 
   const mapResultEntries = useMemo(
@@ -1797,9 +1841,15 @@ export default function MapScreenV25() {
   ]);
 
   const nearbyBrowseResults = useMemo(() => {
+    if (regionTooWideForNearby) return [];
     if (isDiscoveryActive || selectedCategory !== "All") return [];
     return mapResultEntries;
-  }, [isDiscoveryActive, mapResultEntries, selectedCategory]);
+  }, [
+    regionTooWideForNearby,
+    isDiscoveryActive,
+    mapResultEntries,
+    selectedCategory,
+  ]);
 
   useEffect(() => {
     if (!selectedItem || isMapEvent(selectedItem)) {
@@ -2463,7 +2513,48 @@ export default function MapScreenV25() {
             </Pressable>
           </View>
 
-          {viewportDirty ? (
+          {regionTooWideForNearby ? (
+            <View
+              style={{
+                marginTop: 8,
+                alignItems: "center",
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  backgroundColor: "rgba(255,255,255,0.98)",
+                  borderWidth: 1,
+                  borderColor: "rgba(229,231,235,0.95)",
+                  shadowColor: "#000",
+                  shadowOpacity: 0.06,
+                  shadowRadius: 6,
+                  shadowOffset: { width: 0, height: 2 },
+                  elevation: 2,
+                }}
+              >
+                <Ionicons
+                  name="search-outline"
+                  size={15}
+                  color={theme.colors.muted}
+                />
+                <Text
+                  style={{
+                    marginLeft: 6,
+                    color: theme.colors.muted,
+                    fontWeight: "600",
+                    fontSize: 13,
+                  }}
+                >
+                  Zoom in to search this area
+                </Text>
+              </View>
+            </View>
+          ) : viewportDirty ? (
             <View
               style={{
                 marginTop: 8,
@@ -2524,7 +2615,8 @@ export default function MapScreenV25() {
               showsHorizontalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               style={{
-                marginTop: viewportDirty ? 8 : MAP_CHIP_ROW_TOP,
+                marginTop:
+                  regionTooWideForNearby || viewportDirty ? 8 : MAP_CHIP_ROW_TOP,
               }}
               contentContainerStyle={{
                 paddingRight: 4,
@@ -2802,9 +2894,11 @@ export default function MapScreenV25() {
                   {isDiscoveryActive
                     ? "Tap a result to view it on the map"
                     : selectedCategory === "All"
-                      ? `${nearbyBrowseResults.length} place${
-                          nearbyBrowseResults.length === 1 ? "" : "s"
-                        } nearby`
+                      ? regionTooWideForNearby
+                        ? "Zoom in to search this area"
+                        : `${nearbyBrowseResults.length} place${
+                            nearbyBrowseResults.length === 1 ? "" : "s"
+                          } nearby`
                       : `${displayedEvents.length} upcoming event${
                           displayedEvents.length === 1 ? "" : "s"
                         }`}
@@ -2909,7 +3003,35 @@ export default function MapScreenV25() {
               </ScrollView>
             )
           ) : selectedCategory === "All" ? (
-            nearbyBrowseResults.length === 0 ? (
+            regionTooWideForNearby ? (
+              <View
+                style={{
+                  paddingHorizontal: 16,
+                  paddingBottom: insets.bottom + 88,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.muted,
+                    textAlign: "center",
+                    paddingVertical: 20,
+                    fontSize: 14,
+                    fontWeight: "600",
+                  }}
+                >
+                  Zoom in to search this area
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.muted,
+                    textAlign: "center",
+                    fontSize: 12,
+                  }}
+                >
+                  Pinch to zoom closer, then search or browse nearby places.
+                </Text>
+              </View>
+            ) : nearbyBrowseResults.length === 0 ? (
               <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 88 }}>
                 <Text
                   style={{
