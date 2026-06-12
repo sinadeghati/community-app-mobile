@@ -1597,7 +1597,14 @@ export const prepareSessionForUser = async (
       (String(cachedProfile?.email || "").trim() || undefined),
   };
 
-  await reconcileSessionBusinessCache(userId, resolvedIdentity);
+  try {
+    await reconcileSessionBusinessCache(userId, resolvedIdentity);
+  } catch (error) {
+    logAuthEvent("prepare_session_reconcile_failed", {
+      userId,
+      error: String(error),
+    });
+  }
 };
 
 /** Logout: clear auth, session marker, and user-specific in-memory caches. */

@@ -20,6 +20,7 @@ import {
   invalidateAuthSession,
   isApiTokenInvalidResponse,
   logAuthEvent,
+  resolveStoredAccessToken,
   shouldInvalidateStoredSession,
   tryRefreshStoredAccessToken,
 } from "../../lib/authSession";
@@ -52,6 +53,8 @@ import { resolveProfileDisplayName } from "../../lib/profileDisplay";
 const USER_AVATAR =
   "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=900";
 
+const PROFILE_HYDRATION_TIMEOUT_MS = 5000;
+
 type AuthHydrationState = "loading" | "authenticated" | "guest";
 
 export default function ProfileV2Clean() {
@@ -65,9 +68,13 @@ export default function ProfileV2Clean() {
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [eventsCount, setEventsCount] = useState(0);
   const [profileIdentityLoading, setProfileIdentityLoading] = useState(false);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const activeAccountKeyRef = useRef<string | null>(null);
   const lastHydratedUserIdRef = useRef<string | null>(null);
   const hasCompletedInitialHydrationRef = useRef(false);
+  const hydrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   const profileDisplayName = resolveProfileDisplayName(profile);
 
@@ -210,10 +217,15 @@ export default function ProfileV2Clean() {
     setFavoritesCount(0);
     setEventsCount(0);
     setProfileIdentityLoading(false);
+    setProfileLoadError(null);
     setAuthHydration("guest");
     activeAccountKeyRef.current = null;
     lastHydratedUserIdRef.current = null;
     hasCompletedInitialHydrationRef.current = false;
+    if (hydrationTimeoutRef.current) {
+      clearTimeout(hydrationTimeoutRef.current);
+      hydrationTimeoutRef.current = null;
+    }
   };
 
   const ensureUserSwitchReset = (userId: string) => {
@@ -228,7 +240,16 @@ export default function ProfileV2Clean() {
     setLocalBusinesses([]);
     setMyBusinessId(null);
     setEventsCount(0);
-    setProfileIdentityLoading(true);
+    setProfileLoadError(null);
+  };
+
+  const finishProfileHydration = () => {
+    setProfileIdentityLoading(false);
+    setAuthHydration("authenticated");
+    if (hydrationTimeoutRef.current) {
+      clearTimeout(hydrationTimeoutRef.current);
+      hydrationTimeoutRef.current = null;
+    }
   };
 
   const syncFavoritesCount = React.useCallback(async () => {
@@ -292,6 +313,42 @@ export default function ProfileV2Clean() {
     React.useCallback(() => {
       let cancelled = false;
 
+      const applyFallbackProfile = async (
+        userId: string,
+        identity: ReturnType<typeof identityFromProfile>,
+        reason: string
+      ) => {
+        if (cancelled) return;
+
+        const cached = (await loadUserProfile(userId, identity)) as Record<
+          string,
+          unknown
+        > | null;
+
+        if (cached && resolveProfileDisplayName(cached)) {
+          setProfile(cached);
+          setProfileImage(
+            (cached.profileImage as string) ||
+              (cached.profile_image as string) ||
+              null
+          );
+          setProfileLoadError(null);
+          return;
+        }
+
+        const fallback = {
+          id: userId,
+          user_id: userId,
+          username: identity.username ?? `user_${userId}`,
+          email: identity.email ?? "",
+        };
+
+        setProfile(fallback);
+        setProfileLoadError(reason);
+        await saveUserProfile(userId, fallback);
+        logAuthEvent("profile_fallback_applied", { userId, reason });
+      };
+
       const refreshProfileFromApi = async (
         session: Awaited<ReturnType<typeof hydrateAuthSession>>,
         userId: string,
@@ -300,26 +357,45 @@ export default function ProfileV2Clean() {
         let identity = initialIdentity;
 
         try {
-          const fetchProfile = async (accessToken: string) =>
-            fetch(
-              "https://community-app-backend-production.up.railway.app/api/accounts/profile/",
-              {
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                },
-              }
+          const fetchProfile = async (accessToken: string) => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(
+              () => controller.abort(),
+              PROFILE_HYDRATION_TIMEOUT_MS
             );
+            try {
+              return await fetch(
+                "https://community-app-backend-production.up.railway.app/api/accounts/profile/",
+                {
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                  },
+                  signal: controller.signal,
+                }
+              );
+            } finally {
+              clearTimeout(timeoutId);
+            }
+          };
 
           let access = String(session?.access || "").trim();
           if (!access) {
             const tokens = await authStorage.getTokens();
             access = String(tokens?.access || "").trim();
           }
+          if (!access) {
+            access = (await resolveStoredAccessToken()) ?? "";
+          }
 
           if (!access) {
             logAuthEvent("profile_api_skipped_no_access_kept_cache", {
               userId,
             });
+            await applyFallbackProfile(
+              userId,
+              identity,
+              "Could not load profile. Pull to refresh or sign in again."
+            );
             return;
           }
 
@@ -373,14 +449,24 @@ export default function ProfileV2Clean() {
               }
 
               if (cancelled) return;
-              await loadLocalBusinesses(userId, identity);
-              await syncEventsCount(userId);
+              await applyFallbackProfile(
+                userId,
+                identity,
+                "Session expired. Sign in again to refresh your profile."
+              );
+              void loadLocalBusinesses(userId, identity);
+              void syncEventsCount(userId);
               return;
             }
 
             if (cancelled) return;
-            await loadLocalBusinesses(userId, identity);
-            await syncEventsCount(userId);
+            await applyFallbackProfile(
+              userId,
+              identity,
+              "Could not reach profile service. Showing saved details."
+            );
+            void loadLocalBusinesses(userId, identity);
+            void syncEventsCount(userId);
             return;
           }
 
@@ -399,14 +485,21 @@ export default function ProfileV2Clean() {
               (mergedProfile.profile_image as string) ||
               null
           );
+          setProfileLoadError(null);
           await saveUserProfile(userId, mergedProfile);
 
           const resolvedIdentity = identityFromProfile(
             mergedProfile as Record<string, unknown>
           );
-          await reconcileSessionBusinessCache(userId, resolvedIdentity);
-          await loadLocalBusinesses(userId, resolvedIdentity);
-          await syncEventsCount(userId);
+          try {
+            await reconcileSessionBusinessCache(userId, resolvedIdentity);
+          } catch (reconcileError) {
+            logAuthEvent("reconcile_session_business_cache_profile_error", {
+              error: String(reconcileError),
+            });
+          }
+          void loadLocalBusinesses(userId, resolvedIdentity);
+          void syncEventsCount(userId);
 
           if (data?.business_id) {
             setMyBusinessId(String(data.business_id));
@@ -418,12 +511,35 @@ export default function ProfileV2Clean() {
             error: String(e),
           });
           if (cancelled) return;
-          await loadLocalBusinesses(userId, identity);
-          await syncEventsCount(userId);
+          await applyFallbackProfile(
+            userId,
+            identity,
+            "Profile load failed. Showing offline details."
+          );
+          void loadLocalBusinesses(userId, identity);
+          void syncEventsCount(userId);
         }
       };
 
+      const armHydrationTimeout = (userId: string) => {
+        if (hydrationTimeoutRef.current) {
+          clearTimeout(hydrationTimeoutRef.current);
+        }
+        hydrationTimeoutRef.current = setTimeout(() => {
+          if (cancelled) return;
+          logAuthEvent("profile_hydration_timeout", { userId });
+          finishProfileHydration();
+          void applyFallbackProfile(
+            userId,
+            { username: undefined, email: undefined },
+            "Profile is taking longer than expected. Showing basic details."
+          );
+        }, PROFILE_HYDRATION_TIMEOUT_MS);
+      };
+
       const hydrateProfile = async () => {
+        setProfileLoadError(null);
+
         if (hasCompletedInitialHydrationRef.current) {
           const session = await hydrateAuthSession();
           const userId = session?.userId || (await getActiveUserId());
@@ -439,6 +555,7 @@ export default function ProfileV2Clean() {
           if (cancelled) return;
 
           ensureUserSwitchReset(userId);
+          armHydrationTimeout(userId);
           setIsLoggedIn(true);
           const cachedProfile = (await loadUserProfile(userId)) as Record<
             string,
@@ -457,6 +574,7 @@ export default function ProfileV2Clean() {
                 (cachedProfile.profile_image as string) ||
                 null
             );
+            finishProfileHydration();
             void loadLocalBusinesses(userId, identity);
             void syncEventsCount(userId);
             void syncFavoritesCount();
@@ -468,21 +586,16 @@ export default function ProfileV2Clean() {
           try {
             await refreshProfileFromApi(session, userId, identity);
             if (cancelled) return;
-            void loadLocalBusinesses(userId, identity);
-            void syncEventsCount(userId);
             void syncFavoritesCount();
           } finally {
             if (!cancelled) {
-              setProfileIdentityLoading(false);
+              finishProfileHydration();
             }
           }
           return;
         }
 
-        const showBlockingLoader = !hasCompletedInitialHydrationRef.current;
-        if (showBlockingLoader) {
-          setAuthHydration("loading");
-        }
+        setAuthHydration("loading");
 
         const session = await hydrateAuthSession();
         const userId = session?.userId || (await getActiveUserId());
@@ -498,54 +611,74 @@ export default function ProfileV2Clean() {
         if (cancelled) return;
 
         ensureUserSwitchReset(userId);
+        armHydrationTimeout(userId);
         setIsLoggedIn(true);
-        await prepareSessionForUser(userId);
 
-        let cachedProfile = (await loadUserProfile(userId)) as Record<
-          string,
-          unknown
-        > | null;
-        let identity = identityFromProfile(cachedProfile);
+        try {
+          await prepareSessionForUser(userId);
 
-        const hasCachedIdentity = Boolean(
-          resolveProfileDisplayName(cachedProfile)
-        );
+          const cachedProfile = (await loadUserProfile(userId)) as Record<
+            string,
+            unknown
+          > | null;
+          const identity = identityFromProfile(cachedProfile);
 
-        if (cachedProfile && hasCachedIdentity) {
-          setProfile(cachedProfile);
-          setProfileImage(
-            (cachedProfile.profileImage as string) ||
-              (cachedProfile.profile_image as string) ||
-              null
+          const hasCachedIdentity = Boolean(
+            resolveProfileDisplayName(cachedProfile)
           );
-        } else if (!hasCachedIdentity) {
-          setProfileIdentityLoading(true);
+
+          if (cachedProfile && hasCachedIdentity) {
+            setProfile(cachedProfile);
+            setProfileImage(
+              (cachedProfile.profileImage as string) ||
+                (cachedProfile.profile_image as string) ||
+                null
+            );
+            finishProfileHydration();
+            void loadLocalBusinesses(userId, identity);
+            void syncEventsCount(userId);
+            void syncFavoritesCount();
+            void refreshProfileFromApi(session, userId, identity);
+          } else {
+            setProfileIdentityLoading(true);
+            try {
+              await refreshProfileFromApi(session, userId, identity);
+              if (cancelled) return;
+              void syncFavoritesCount();
+            } finally {
+              if (!cancelled) {
+                finishProfileHydration();
+              }
+            }
+          }
+        } catch (hydrateError) {
+          logAuthEvent("profile_hydration_error", {
+            userId,
+            error: String(hydrateError),
+          });
+          if (!cancelled) {
+            await applyFallbackProfile(
+              userId,
+              { username: undefined, email: undefined },
+              "Could not finish loading profile."
+            );
+            finishProfileHydration();
+          }
+        } finally {
+          if (!cancelled) {
+            hasCompletedInitialHydrationRef.current = true;
+          }
         }
-
-        await loadLocalBusinesses(userId, identity);
-        await syncEventsCount(userId);
-        if (!cancelled) {
-          await syncFavoritesCount();
-        }
-
-        if (cancelled) return;
-
-        if (!hasCachedIdentity) {
-          await refreshProfileFromApi(session, userId, identity);
-          if (cancelled) return;
-          setProfileIdentityLoading(false);
-        } else {
-          void refreshProfileFromApi(session, userId, identity);
-        }
-
-        setAuthHydration("authenticated");
-        hasCompletedInitialHydrationRef.current = true;
       };
 
       void hydrateProfile();
 
       return () => {
         cancelled = true;
+        if (hydrationTimeoutRef.current) {
+          clearTimeout(hydrationTimeoutRef.current);
+          hydrationTimeoutRef.current = null;
+        }
       };
     }, [])
   );
@@ -655,11 +788,7 @@ export default function ProfileV2Clean() {
     </View>
   );
 
-  if (
-    authHydration === "loading" ||
-    profileIdentityLoading ||
-    (isLoggedIn && authHydration === "authenticated" && !profileDisplayName)
-  ) {
+  if (authHydration === "loading" || profileIdentityLoading) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
         <View
@@ -777,6 +906,29 @@ export default function ProfileV2Clean() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
       >
+        {profileLoadError ? (
+          <View
+            style={{
+              marginHorizontal: 18,
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 12,
+              backgroundColor: "#FEF3C7",
+              borderWidth: 1,
+              borderColor: "#FCD34D",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: "700",
+                color: "#92400E",
+              }}
+            >
+              {profileLoadError}
+            </Text>
+          </View>
+        ) : null}
         <View
           style={{
             paddingTop: 24,
