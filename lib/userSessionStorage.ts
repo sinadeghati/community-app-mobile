@@ -10,6 +10,19 @@ import {
   tryRefreshStoredAccessToken,
 } from "./authSession";
 import { isPlaceholderProfileName } from "./profileDisplay";
+import {
+  businessOwnerId,
+  businessOwnerUsername,
+  filterBusinessesForUser,
+  isMyBusinessForUser,
+} from "./myBusinessOwnership";
+
+export {
+  businessOwnerId,
+  businessOwnerUsername,
+  filterBusinessesForUser,
+  isMyBusinessForUser,
+} from "./myBusinessOwnership";
 
 /** Legacy global keys — never delete on logout; migrate into scoped keys on login. */
 export const LEGACY_USER_PROFILE_KEY = "user_profile_v2";
@@ -169,17 +182,6 @@ export const profileIdFromRecord = (profile: Record<string, unknown> | null) => 
   return String(raw);
 };
 
-/** Explicit owner id fields only — do not treat listing user_id as owner. */
-export const businessOwnerId = (business: Record<string, unknown>) => {
-  const raw =
-    business.owner_id ??
-    business.ownerId ??
-    business.owner_user_id ??
-    null;
-  if (raw == null || raw === "") return null;
-  return String(raw);
-};
-
 export const businessListingUserId = (business: Record<string, unknown>) => {
   const raw = business.user_id ?? business.userId ?? null;
   if (raw == null || raw === "") return null;
@@ -199,48 +201,6 @@ export const inspectBusinessOwnershipFields = (
   is_owner: business.is_owner ?? null,
   owner_is_current_user: business.owner_is_current_user ?? null,
 });
-
-/** My Businesses ownership — used by Profile tab only. */
-export const isMyBusinessForUser = (
-  business: Record<string, unknown>,
-  userId: string,
-  identity?: { username?: string; email?: string }
-): boolean => {
-  const username = String(identity?.username || "")
-    .trim()
-    .toLowerCase();
-  const email = String(identity?.email || "")
-    .trim()
-    .toLowerCase();
-
-  const explicitOwnerId = businessOwnerId(business);
-  const ownerUsername = businessOwnerUsername(business);
-  const ownerEmail = String(business.owner_email ?? business.ownerEmail ?? "")
-    .trim()
-    .toLowerCase();
-  const createdBy = String(business.createdBy ?? business.created_by ?? "")
-    .trim()
-    .toLowerCase();
-
-  if (explicitOwnerId) {
-    return explicitOwnerId === userId;
-  }
-
-  if (ownerUsername && username) {
-    return ownerUsername === username;
-  }
-
-  if (ownerEmail && email) {
-    return ownerEmail === email;
-  }
-
-  if (createdBy && (createdBy === userId || (email && createdBy === email))) {
-    return true;
-  }
-
-  // Ownerless or legacy rows with only polluted user_id/is_owner — hide from My Businesses.
-  return false;
-};
 
 export const toMyBusinessLogRow = (business: Record<string, unknown>) => ({
   id: business.id ?? null,
@@ -810,13 +770,6 @@ export const businessOwnedByUser = (
   userId: string
 ) => businessOwnerId(business) === userId;
 
-export const businessOwnerUsername = (business: Record<string, unknown>) => {
-  const raw =
-    business.owner_username ?? business.ownerUsername ?? business.owner_name ?? null;
-  if (raw == null || raw === "") return null;
-  return String(raw).trim().toLowerCase();
-};
-
 /** Strict My Businesses ownership — never include ownerless/orphan businesses. */
 export const isBusinessOwnedByCurrentUser = (
   business: Record<string, unknown>,
@@ -828,16 +781,6 @@ export const isBusinessOwnedByCurrentUser = (
     username: username ?? undefined,
     email: email ?? undefined,
   });
-
-export const filterBusinessesForUser = (
-  list: Record<string, unknown>[],
-  userId: string,
-  username?: string | null,
-  email?: string | null
-) =>
-  list.filter((item) =>
-    isBusinessOwnedByCurrentUser(item, userId, username, email)
-  );
 
 const dedupeBusinessesById = (list: Record<string, unknown>[]) => {
   const byId = new Map<string, Record<string, unknown>>();
@@ -1590,18 +1533,84 @@ export const deleteUserBusiness = async (
   return { ok: true };
 };
 
-/** Login: profile cache only — businesses load after identity (username) is known. */
-export const prepareSessionForUser = async (userId: string) => {
-  invalidateHydrateAuthCache();
-  await loadUserProfile(userId);
-  await markSessionUser(userId);
-  await AsyncStorage.setItem("is_logged_in", "true");
+/** Drop scoped business rows that fail strict ownership after auth identity is known. */
+export const reconcileSessionBusinessCache = async (
+  userId: string,
+  identity: { username?: string; email?: string }
+) => {
+  if (!identity.username && !identity.email) {
+    return;
+  }
+
+  try {
+    const scopedKey = businessesKey(userId);
+    const scopedRaw = await AsyncStorage.getItem(scopedKey);
+    if (!scopedRaw) {
+      return;
+    }
+
+    const list = JSON.parse(scopedRaw);
+    if (!Array.isArray(list)) {
+      return;
+    }
+
+    const filtered = filterBusinessesForUser(
+      list as Record<string, unknown>[],
+      userId,
+      identity.username,
+      identity.email
+    );
+
+    if (filtered.length !== list.length) {
+      logAuthEvent("reconcile_session_business_cache", {
+        userId,
+        username: identity.username ?? null,
+        before: list.length,
+        after: filtered.length,
+      });
+      await saveUserBusinesses(userId, filtered, identity.username);
+    }
+  } catch (error) {
+    logAuthEvent("reconcile_session_business_cache_failed", {
+      userId,
+      error: String(error),
+    });
+  }
 };
 
-/** Logout: auth + session flag only — keep all user-scoped profile/business data. */
+/** Login: bind session to user id and reconcile polluted scoped business cache. */
+export const prepareSessionForUser = async (
+  userId: string,
+  identity?: { username?: string; email?: string }
+) => {
+  invalidateHydrateAuthCache();
+  await markSessionUser(userId);
+  await AsyncStorage.setItem("is_logged_in", "true");
+
+  const cachedProfile = await loadUserProfile(userId, identity);
+  const resolvedIdentity = {
+    username:
+      identity?.username ??
+      (String(cachedProfile?.username || "").trim() || undefined),
+    email:
+      identity?.email ??
+      (String(cachedProfile?.email || "").trim() || undefined),
+  };
+
+  await reconcileSessionBusinessCache(userId, resolvedIdentity);
+};
+
+/** Logout: clear auth, session marker, and user-specific in-memory caches. */
 export const clearUserSession = async () => {
   invalidateHydrateAuthCache();
   await invalidateAuthSession("manual_logout");
+
+  try {
+    const { clearAllSavedFavorites } = await import("./businessFavorites");
+    await clearAllSavedFavorites();
+  } catch {
+    /* best-effort */
+  }
 };
 
 /** API supplies identity; saved local custom fields must survive login refresh. */

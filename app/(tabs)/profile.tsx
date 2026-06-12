@@ -16,6 +16,7 @@ import { theme } from "../../lib/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import authStorage from "../utils/authStorage";
 import {
+  AUTH_SESSION_USER_CHANGED,
   invalidateAuthSession,
   isApiTokenInvalidResponse,
   logAuthEvent,
@@ -38,6 +39,7 @@ import {
   adoptLegacyProfileIfMatching,
   mergeProfileWithApi,
   prepareSessionForUser,
+  reconcileSessionBusinessCache,
   saveUserProfile,
   toMyBusinessLogRow,
 } from "../../lib/userSessionStorage";
@@ -64,6 +66,7 @@ export default function ProfileV2Clean() {
   const [eventsCount, setEventsCount] = useState(0);
   const [profileIdentityLoading, setProfileIdentityLoading] = useState(false);
   const activeAccountKeyRef = useRef<string | null>(null);
+  const lastHydratedUserIdRef = useRef<string | null>(null);
   const hasCompletedInitialHydrationRef = useRef(false);
 
   const profileDisplayName = resolveProfileDisplayName(profile);
@@ -208,7 +211,24 @@ export default function ProfileV2Clean() {
     setEventsCount(0);
     setProfileIdentityLoading(false);
     setAuthHydration("guest");
+    activeAccountKeyRef.current = null;
+    lastHydratedUserIdRef.current = null;
     hasCompletedInitialHydrationRef.current = false;
+  };
+
+  const ensureUserSwitchReset = (userId: string) => {
+    if (lastHydratedUserIdRef.current === userId) {
+      return;
+    }
+
+    lastHydratedUserIdRef.current = userId;
+    activeAccountKeyRef.current = null;
+    setProfile(null);
+    setProfileImage(null);
+    setLocalBusinesses([]);
+    setMyBusinessId(null);
+    setEventsCount(0);
+    setProfileIdentityLoading(true);
   };
 
   const syncFavoritesCount = React.useCallback(async () => {
@@ -220,13 +240,26 @@ export default function ProfileV2Clean() {
   }, []);
 
   React.useEffect(() => {
-    const subscription = DeviceEventEmitter.addListener(
+    const favoritesSubscription = DeviceEventEmitter.addListener(
       FAVORITES_CHANGED_EVENT,
       () => {
         void syncFavoritesCount();
       }
     );
-    return () => subscription.remove();
+    const sessionSubscription = DeviceEventEmitter.addListener(
+      AUTH_SESSION_USER_CHANGED,
+      ({ userId }: { userId?: string | null }) => {
+        if (!userId) {
+          resetProfileState();
+          return;
+        }
+        ensureUserSwitchReset(userId);
+      }
+    );
+    return () => {
+      favoritesSubscription.remove();
+      sessionSubscription.remove();
+    };
   }, [syncFavoritesCount]);
 
   const identityFromProfile = (record: Record<string, unknown> | null) => ({
@@ -368,10 +401,11 @@ export default function ProfileV2Clean() {
           );
           await saveUserProfile(userId, mergedProfile);
 
-          await loadLocalBusinesses(
-            userId,
-            identityFromProfile(mergedProfile as Record<string, unknown>)
+          const resolvedIdentity = identityFromProfile(
+            mergedProfile as Record<string, unknown>
           );
+          await reconcileSessionBusinessCache(userId, resolvedIdentity);
+          await loadLocalBusinesses(userId, resolvedIdentity);
           await syncEventsCount(userId);
 
           if (data?.business_id) {
@@ -404,6 +438,7 @@ export default function ProfileV2Clean() {
 
           if (cancelled) return;
 
+          ensureUserSwitchReset(userId);
           setIsLoggedIn(true);
           const cachedProfile = (await loadUserProfile(userId)) as Record<
             string,
@@ -462,6 +497,7 @@ export default function ProfileV2Clean() {
 
         if (cancelled) return;
 
+        ensureUserSwitchReset(userId);
         setIsLoggedIn(true);
         await prepareSessionForUser(userId);
 

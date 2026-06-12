@@ -1,7 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { DeviceEventEmitter } from "react-native";
 import authStorage from "../app/utils/authStorage";
 
 const LAST_SESSION_USER_KEY = "session_last_user_id";
+
+export const AUTH_SESSION_USER_CHANGED = "auth-session-user-changed";
 
 export type AuthInvalidateReason =
   | "manual_logout"
@@ -72,7 +75,9 @@ export const invalidateAuthSession = async (
 ) => {
   logAuthEvent("invalidateAuthSession", { reason, ...detail });
   await authStorage.clearTokens();
+  await clearSessionUserMarker();
   await AsyncStorage.setItem("is_logged_in", "false");
+  notifySessionUserChanged(null);
 };
 
 let refreshInFlight: Promise<string | null> | null = null;
@@ -139,6 +144,15 @@ export const getLastSessionUserId = async (): Promise<string | null> => {
   return raw || null;
 };
 
+export const clearSessionUserMarker = async () => {
+  await AsyncStorage.removeItem(LAST_SESSION_USER_KEY);
+};
+
+export const notifySessionUserChanged = (userId: string | null) => {
+  DeviceEventEmitter.emit(AUTH_SESSION_USER_CHANGED, { userId });
+};
+
 export const markSessionUser = async (userId: string) => {
   await AsyncStorage.setItem(LAST_SESSION_USER_KEY, userId);
+  notifySessionUserChanged(userId);
 };

@@ -153,3 +153,15 @@ export const loadFavoriteBusinesses = async (): Promise<FavoriteBusiness[]> => {
   if (!(await isUserLoggedIn())) return [];
   return readFavoriteBusinessesFromKeys();
 };
+
+/** Remove all saved favorite flags/payloads — call on logout to prevent cross-user leakage. */
+export const clearAllSavedFavorites = async () => {
+  const keys = await AsyncStorage.getAllKeys();
+  const favoriteKeys = keys.filter(
+    (key) => key.startsWith(FLAG_PREFIX) || key.startsWith(DATA_PREFIX)
+  );
+  if (favoriteKeys.length) {
+    await AsyncStorage.multiRemove(favoriteKeys);
+    notifyFavoritesChanged();
+  }
+};

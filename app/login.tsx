@@ -50,7 +50,10 @@ export default function LoginScreen() {
       const userId = authStorage.getUserIdStringFromAccessToken(access);
       if (userId) {
         const { prepareSessionForUser } = await import("../lib/userSessionStorage");
-        await prepareSessionForUser(userId);
+        const identity = cleanUsername.includes("@")
+          ? { email: cleanUsername }
+          : { username: cleanUsername };
+        await prepareSessionForUser(userId, identity);
       }
 
       router.replace("/(tabs)/explore");

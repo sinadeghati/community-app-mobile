@@ -215,10 +215,13 @@ export default function RegisterScreen() {
         const { prepareSessionForUser, saveUserProfile } = await import(
           "../lib/userSessionStorage"
         );
-        await prepareSessionForUser(userId);
         await saveUserProfile(userId, {
           id: userId,
           user_id: userId,
+          username: cleanUsername,
+          email: cleanEmail,
+        });
+        await prepareSessionForUser(userId, {
           username: cleanUsername,
           email: cleanEmail,
         });
