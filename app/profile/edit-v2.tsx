@@ -17,8 +17,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
     getActiveUserId,
     loadUserProfile,
+    mergeProfileWithApi,
     saveUserProfile,
 } from "../../lib/userSessionStorage";
+import { fetchAccountProfile, ProfileApiError } from "../../lib/profileApi";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
@@ -145,7 +147,13 @@ export default function EditProfileV2() {
             };
 
             await saveUserProfile(userId, updatedProfile as Record<string, unknown>);
-            console.log("VERIFY SAVED USER PROFILE:", updatedProfile);
+
+            const apiData = await fetchAccountProfile();
+            const merged = mergeProfileWithApi(
+                updatedProfile as Record<string, unknown>,
+                apiData
+            );
+            await saveUserProfile(userId, merged);
 
             Alert.alert("Saved", "Your profile has been updated.", [
                 {
@@ -155,7 +163,17 @@ export default function EditProfileV2() {
             ]);
         } catch (error) {
             console.log("EDIT PROFILE SAVE ERROR:", error);
-            Alert.alert("Error", "Could not save your profile.");
+            if (error instanceof ProfileApiError) {
+                Alert.alert(
+                    "Could not verify profile",
+                    `${error.message}\n\nYour edits are saved on this device. Fix sign-in and try again.`,
+                    [{ text: "Keep editing" }]
+                );
+                return;
+            }
+            Alert.alert("Error", "Could not save your profile.", [
+                { text: "Keep editing" },
+            ]);
         } finally {
             setSaving(false);
         }

@@ -794,12 +794,16 @@ const dedupeBusinessesById = (list: Record<string, unknown>[]) => {
 
 const canClaimLegacyRecord = async (
   userId: string,
-  recordUserId: string | null
+  recordUserId: string | null,
+  identity?: { username?: string; email?: string },
+  legacy?: Record<string, unknown> | null
 ) => {
   if (recordUserId && recordUserId === userId) return true;
   if (recordUserId) return false;
-  const lastUser = await getLastSessionUserId();
-  return lastUser === userId;
+  if (legacy && identity && profileIdentityMatches(legacy, identity)) {
+    return true;
+  }
+  return false;
 };
 
 const readLegacyProfile = async (): Promise<Record<string, unknown> | null> => {
@@ -928,7 +932,7 @@ export const loadUserProfile = async (
       const legacyMatches =
         legacyId === userId ||
         (identity && profileIdentityMatches(legacy, identity)) ||
-        (await canClaimLegacyRecord(userId, legacyId));
+        (await canClaimLegacyRecord(userId, legacyId, identity, legacy));
 
       if (legacyMatches) {
         const migrated = mergeStoredUserProfiles(userId, legacy);
@@ -1093,7 +1097,7 @@ export const adoptLegacyProfileIfMatching = async (
   const matches =
     legacyId === userId ||
     profileIdentityMatches(legacy, identity) ||
-    (await canClaimLegacyRecord(userId, legacyId));
+    (await canClaimLegacyRecord(userId, legacyId, identity, legacy));
 
   if (!matches) return existing;
 
@@ -1101,6 +1105,22 @@ export const adoptLegacyProfileIfMatching = async (
   await saveUserProfile(userId, migrated);
   return migrated;
 };
+
+export const tagBusinessOwnership = (
+  business: Record<string, unknown>,
+  userId: string,
+  ownerUsername?: string
+): Record<string, unknown> => ({
+  ...business,
+  owner_id: business.owner_id ?? businessOwnerId(business) ?? userId,
+  user_id: business.user_id ?? businessListingUserId(business) ?? userId,
+  owner_username:
+    business.owner_username ?? business.ownerUsername ?? ownerUsername,
+  ownerUsername:
+    business.ownerUsername ?? business.owner_username ?? ownerUsername,
+  is_owner: true,
+  owner_is_current_user: true,
+});
 
 export const saveUserProfile = async (
   userId: string,

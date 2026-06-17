@@ -61,6 +61,7 @@ import {
   resolveBusinessCoordinatesForSave,
 } from "@/lib/businessLocation";
 import { requestDiscoverListingsRefresh } from "@/lib/discoverListingsRefresh";
+import { fetchAccountProfile, ProfileApiError } from "@/lib/profileApi";
 
 const TURQUOISE = "#11998E";
 const BG = "#F5F4F0";
@@ -242,6 +243,7 @@ export default function EditBusinessProfileScreen() {
           loadMyBusinessesForProfile,
           loadUserProfile,
           requireAuthenticatedUser,
+          tagBusinessOwnership,
           verifyBusinessOwnerAccess,
         } = await import("../../lib/userSessionStorage");
 
@@ -265,7 +267,11 @@ export default function EditBusinessProfileScreen() {
         if (!loaded) {
           const savedRaw = await AsyncStorage.getItem(businessStorageKey);
           if (savedRaw) {
-            loaded = JSON.parse(savedRaw) as Record<string, unknown>;
+            loaded = tagBusinessOwnership(
+              JSON.parse(savedRaw) as Record<string, unknown>,
+              userId,
+              identity.username
+            );
           } else if ((API as any)?.getListing) {
             loaded = (await (API as any).getListing(businessId)) as Record<
               string,
@@ -538,6 +544,22 @@ export default function EditBusinessProfileScreen() {
     try {
       setSaving(true);
 
+      const {
+        getActiveUserId,
+        loadUserProfile,
+        tagBusinessOwnership,
+        upsertUserBusiness,
+      } = await import("../../lib/userSessionStorage");
+
+      const ownerId = await getActiveUserId();
+      if (!ownerId) {
+        Alert.alert("Login required", "Please sign in to save your business.");
+        return;
+      }
+
+      const ownerProfile = await loadUserProfile(ownerId);
+      const ownerUsername = String(ownerProfile?.username || "").trim();
+
       const offeringsToSave = sanitizeBusinessOfferingsForSave(offerings);
       const updatesToSave = sanitizeBusinessUpdatesForSave(
         businessUpdates.map((item) => {
@@ -610,7 +632,8 @@ export default function EditBusinessProfileScreen() {
         return;
       }
 
-      const updatedBusiness = normalizeBusiness({
+      const updatedBusiness = tagBusinessOwnership(
+        normalizeBusiness({
         id: businessId,
         business_name: businessName,
         name: businessName,
@@ -650,7 +673,10 @@ export default function EditBusinessProfileScreen() {
         is_owner: true,
         owner_is_current_user: true,
         can_edit: true,
-      });
+        }),
+        ownerId,
+        ownerUsername
+      );
 
       logBusinessSavedCoordinates(updatedBusiness as Record<string, unknown>);
 
@@ -658,29 +684,60 @@ export default function EditBusinessProfileScreen() {
         businessStorageKey,
         JSON.stringify(updatedBusiness)
       );
+      await upsertUserBusiness(
+        ownerId,
+        updatedBusiness as Record<string, unknown>,
+        ownerUsername
+      );
 
-      const { getActiveUserId, loadUserProfile, upsertUserBusiness } =
-        await import("../../lib/userSessionStorage");
-      const ownerId = await getActiveUserId();
-      if (ownerId) {
-        const ownerProfile = await loadUserProfile(ownerId);
-        const ownerUsername = String(ownerProfile?.username || "").trim();
-        await upsertUserBusiness(
+      const listingPayload = {
+        title: businessName,
+        city: city.trim(),
+        state: state.trim().toUpperCase(),
+        description: businessBio,
+        contact_info: phone,
+        category,
+        latitude: resolved.latitude,
+        longitude: resolved.longitude,
+      };
+
+      const serverId = Number(businessId);
+      let persistedBusiness = updatedBusiness as Record<string, unknown>;
+      const hasServerListingId =
+        Number.isFinite(serverId) &&
+        serverId > 0 &&
+        String(serverId) === businessId;
+
+      if (hasServerListingId) {
+        await API.updateMyListing(serverId, listingPayload);
+        for (const uri of galleryImages) {
+          if (uri.startsWith("file:") || uri.startsWith("content:")) {
+            await API.uploadListingImage(serverId, uri);
+          }
+        }
+        await AsyncStorage.setItem(
+          `profile_v2_${persistedBusiness.id}`,
+          JSON.stringify(persistedBusiness)
+        );
+      } else {
+        const created = await API.createListing(listingPayload);
+        const newId = String(created.id);
+        if (businessId !== newId) {
+          await AsyncStorage.removeItem(businessStorageKey);
+        }
+        persistedBusiness = tagBusinessOwnership(
+          { ...updatedBusiness, id: newId },
           ownerId,
-          {
-            ...updatedBusiness,
-            owner_id: (updatedBusiness as Record<string, unknown>).owner_id ?? ownerId,
-            user_id: (updatedBusiness as Record<string, unknown>).user_id ?? ownerId,
-            owner_username:
-              (updatedBusiness as Record<string, unknown>).owner_username ??
-              ownerUsername,
-            ownerUsername:
-              (updatedBusiness as Record<string, unknown>).ownerUsername ??
-              ownerUsername,
-          },
           ownerUsername
         );
+        await AsyncStorage.setItem(
+          `profile_v2_${newId}`,
+          JSON.stringify(persistedBusiness)
+        );
+        await upsertUserBusiness(ownerId, persistedBusiness, ownerUsername);
       }
+
+      await fetchAccountProfile();
 
       requestDiscoverListingsRefresh();
 
@@ -692,7 +749,22 @@ export default function EditBusinessProfileScreen() {
       ]);
     } catch (error) {
       console.log("EDIT BUSINESS SAVE ERROR:", error);
-      Alert.alert("Error", "Could not save this business.");
+      if (error instanceof ProfileApiError) {
+        Alert.alert(
+          "Save failed",
+          `${error.message}\n\nYour edits are saved on this device.`,
+          [{ text: "Keep editing" }]
+        );
+        return;
+      }
+
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      const message =
+        status === 404
+          ? "Business API returned 404. Your edits are saved on this device."
+          : "Could not save this business to the server.";
+      Alert.alert("Save failed", message, [{ text: "Keep editing" }]);
     } finally {
       setSaving(false);
     }
