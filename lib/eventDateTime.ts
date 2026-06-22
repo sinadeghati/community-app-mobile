@@ -215,3 +215,47 @@ export const defaultEventTime = () => {
   time.setHours(19, 0, 0, 0);
   return time;
 };
+
+/** Keep optional end schedule fields aligned for display and API payloads. */
+export const syncEventEndScheduleFields = (iso?: string | null) => {
+  const trimmed = String(iso || "").trim();
+  if (!trimmed) {
+    return {
+      end_date: undefined,
+      ends_at: undefined,
+      end_time: undefined,
+      event_end_date: undefined,
+    };
+  }
+
+  const parsed = new Date(trimmed);
+  const endIso = Number.isNaN(parsed.getTime())
+    ? trimmed
+    : parsed.toISOString();
+
+  return {
+    end_date: endIso,
+    ends_at: endIso,
+    end_time: endIso,
+    event_end_date: endIso,
+  };
+};
+
+export const resolveEventEndDateTimeIso = (options: {
+  endDateIso?: string | null;
+  endDate?: string;
+  endTime?: string;
+}): string | null => {
+  if (options.endDateIso) {
+    const parsed = new Date(options.endDateIso);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  if (options.endDate) {
+    return parseEventDateTime(options.endDate, options.endTime);
+  }
+
+  return null;
+};

@@ -52,6 +52,7 @@ import { apiUrl } from "../../lib/apiConfig";
 import { confirmDeleteAccount } from "../../lib/accountActions";
 import { showComingSoon } from "../profile/comingSoon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "../../lib/i18n";
 
 const USER_AVATAR =
   "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=900";
@@ -61,6 +62,7 @@ const PROFILE_HYDRATION_TIMEOUT_MS = 5000;
 type AuthHydrationState = "loading" | "authenticated" | "guest";
 
 export default function ProfileV2Clean() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [authHydration, setAuthHydration] =
     useState<AuthHydrationState>("loading");
@@ -906,7 +908,7 @@ export default function ProfileV2Clean() {
               color: theme.colors.muted,
             }}
           >
-            Loading your profile...
+            {t("profile.loading")}
           </Text>
         </View>
       </SafeAreaView>
@@ -940,7 +942,7 @@ export default function ProfileV2Clean() {
                 color: theme.colors.charcoal,
               }}
             >
-              Welcome to IranianApp
+              {t("profile.welcomeTitle")}
             </Text>
 
             <Text
@@ -951,8 +953,7 @@ export default function ProfileV2Clean() {
                 color: theme.colors.muted,
               }}
             >
-              Sign in to manage your listings, favorites, events, and community
-              profile.
+              {t("profile.welcomeSubtitle")}
             </Text>
 
             <Pressable
@@ -967,7 +968,7 @@ export default function ProfileV2Clean() {
               }}
             >
               <Text style={{ color: "#fff", fontSize: 16, fontWeight: "900" }}>
-                Sign In
+                {t("home.signIn")}
               </Text>
             </Pressable>
 
@@ -989,7 +990,7 @@ export default function ProfileV2Clean() {
                   fontWeight: "900",
                 }}
               >
-                Create Account
+                {t("home.createAccount")}
               </Text>
             </Pressable>
           </View>
@@ -1055,7 +1056,7 @@ export default function ProfileV2Clean() {
                 letterSpacing: -0.3,
               }}
             >
-              Profile
+              {t("profile.title")}
             </Text>
 
             <Pressable
@@ -1105,8 +1106,7 @@ export default function ProfileV2Clean() {
                     lineHeight: 20,
                   }}
                 >
-                  Profile details are not available yet. Tap Edit Profile to add
-                  your information.
+                  {t("profile.profileUnavailable")}
                 </Text>
               </View>
               <Pressable
@@ -1137,7 +1137,7 @@ export default function ProfileV2Clean() {
                     fontWeight: "800",
                   }}
                 >
-                  Edit Profile
+                  {t("profile.editProfile")}
                 </Text>
               </Pressable>
             </View>
@@ -1195,7 +1195,7 @@ export default function ProfileV2Clean() {
                       }}
                       numberOfLines={1}
                     >
-                      {profileDisplayName || "Community Member"}
+                      {profileDisplayName || t("profile.communityMember")}
                     </Text>
                     {isVerifiedMember ? (
                       <Ionicons
@@ -1215,7 +1215,7 @@ export default function ProfileV2Clean() {
                     }}
                     numberOfLines={1}
                   >
-                    {profile?.email || "No email on file"}
+                    {profile?.email || t("profile.noEmail")}
                   </Text>
 
                   {!isVerifiedMember ? (
@@ -1236,7 +1236,7 @@ export default function ProfileV2Clean() {
                           fontSize: 11,
                         }}
                       >
-                        Community Member
+                        {t("profile.communityMember")}
                       </Text>
                     </View>
                   ) : null}
@@ -1271,7 +1271,7 @@ export default function ProfileV2Clean() {
                     fontWeight: "800",
                   }}
                 >
-                  Edit Profile
+                  {t("profile.editProfile")}
                 </Text>
               </Pressable>
             </>
@@ -1293,26 +1293,26 @@ export default function ProfileV2Clean() {
         >
           <StatBox
             value={String(localBusinesses.length)}
-            label="My Businesses"
+            label={t("profile.myBusinesses")}
             icon="business-outline"
             showDivider
           />
           <StatBox
             value={String(favoritesCount)}
-            label="Favorites"
+            label={t("tabs.favorites")}
             icon="heart-outline"
             showDivider
           />
           <StatBox
             value={String(profileReviewsCount)}
-            label="Reviews"
+            label={t("profile.reviews")}
             icon="star-outline"
           />
         </View>
 
         {profile?.bio ? (
           <>
-            <Text style={sectionLabelStyle}>About</Text>
+            <Text style={sectionLabelStyle}>{t("profile.about")}</Text>
             <View style={sectionCardStyle}>
               <Text
                 style={{
@@ -1328,53 +1328,58 @@ export default function ProfileV2Clean() {
           </>
         ) : null}
 
-        <Text style={sectionLabelStyle}>Business</Text>
+        <Text style={sectionLabelStyle}>{t("profile.businessSection")}</Text>
         <View style={sectionCardStyle}>
           <MenuItem
             icon="briefcase-outline"
-            title="My Businesses"
+            title={t("profile.myBusinesses")}
             subtitle={
               localBusinesses.length > 0
-                ? `${localBusinesses.length} listing${localBusinesses.length === 1 ? "" : "s"}`
-                : "View and manage your business listings"
+                ? t(
+                    localBusinesses.length === 1
+                      ? "profile.listingCount"
+                      : "profile.listingCount_plural",
+                    { count: localBusinesses.length }
+                  )
+                : t("profile.myBusinessesSubtitle")
             }
             onPress={openMyBusinesses}
           />
           <MenuItem
             icon="calendar-outline"
-            title="My Events"
-            subtitle="View and manage your community events"
+            title={t("profile.myEvents")}
+            subtitle={t("profile.myEventsSubtitle")}
             onPress={() => go("/profile/events")}
           />
           <MenuItem
             icon="add-circle-outline"
-            title="Add Business Profile"
-            subtitle="Create or connect your business page"
+            title={t("profile.addBusiness")}
+            subtitle={t("profile.addBusinessSubtitle")}
             onPress={() => router.push("/profile/create-business")}
             isLast
           />
         </View>
 
-        <Text style={sectionLabelStyle}>Account</Text>
+        <Text style={sectionLabelStyle}>{t("profile.accountSection")}</Text>
         <View style={sectionCardStyle}>
           <MenuItem
             icon="shield-checkmark-outline"
-            title="Verification"
-            subtitle="Get verified as a trusted community member"
+            title={t("profile.verification")}
+            subtitle={t("profile.verificationSubtitle")}
             onPress={() => go("/profile/verification")}
           />
 
           <MenuItem
             icon="settings-outline"
-            title="Settings"
-            subtitle="Notifications, privacy, and preferences"
+            title={t("profile.settings")}
+            subtitle={t("profile.settingsSubtitle")}
             onPress={() => go("/profile/settings")}
           />
 
           <MenuItem
             icon="log-out-outline"
-            title="Logout"
-            subtitle="Sign out from your account"
+            title={t("profile.logout")}
+            subtitle={t("profile.logoutSubtitle")}
             onPress={async () => {
               await clearUserSession();
               activeAccountKeyRef.current = null;
@@ -1382,8 +1387,8 @@ export default function ProfileV2Clean() {
               resetProfileState();
 
               Alert.alert(
-                "Logged out",
-                "You've been logged out successfully.",
+                t("profile.loggedOut"),
+                t("profile.loggedOutMessage"),
                 [
                   {
                     text: "OK",
@@ -1423,7 +1428,7 @@ export default function ProfileV2Clean() {
                 color: theme.colors.danger,
               }}
             >
-              Delete Account
+              {t("profile.deleteAccount")}
             </Text>
             <Text
               style={{
@@ -1433,7 +1438,7 @@ export default function ProfileV2Clean() {
                 color: theme.colors.muted,
               }}
             >
-              Permanent · cannot be undone
+              {t("profile.deleteAccountHint")}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={theme.colors.danger} />

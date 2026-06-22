@@ -18,13 +18,16 @@ import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import { EventAddressFields } from "../../components/events/EventAddressFields";
 import { EventDateTimeFields } from "../../components/events/EventDateTimeFields";
+import { EventTicketUrlField } from "../../components/events/EventTicketUrlField";
 import type { ParsedAddress } from "../../lib/addressAutocomplete";
 import { saveCommunityEvent } from "../../lib/communityEvents";
 import { resolveDefaultEventOrganizer } from "../../lib/eventOrganizer";
 import { EVENT_FALLBACK_COVER } from "../../lib/mapEventDetails";
 import { getActiveUserId } from "../../lib/userSessionStorage";
+import { useTranslation } from "../../lib/i18n";
 
 export default function CreateEventScreen() {
+  const { t } = useTranslation();
   const params = useLocalSearchParams();
   const businessId = String(params?.businessId || "").trim() || undefined;
   const categoryParam = String(params?.category || "").trim() || undefined;
@@ -40,6 +43,7 @@ export default function CreateEventScreen() {
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [flyerImage, setFlyerImage] = useState<string | null>(null);
+  const [ticketUrl, setTicketUrl] = useState("");
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -67,10 +71,16 @@ export default function CreateEventScreen() {
     eventDateIso: string | null;
     dateText: string;
     timeText: string;
+    endDateIso: string | null;
+    endDateText: string;
+    endTimeText: string;
   }>({
     eventDateIso: null,
     dateText: "",
     timeText: "",
+    endDateIso: null,
+    endDateText: "",
+    endTimeText: "",
   });
 
   const handleStreetAddressChange = (text: string) => {
@@ -112,12 +122,12 @@ export default function CreateEventScreen() {
 
     const ownerId = await getActiveUserId();
     if (!ownerId) {
-      Alert.alert("Login required", "Please log in to create events.");
+      Alert.alert(t("event.loginRequired"), t("event.loginToCreate"));
       return;
     }
 
     if (!eventDateRef.current.eventDateIso) {
-      Alert.alert("Date required", "Please choose a date and time for your event.");
+      Alert.alert(t("event.dateRequired"), t("event.dateRequiredBody"));
       return;
     }
 
@@ -137,6 +147,10 @@ export default function CreateEventScreen() {
           date: eventDateRef.current.dateText,
           time: eventDateRef.current.timeText,
           eventDateIso: eventDateRef.current.eventDateIso,
+          endDate: eventDateRef.current.endDateText,
+          endTime: eventDateRef.current.endTimeText,
+          endDateIso: eventDateRef.current.endDateIso,
+          ticketUrl: ticketUrl.trim() || undefined,
           businessId,
           category: categoryParam,
           image: flyerImage || undefined,
@@ -206,7 +220,7 @@ export default function CreateEventScreen() {
                   fontWeight: "700",
                 }}
               >
-                ← Back
+                {t("common.back")}
               </Text>
             </Pressable>
 
@@ -218,7 +232,7 @@ export default function CreateEventScreen() {
                 marginBottom: 10,
               }}
             >
-              Create Event
+              {t("event.createTitle")}
             </Text>
 
             <Text
@@ -229,8 +243,7 @@ export default function CreateEventScreen() {
                 lineHeight: 24,
               }}
             >
-              Create community events, business gatherings,
-              concerts, meetups, or promotions.
+              {t("event.createSubtitle")}
             </Text>
 
             <View
@@ -242,30 +255,30 @@ export default function CreateEventScreen() {
                 borderColor: "#ECE7DF",
               }}
             >
-              <Text style={labelStyle}>Event Title</Text>
+              <Text style={labelStyle}>{t("event.title")}</Text>
               <TextInput
                 value={title}
                 onChangeText={setTitle}
-                placeholder="Persian Night San Diego"
+                placeholder={t("event.titlePlaceholder")}
                 placeholderTextColor="#999"
                 style={inputStyle}
               />
 
-              <Text style={labelStyle}>Organizer / Host Name</Text>
+              <Text style={labelStyle}>{t("event.organizer")}</Text>
               <TextInput
                 value={organizerName}
                 onChangeText={setOrganizerName}
-                placeholder="Farir Auto, Tapesh TV, PCC, Iranian Society of San Diego"
+                placeholder={t("event.organizerPlaceholder")}
                 placeholderTextColor="#999"
                 style={inputStyle}
                 autoCapitalize="words"
               />
 
-              <Text style={labelStyle}>Description</Text>
+              <Text style={labelStyle}>{t("event.description")}</Text>
               <TextInput
                 value={description}
                 onChangeText={setDescription}
-                placeholder="Tell people about your event..."
+                placeholder={t("event.descriptionPlaceholder")}
                 placeholderTextColor="#999"
                 multiline
                 style={[inputStyle, { height: 120 }]}
@@ -292,7 +305,9 @@ export default function CreateEventScreen() {
                 }}
               />
 
-              <Text style={labelStyle}>Event Flyer (optional)</Text>
+              <EventTicketUrlField value={ticketUrl} onChangeText={setTicketUrl} />
+
+              <Text style={labelStyle}>{t("event.flyer")}</Text>
               <Pressable
                 onPress={() => void pickFlyerImage()}
                 style={{
@@ -310,7 +325,7 @@ export default function CreateEventScreen() {
                 />
                 <View style={{ padding: 12, alignItems: "center" }}>
                   <Text style={{ color: "#14B8A6", fontWeight: "800" }}>
-                    {flyerImage ? "Change Flyer" : "Upload Flyer"}
+                    {flyerImage ? t("event.changeFlyer") : t("event.uploadFlyer")}
                   </Text>
                 </View>
               </Pressable>
@@ -337,7 +352,7 @@ export default function CreateEventScreen() {
                       fontWeight: "800",
                     }}
                   >
-                    Create Event
+                    {t("event.createButton")}
                   </Text>
                 )}
               </Pressable>

@@ -43,6 +43,7 @@ import {
 } from "../../lib/asyncGuards";
 import { PersianMapHeroLogo } from "../../components/brand/PersianMapHeroLogo";
 import { theme } from "../../lib/theme";
+import { useTranslation } from "../../lib/i18n";
 
 const SLIDE_INTERVAL_MS = 5000;
 const SLIDE_FADE_MS = 900;
@@ -242,6 +243,7 @@ function BottomHeroGradient() {
 }
 
 export default function HomeLoginV2() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   /** Committed slide index — image + caption always use this until transition completes */
@@ -492,8 +494,8 @@ export default function HomeLoginV2() {
 
     if (!cleanUsername || !cleanPassword) {
       Alert.alert(
-        "Missing information",
-        "Please enter your username/email and password."
+        t("home.missingInfo"),
+        t("home.missingCredentials")
       );
       return;
     }
@@ -506,7 +508,7 @@ export default function HomeLoginV2() {
       const refresh = result?.refresh || result?.tokens?.refresh;
 
       if (!access) {
-        Alert.alert("Login failed", "Invalid username or password.");
+        Alert.alert(t("home.loginFailed"), t("home.invalidCredentials"));
         return;
       }
 
@@ -528,10 +530,7 @@ export default function HomeLoginV2() {
     } catch (e: unknown) {
       Alert.alert(
         "Login failed",
-        formatAuthError(
-          e,
-          "Please check your username and password and try again."
-        )
+        formatAuthError(e, t("home.loginFailedGeneric"))
       );
     } finally {
       setLoading(false);
@@ -692,7 +691,7 @@ export default function HomeLoginV2() {
                   onChangeText={setUsername}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  placeholder="Email or username"
+                  placeholder={t("home.emailPlaceholder")}
                   placeholderTextColor="rgba(107,114,128,0.8)"
                   style={styles.input}
                   returnKeyType="next"
@@ -711,7 +710,7 @@ export default function HomeLoginV2() {
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  placeholder="Password"
+                  placeholder={t("home.passwordPlaceholder")}
                   placeholderTextColor="rgba(107,114,128,0.8)"
                   style={styles.input}
                   returnKeyType="done"
@@ -730,7 +729,7 @@ export default function HomeLoginV2() {
                 onPress={() => router.push("/forgot-password")}
                 style={styles.forgotPasswordLink}
               >
-                <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+                <Text style={styles.forgotPasswordText}>{t("home.forgotPassword")}</Text>
               </Pressable>
 
               <Pressable
@@ -741,17 +740,17 @@ export default function HomeLoginV2() {
                 {loading ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.signInText}>Sign in</Text>
+                  <Text style={styles.signInText}>{t("home.signIn")}</Text>
                 )}
               </Pressable>
 
               <View style={styles.footerLinksRow}>
                 <Pressable onPress={() => router.push("/register")}>
-                  <Text style={styles.footerPrimaryText}>Create account</Text>
+                  <Text style={styles.footerPrimaryText}>{t("home.createAccount")}</Text>
                 </Pressable>
                 <Text style={styles.footerDivider}>·</Text>
                 <Pressable onPress={() => router.replace("/(tabs)/explore")}>
-                  <Text style={styles.footerSecondaryText}>Guest</Text>
+                  <Text style={styles.footerSecondaryText}>{t("profile.guestTitle")}</Text>
                 </Pressable>
               </View>
             </Animated.View>

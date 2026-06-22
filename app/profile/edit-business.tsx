@@ -16,6 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { useTranslation } from "../../lib/i18n";
 import { API } from "@/lib/api";
 import {
   BUSINESS_OFFERING_AVAILABILITY,
@@ -83,6 +84,7 @@ const DEFAULT_LOGO =
 const isValidZipCode = (zipCode: string) => /^\d{5}$/.test(zipCode.trim());
 
 export default function EditBusinessProfileScreen() {
+  const { t } = useTranslation();
   const params = useLocalSearchParams();
   const businessId = String(params?.id || "");
 
@@ -857,7 +859,7 @@ export default function EditBusinessProfileScreen() {
           </Pressable>
 
           <Text style={{ fontSize: 32, fontWeight: "900", color: TEXT }}>
-            Edit Business Profile
+            {t("business.editTitle")}
           </Text>
           <Text style={{ marginTop: 6, fontSize: 16, color: MUTED }}>
             Update your business information
@@ -947,12 +949,12 @@ export default function EditBusinessProfileScreen() {
           </ScrollView>
 
           <Section title="Business Information" />
-          <Field label="Business Name" value={businessName} setValue={setBusinessName} />
-          <Field label="Business Bio" value={businessBio} setValue={setBusinessBio} multiline />
-          <Field label="Phone Number" value={phone} setValue={setPhone} keyboardType="phone-pad" />
+          <Field label={t("business.businessName")} value={businessName} setValue={setBusinessName} />
+          <Field label={t("business.bio")} value={businessBio} setValue={setBusinessBio} multiline />
+          <Field label={t("business.phone")} value={phone} setValue={setPhone} keyboardType="phone-pad" />
           <StreetAddressAutocomplete
             variant="edit"
-            label="Street Address"
+            label={t("business.streetAddress")}
             value={streetAddress}
             onChangeText={handleStreetAddressChange}
             onAddressSelected={handleAddressSelected}
@@ -961,7 +963,7 @@ export default function EditBusinessProfileScreen() {
             state={state}
           />
           <Field
-            label="City *"
+            label={t("business.cityRequired")}
             value={city}
             setValue={(value) => {
               setCity(value);
@@ -970,7 +972,7 @@ export default function EditBusinessProfileScreen() {
             placeholder="San Diego"
           />
           <Field
-            label="State *"
+            label={t("business.stateRequired")}
             value={state}
             setValue={(value) => {
               setState(value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2));
@@ -980,7 +982,7 @@ export default function EditBusinessProfileScreen() {
             autoCapitalize="characters"
           />
           <Field
-            label="ZIP Code *"
+            label={t("business.zipCodeRequired")}
             value={zipCode}
             setValue={(value) => {
               setZipCode(value.replace(/\D/g, "").slice(0, 5));
@@ -990,10 +992,10 @@ export default function EditBusinessProfileScreen() {
             keyboardType="number-pad"
             helperText="ZIP code helps us place your business accurately on the map."
           />
-          <Field label="Website" value={website} setValue={setWebsite} />
-          <Field label="Email" value={email} setValue={setEmail} keyboardType="email-address" />
-          <Field label="Instagram" value={instagram} setValue={setInstagram} />
-          <Field label="Category" value={category} setValue={setCategory} />
+          <Field label={t("business.website")} value={website} setValue={setWebsite} />
+          <Field label={t("business.email")} value={email} setValue={setEmail} keyboardType="email-address" />
+          <Field label={t("business.instagram")} value={instagram} setValue={setInstagram} />
+          <Field label={t("business.category")} value={category} setValue={setCategory} />
 
           <Section title="Business Hours" />
           <View

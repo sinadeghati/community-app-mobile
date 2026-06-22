@@ -118,6 +118,7 @@ import {
   type BusinessUpdate,
 } from "../../lib/businessUpdates";
 import { theme } from "../../lib/theme";
+import { useTranslation } from "../../lib/i18n";
 import {
   logLoaderDone,
   logLoaderStart,
@@ -1001,6 +1002,7 @@ function MarkerPulseRing({
 }
 
 export default function MapScreenV25() {
+  const { t } = useTranslation();
   const cachedOnMount = getCachedDiscoverListings();
   const hasDisplayedMapItemsRef = useRef(Boolean(cachedOnMount?.length));
   const mapItemsLoadInFlightRef = useRef<Promise<void> | null>(null);
@@ -2390,7 +2392,7 @@ export default function MapScreenV25() {
                 onChangeText={setSearch}
                 returnKeyType="search"
                 onSubmitEditing={dismissKeyboard}
-                placeholder="Search map, events, businesses..."
+                placeholder={t("map.searchPlaceholder")}
                 placeholderTextColor="#9CA3AF"
                 style={{
                   flex: 1,
@@ -2552,7 +2554,7 @@ export default function MapScreenV25() {
                     fontSize: 13,
                   }}
                 >
-                  {viewportAreaRefreshing ? "Searching…" : "Search this area"}
+                  {viewportAreaRefreshing ? t("map.searching") : t("map.searchThisArea")}
                 </Text>
               </Pressable>
             </View>

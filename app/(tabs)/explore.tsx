@@ -76,6 +76,7 @@ import {
 import { CategoryIconBadge } from "../../components/category/CategoryIconBadge";
 import { getCategoryChipVisual } from "../../lib/categoryChipTheme";
 import { QUICK_DISCOVERY_CATEGORY_CHIPS } from "../../lib/discoverySearch";
+import { useTranslation } from "../../lib/i18n";
 
 type Listing = {
   id: number | string;
@@ -121,6 +122,21 @@ const exploreHeroShadow = {
 } as const;
 
 const categories = [...QUICK_DISCOVERY_CATEGORY_CHIPS];
+
+const CATEGORY_CHIP_LABEL_KEYS: Record<string, string> = {
+  All: "explore.categories.all",
+  Restaurant: "explore.categories.food",
+  Cafe: "explore.categories.cafe",
+  "Auto Repair": "explore.categories.auto",
+  Beauty: "explore.categories.beauty",
+  Events: "explore.categories.events",
+  Services: "explore.categories.services",
+  "Real Estate": "explore.categories.realEstate",
+  Legal: "explore.categories.legal",
+  Medical: "explore.categories.medical",
+  Insurance: "explore.categories.insurance",
+  "Home Catering": "explore.categories.homeCatering",
+};
 
 const getId = (item: Listing) => String(item?.id || "");
 
@@ -278,6 +294,8 @@ const ExploreBusinessCard = React.memo(function ExploreBusinessCard({
 });
 
 export default function ExploreScreen() {
+  const { t, isRTL } = useTranslation();
+  const titleAlign = isRTL ? "right" : "left";
   const cachedOnMount = getCachedDiscoverListings();
   const hasDisplayedListingsRef = useRef(Boolean(cachedOnMount?.length));
   const lastListingsRefreshAtRef = useRef(0);
@@ -344,26 +362,26 @@ export default function ExploreScreen() {
         if (options?.showFallbackPicker) {
           if (result.reason === "permission_denied") {
             Alert.alert(
-              "Location permission needed",
-              "Allow location access to show businesses near you, or search for a city or region instead.",
+              t("explore.locationPermission"),
+              t("explore.locationPermissionBody"),
               [
                 {
-                  text: "Search city",
+                  text: t("common.searchCity"),
                   onPress: () => setLocationPickerVisible(true),
                 },
-                { text: "Cancel", style: "cancel" },
+                { text: t("common.cancel"), style: "cancel" },
               ]
             );
           } else {
             Alert.alert(
-              "Location unavailable",
-              "We could not detect your current location. Search for a city or region instead.",
+              t("explore.locationUnavailable"),
+              t("explore.locationUnavailableBody"),
               [
                 {
-                  text: "Search city",
+                  text: t("common.searchCity"),
                   onPress: () => setLocationPickerVisible(true),
                 },
-                { text: "Cancel", style: "cancel" },
+                { text: t("common.cancel"), style: "cancel" },
               ]
             );
           }
@@ -676,7 +694,9 @@ export default function ExploreScreen() {
             color: active ? theme.colors.turquoise : theme.colors.charcoal,
           }}
         >
-          {item.label}
+          {CATEGORY_CHIP_LABEL_KEYS[item.key]
+            ? t(CATEGORY_CHIP_LABEL_KEYS[item.key])
+            : item.label}
         </Text>
       </Pressable>
     );
@@ -835,9 +855,10 @@ export default function ExploreScreen() {
                   fontWeight: "800",
                   color: theme.colors.charcoal,
                   letterSpacing: -0.5,
+                  textAlign: titleAlign,
                 }}
               >
-                Explore
+                {t("explore.title")}
               </Text>
               <Text
                 style={{
@@ -845,9 +866,10 @@ export default function ExploreScreen() {
                   color: theme.colors.muted,
                   fontSize: 13,
                   fontWeight: "600",
+                  textAlign: titleAlign,
                 }}
               >
-                Discover the heart of your community
+                {t("explore.subtitle")}
               </Text>
 
               <View
@@ -941,7 +963,7 @@ export default function ExploreScreen() {
                 <TextInput
                   value={search}
                   onChangeText={setSearch}
-                  placeholder="Search businesses, services, events..."
+                  placeholder={t("explore.searchPlaceholder")}
                   placeholderTextColor="#9CA3AF"
                   style={{
                     flex: 1,
@@ -1000,7 +1022,7 @@ export default function ExploreScreen() {
                         letterSpacing: 0.4,
                       }}
                     >
-                      PERSIAN COMMUNITY
+                      {t("explore.communityBadge")}
                     </Text>
                   </View>
 
@@ -1013,7 +1035,7 @@ export default function ExploreScreen() {
                       width: "90%",
                     }}
                   >
-                    Persian businesses & events near you
+                    {t("explore.heroTitle")}
                   </Text>
 
                   <Text
@@ -1025,7 +1047,7 @@ export default function ExploreScreen() {
                       width: "92%",
                     }}
                   >
-                    Local businesses, events, services, and culture on the map.
+                    {t("explore.heroSubtitle")}
                   </Text>
 
                   <Pressable
@@ -1040,7 +1062,7 @@ export default function ExploreScreen() {
                     }}
                   >
                     <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
-                      Open Map
+                      {t("common.openMap")}
                     </Text>
                   </Pressable>
                 </View>
@@ -1049,7 +1071,7 @@ export default function ExploreScreen() {
 
             {!isSearchMode ? (
               <>
-            <SectionHeader title="Popular Categories" />
+            <SectionHeader title={t("explore.popularCategories")} />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1067,7 +1089,7 @@ export default function ExploreScreen() {
 
             {!isSearchMode ? (
               <>
-            <SectionHeader title="Featured Businesses" />
+            <SectionHeader title={t("explore.featuredBusinesses")} />
             {featured.length > 0 ? (
               <ScrollView
                 horizontal
@@ -1103,11 +1125,11 @@ export default function ExploreScreen() {
                   lineHeight: 20,
                 }}
               >
-                {`No featured businesses in ${selectedLocation} yet.`}
+                {t("explore.noFeatured", { location: selectedLocation })}
               </Text>
             )}
 
-            <SectionHeader title="Upcoming Events" />
+            <SectionHeader title={t("explore.upcomingEvents")} />
             {locationEvents.length > 0 ? (
               <View style={{ paddingHorizontal: theme.spacing.md, gap: 10 }}>
                 {locationEvents.map((item) => (
@@ -1185,14 +1207,14 @@ export default function ExploreScreen() {
                   lineHeight: 20,
                 }}
               >
-                {`No upcoming events in ${selectedLocation} yet.`}
+                {t("explore.noEvents", { location: selectedLocation })}
               </Text>
             )}
               </>
             ) : null}
 
             <SectionHeader
-              title={isSearchMode ? "Search Results" : "Popular This Week"}
+              title={isSearchMode ? t("explore.searchResults") : t("explore.popularThisWeek")}
             />
           </>
         }
@@ -1221,7 +1243,7 @@ export default function ExploreScreen() {
                   color: theme.colors.charcoal,
                 }}
               >
-                No results found
+                {t("explore.noResultsTitle")}
               </Text>
               <Text
                 style={{
@@ -1232,7 +1254,7 @@ export default function ExploreScreen() {
                   lineHeight: 20,
                 }}
               >
-                {`Nothing matches "${search.trim()}". Try another business name, category, or event.`}
+                {t("explore.noResultsBody", { query: search.trim() })}
               </Text>
             </View>
           ) : (
@@ -1256,7 +1278,7 @@ export default function ExploreScreen() {
                   color: theme.colors.charcoal,
                 }}
               >
-                No businesses found
+                {t("explore.noBusinessesTitle")}
               </Text>
               <Text
                 style={{
@@ -1267,7 +1289,7 @@ export default function ExploreScreen() {
                   lineHeight: 20,
                 }}
               >
-                {`No businesses in ${selectedLocation} yet. Try another location or category.`}
+                {t("explore.noBusinessesInLocation", { location: selectedLocation })}
               </Text>
             </View>
           )
@@ -1305,7 +1327,7 @@ export default function ExploreScreen() {
                 marginBottom: 4,
               }}
             >
-              Change location
+              {t("explore.changeLocation")}
             </Text>
             <Text
               style={{
@@ -1314,7 +1336,7 @@ export default function ExploreScreen() {
                 marginBottom: 14,
               }}
             >
-              Search any city or region, or use your current location.
+              {t("explore.changeLocationHint")}
             </Text>
 
             <AdvancedLocationFilters
@@ -1351,7 +1373,7 @@ export default function ExploreScreen() {
                   color: theme.colors.charcoal,
                 }}
               >
-                Close
+                {t("common.close")}
               </Text>
             </Pressable>
           </View>

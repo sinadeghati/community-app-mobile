@@ -12,6 +12,12 @@ export type EventMapItem = DiscoverableListing & {
   start_date?: string;
   date?: string;
   datetime?: string;
+  end_date?: string;
+  ends_at?: string;
+  end_time?: string;
+  event_end_date?: string;
+  ticket_url?: string;
+  organizer?: string;
 };
 
 export type EventMarkerVisual = {
@@ -115,17 +121,65 @@ export const sortEventsByDate = (events: EventMapItem[]) =>
     return 0;
   });
 
-export const formatEventDateTime = (item: EventMapItem) => {
-  const eventDate = parseEventDate(item);
-  if (!eventDate) return "Date coming soon";
+export const getEventEndScheduleIso = (item: EventMapItem): string => {
+  const record = item as Record<string, unknown>;
+  const raw =
+    item.end_date ??
+    item.ends_at ??
+    item.end_time ??
+    item.event_end_date ??
+    record.endDate ??
+    record.endDateIso;
 
-  return eventDate.toLocaleString(undefined, {
+  return String(raw || "").trim();
+};
+
+export const parseEventEndDate = (item: EventMapItem): Date | null => {
+  const raw = getEventEndScheduleIso(item);
+  if (!raw) return null;
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDatePart = (date: Date) =>
+  date.toLocaleString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
   });
+
+const formatTimePart = (date: Date) =>
+  date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+export const formatEventDateTime = (item: EventMapItem) => {
+  const eventDate = parseEventDate(item);
+  if (!eventDate) return "Date coming soon";
+
+  const endDate = parseEventEndDate(item);
+  if (!endDate || endDate.getTime() <= eventDate.getTime()) {
+    return formatDatePart(eventDate);
+  }
+
+  const sameDay =
+    eventDate.getFullYear() === endDate.getFullYear() &&
+    eventDate.getMonth() === endDate.getMonth() &&
+    eventDate.getDate() === endDate.getDate();
+
+  if (sameDay) {
+    return `${eventDate.toLocaleString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    })} · ${formatTimePart(eventDate)} – ${formatTimePart(endDate)}`;
+  }
+
+  return `${formatDatePart(eventDate)} – ${formatDatePart(endDate)}`;
 };
 
 export const formatEventLocation = (item: EventMapItem) => {

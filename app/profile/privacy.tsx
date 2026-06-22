@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { showComingSoon } from "./comingSoon";
 import { loadUserSettings, saveUserSettings } from "./settingsStorage";
+import { useTranslation } from "../../lib/i18n";
 
 const BG = "#F6F5F2";
 const CARD = "#FFFFFF";
@@ -21,6 +22,8 @@ const TURQUOISE = "#11998E";
 const SOFT = "#E7F6F4";
 
 export default function PrivacySafetyScreen() {
+  const { t, isRTL } = useTranslation();
+  const textAlign = isRTL ? "right" : "left";
   const [profileVisibility, setProfileVisibility] = useState(true);
   const [locationVisibility, setLocationVisibility] = useState(true);
 
@@ -76,9 +79,10 @@ export default function PrivacySafetyScreen() {
             color: TEXT,
             letterSpacing: -0.8,
             marginBottom: 8,
+            textAlign,
           }}
         >
-          Privacy & Safety
+          {t("privacy.title")}
         </Text>
 
         <Text
@@ -87,23 +91,24 @@ export default function PrivacySafetyScreen() {
             lineHeight: 24,
             color: MUTED,
             marginBottom: 24,
+            textAlign,
           }}
         >
-          Control what others see and manage safety options. Preferences are saved on
-          this device.
+          {t("privacy.subtitle")}
         </Text>
 
-        <Text style={sectionLabelStyle}>Visibility</Text>
+        <Text style={[sectionLabelStyle, { textAlign }]}>{t("privacy.visibility")}</Text>
 
         <View style={cardStyle}>
           <PrivacyToggleRow
             icon="eye-outline"
-            title="Profile Visibility"
+            title={t("privacy.profileVisibility")}
             subtitle={
               profileVisibility
-                ? "Your profile can be viewed by the community"
-                : "Profile details hidden from public view (local preference)"
+                ? t("privacy.profileVisible")
+                : t("privacy.profileHidden")
             }
+            textAlign={textAlign}
             value={profileVisibility}
             onValueChange={(value) => {
               setProfileVisibility(value);
@@ -115,12 +120,13 @@ export default function PrivacySafetyScreen() {
 
           <PrivacyToggleRow
             icon="location-outline"
-            title="Location Visibility"
+            title={t("privacy.locationVisibility")}
             subtitle={
               locationVisibility
-                ? "Show city on profile — never your exact address"
-                : "Hide city from your public profile"
+                ? t("privacy.locationVisible")
+                : t("privacy.locationHidden")
             }
+            textAlign={textAlign}
             value={locationVisibility}
             onValueChange={(value) => {
               setLocationVisibility(value);
@@ -129,17 +135,20 @@ export default function PrivacySafetyScreen() {
           />
         </View>
 
-        <Text style={sectionLabelStyle}>Safety & moderation</Text>
+        <Text style={[sectionLabelStyle, { textAlign }]}>
+          {t("privacy.safetySection")}
+        </Text>
 
         <View style={cardStyle}>
           <PrivacyRow
             icon="ban-outline"
-            title="Blocked Users"
-            subtitle="View and manage blocked accounts"
+            title={t("privacy.blockedUsers")}
+            subtitle={t("privacy.blockedUsersSubtitle")}
+            textAlign={textAlign}
             onPress={() =>
               showComingSoon(
-                "Blocked Users",
-                "You'll be able to review and manage blocked accounts from this screen soon."
+                t("privacy.blockedComingSoonTitle"),
+                t("privacy.blockedComingSoonBody")
               )
             }
           />
@@ -148,26 +157,33 @@ export default function PrivacySafetyScreen() {
 
           <PrivacyRow
             icon="flag-outline"
-            title="Reports"
-            subtitle="Review reports and safety actions"
+            title={t("privacy.reports")}
+            subtitle={t("privacy.reportsSubtitle")}
+            textAlign={textAlign}
             onPress={() =>
               showComingSoon(
-                "Reports",
-                "Report history and moderation tools will be added in a future update."
+                t("privacy.reportsComingSoonTitle"),
+                t("privacy.reportsComingSoonBody")
               )
             }
           />
         </View>
 
         <View style={cardStyle}>
-          <Text style={{ fontSize: 18, fontWeight: "800", color: TEXT, marginBottom: 8 }}>
-            Safety note
+          <Text
+            style={{
+              fontSize: 18,
+              fontWeight: "800",
+              color: TEXT,
+              marginBottom: 8,
+              textAlign,
+            }}
+          >
+            {t("privacy.safetyNote")}
           </Text>
 
-          <Text style={{ fontSize: 14.5, lineHeight: 22, color: MUTED }}>
-            IranianApp is designed to keep precise location private. Other members should
-            see only your city or general area when location visibility is on—never a
-            street address unless you choose to share it elsewhere.
+          <Text style={{ fontSize: 14.5, lineHeight: 22, color: MUTED, textAlign }}>
+            {t("privacy.safetyNoteBody")}
           </Text>
         </View>
       </ScrollView>
@@ -179,12 +195,14 @@ function PrivacyToggleRow({
   icon,
   title,
   subtitle,
+  textAlign,
   value,
   onValueChange,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
+  textAlign: "left" | "right";
   value: boolean;
   onValueChange: (value: boolean) => void;
 }) {
@@ -211,8 +229,18 @@ function PrivacyToggleRow({
       </View>
 
       <View style={{ flex: 1, marginRight: 10 }}>
-        <Text style={{ fontSize: 16, fontWeight: "800", color: TEXT }}>{title}</Text>
-        <Text style={{ fontSize: 14, lineHeight: 20, color: MUTED, marginTop: 3 }}>
+        <Text style={{ fontSize: 16, fontWeight: "800", color: TEXT, textAlign }}>
+          {title}
+        </Text>
+        <Text
+          style={{
+            fontSize: 14,
+            lineHeight: 20,
+            color: MUTED,
+            marginTop: 3,
+            textAlign,
+          }}
+        >
           {subtitle}
         </Text>
       </View>
@@ -231,11 +259,13 @@ function PrivacyRow({
   icon,
   title,
   subtitle,
+  textAlign,
   onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
+  textAlign: "left" | "right";
   onPress?: () => void;
 }) {
   return (
@@ -263,8 +293,18 @@ function PrivacyRow({
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 16, fontWeight: "800", color: TEXT }}>{title}</Text>
-        <Text style={{ fontSize: 14, lineHeight: 20, color: MUTED, marginTop: 3 }}>
+        <Text style={{ fontSize: 16, fontWeight: "800", color: TEXT, textAlign }}>
+          {title}
+        </Text>
+        <Text
+          style={{
+            fontSize: 14,
+            lineHeight: 20,
+            color: MUTED,
+            marginTop: 3,
+            textAlign,
+          }}
+        >
           {subtitle}
         </Text>
       </View>

@@ -7,12 +7,13 @@ import {
 import { requestDiscoverListingsRefresh } from "./discoverListingsRefresh";
 import { purgeEventFromClientCaches } from "./eventListingVisibility";
 import { logDiscoverPipeline, logEventSaved } from "./eventDiagnostics";
-import { resolveEventDateTimeIso, syncEventScheduleFields } from "./eventDateTime";
+import { resolveEventDateTimeIso, resolveEventEndDateTimeIso, syncEventEndScheduleFields, syncEventScheduleFields } from "./eventDateTime";
 import {
   formatEventAddress,
   hasMinimumEventAddress,
   isValidEventZipCode,
 } from "./eventLocation";
+import { normalizeTicketUrl } from "./eventTickets";
 import {
   getEventScheduleIso,
   isUpcomingEvent,
@@ -37,6 +38,10 @@ export type CommunityEventInput = {
   date?: string;
   time?: string;
   eventDateIso?: string;
+  endDate?: string;
+  endTime?: string;
+  endDateIso?: string;
+  ticketUrl?: string;
   businessId?: string;
   category?: string;
   isPublic?: boolean;
@@ -62,6 +67,7 @@ export type CommunityEvent = EventMapItem & {
   owner_id: string;
   business_id?: string;
   organizer?: string;
+  ticket_url?: string;
   is_public: boolean;
   is_active?: boolean;
   is_published?: boolean;
@@ -308,7 +314,14 @@ export const saveCommunityEvent = async (
   }
 
   if (!hasMinimumEventAddress({ city, state })) {
-    return { ok: false, message: "City and state are required." };
+    return {
+      ok: false,
+      message: "Event location is required. Enter city and state.",
+    };
+  }
+
+  if (!location.trim()) {
+    return { ok: false, message: "Event location is required." };
   }
 
   if (zipCode && !isValidEventZipCode(zipCode)) {
@@ -324,6 +337,32 @@ export const saveCommunityEvent = async (
     return {
       ok: false,
       message: "Please choose a date and time for your event.",
+    };
+  }
+
+  const endDate = resolveEventEndDateTimeIso({
+    endDateIso: input.endDateIso,
+    endDate: input.endDate,
+    endTime: input.endTime,
+  });
+
+  if (endDate) {
+    const startMs = new Date(eventDate).getTime();
+    const endMs = new Date(endDate).getTime();
+    if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs < startMs) {
+      return {
+        ok: false,
+        message: "End date and time must be after the start.",
+      };
+    }
+  }
+
+  const ticketUrlRaw = String(input.ticketUrl || "").trim();
+  const ticketUrl = ticketUrlRaw ? normalizeTicketUrl(ticketUrlRaw) : null;
+  if (ticketUrlRaw && !ticketUrl) {
+    return {
+      ok: false,
+      message: "Please enter a valid ticket URL (https://...).",
     };
   }
 
@@ -387,6 +426,8 @@ export const saveCommunityEvent = async (
         : existingIndex >= 0
           ? events[existingIndex].organizer
           : undefined,
+    ticket_url: ticketUrl || undefined,
+    ...syncEventEndScheduleFields(endDate),
     is_public: input.isPublic !== false,
     is_active: true,
     is_published: true,

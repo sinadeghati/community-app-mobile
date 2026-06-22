@@ -28,6 +28,7 @@ import authStorage from "../utils/authStorage";
 import * as ImagePicker from "expo-image-picker";
 import { StreetAddressAutocomplete } from "../../components/business/StreetAddressAutocomplete";
 import type { ParsedAddress } from "../../lib/addressAutocomplete";
+import { useTranslation } from "../../lib/i18n";
 import {
     logBusinessCreateAddress,
     logBusinessSavedCoordinates,
@@ -122,6 +123,7 @@ const openCreatedBusinessProfile = (businessId: string) => {
 };
 
 export default function CreateBusiness() {
+    const { t } = useTranslation();
     useEffect(() => {
         let cancelled = false;
 
@@ -456,7 +458,7 @@ export default function CreateBusiness() {
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 26 }}>
                 <View style={{ flex: 1, paddingRight: 12 }}>
                     <Text style={{ fontSize: 34, fontWeight: "900", color: "#111", lineHeight: 40 }}>
-                        Create Business Profile
+                        {t("business.createProfileTitle")}
                     </Text>
                     <Text style={{ fontSize: 16, color: "#6B7280", marginTop: 12, lineHeight: 24 }}>
                         Build your business presence and connect with your community.
@@ -509,7 +511,7 @@ export default function CreateBusiness() {
             >
                 <Input
                     icon="storefront-outline"
-                    label="Business Name *"
+                    label={t("business.businessNameRequired")}
                     value={businessName}
                     onChangeText={setBusinessName}
                     placeholder="Enter your business name"
@@ -522,7 +524,7 @@ export default function CreateBusiness() {
 
                 <StreetAddressAutocomplete
                     variant="create"
-                    label="Street Address"
+                    label={t("business.streetAddress")}
                     value={streetAddress}
                     onChangeText={handleStreetAddressChange}
                     onAddressSelected={handleAddressSelected}
@@ -533,7 +535,7 @@ export default function CreateBusiness() {
 
                 <Input
                     icon="location-outline"
-                    label="City *"
+                    label={t("business.cityRequired")}
                     value={city}
                     onChangeText={(value: string) => {
                         setCity(value);
@@ -544,7 +546,7 @@ export default function CreateBusiness() {
 
                 <Input
                     icon="map-outline"
-                    label="State *"
+                    label={t("business.stateRequired")}
                     value={state}
                     onChangeText={(value: string) => {
                         setState(value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2));
@@ -569,7 +571,7 @@ export default function CreateBusiness() {
 
                 <Input
                     icon="call-outline"
-                    label="Phone Number *"
+                    label={t("business.phoneRequired")}
                     value={phone}
                     onChangeText={setPhone}
                     placeholder="(858) 555-1234"
@@ -594,7 +596,7 @@ export default function CreateBusiness() {
 
                 <Input
                     icon="document-text-outline"
-                    label="Business Description"
+                    label={t("business.description")}
                     value={description}
                     onChangeText={setDescription}
                     placeholder="Tell people about your business..."
@@ -883,7 +885,7 @@ export default function CreateBusiness() {
                     }}
                 >
                     <Text style={{ color: "#fff", fontSize: 18, fontWeight: "900" }}>
-                        {saving ? "Creating..." : "Create Business Profile"}
+                        {saving ? t("business.creating") : t("business.createButton")}
                     </Text>
                 </Pressable>
             </View>

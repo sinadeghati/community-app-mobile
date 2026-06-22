@@ -18,6 +18,7 @@ import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import { EventAddressFields } from "../../components/events/EventAddressFields";
 import { EventDateTimeFields } from "../../components/events/EventDateTimeFields";
+import { EventTicketUrlField } from "../../components/events/EventTicketUrlField";
 import type { ParsedAddress } from "../../lib/addressAutocomplete";
 import {
   getCommunityEventById,
@@ -25,9 +26,12 @@ import {
   saveCommunityEvent,
 } from "../../lib/communityEvents";
 import { EVENT_FALLBACK_COVER } from "../../lib/mapEventDetails";
+import { getEventEndScheduleIso } from "../../lib/mapEvents";
 import { getActiveUserId } from "../../lib/userSessionStorage";
+import { useTranslation } from "../../lib/i18n";
 
 export default function EditEventScreen() {
+  const { t } = useTranslation();
   const params = useLocalSearchParams();
   const eventId = String(params?.id || "");
 
@@ -42,17 +46,25 @@ export default function EditEventScreen() {
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [initialEventIso, setInitialEventIso] = useState<string | undefined>();
+  const [initialEndEventIso, setInitialEndEventIso] = useState<string | undefined>();
   const [flyerImage, setFlyerImage] = useState<string | null>(null);
+  const [ticketUrl, setTicketUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const eventDateRef = useRef<{
     eventDateIso: string | null;
     dateText: string;
     timeText: string;
+    endDateIso: string | null;
+    endDateText: string;
+    endTimeText: string;
   }>({
     eventDateIso: null,
     dateText: "",
     timeText: "",
+    endDateIso: null,
+    endDateText: "",
+    endTimeText: "",
   });
 
   useEffect(() => {
@@ -93,6 +105,9 @@ export default function EditEventScreen() {
           setLongitude(null);
         }
         setInitialEventIso(event.event_date);
+        const endIso = getEventEndScheduleIso(event);
+        setInitialEndEventIso(endIso || undefined);
+        setTicketUrl(String(event.ticket_url || "").trim());
         const existingFlyer = String(
           event.cover_image || event.image || event.image_url || ""
         ).trim();
@@ -101,6 +116,9 @@ export default function EditEventScreen() {
           eventDateIso: event.event_date,
           dateText: "",
           timeText: "",
+          endDateIso: endIso || null,
+          endDateText: "",
+          endTimeText: "",
         };
       } catch (error) {
         console.log("Edit event load error:", error);
@@ -157,12 +175,12 @@ export default function EditEventScreen() {
 
     const ownerId = await getActiveUserId();
     if (!ownerId) {
-      Alert.alert("Login required", "Please log in to edit events.");
+      Alert.alert(t("event.loginRequired"), t("event.loginToCreate"));
       return;
     }
 
     if (!eventDateRef.current.eventDateIso) {
-      Alert.alert("Date required", "Please choose a date and time for your event.");
+      Alert.alert(t("event.dateRequired"), t("event.dateRequiredBody"));
       return;
     }
 
@@ -182,6 +200,10 @@ export default function EditEventScreen() {
           date: eventDateRef.current.dateText,
           time: eventDateRef.current.timeText,
           eventDateIso: eventDateRef.current.eventDateIso,
+          endDate: eventDateRef.current.endDateText,
+          endTime: eventDateRef.current.endTimeText,
+          endDateIso: eventDateRef.current.endDateIso,
+          ticketUrl: ticketUrl.trim() || undefined,
           image: flyerImage || undefined,
           cover_image: flyerImage || undefined,
         },
@@ -248,7 +270,7 @@ export default function EditEventScreen() {
           >
             <Pressable onPress={() => router.back()} style={{ marginBottom: 20 }}>
               <Text style={{ color: "#14B8A6", fontSize: 18, fontWeight: "700" }}>
-                ← Back
+                {t("common.back")}
               </Text>
             </Pressable>
 
@@ -260,7 +282,7 @@ export default function EditEventScreen() {
                 marginBottom: 28,
               }}
             >
-              Edit Event
+              {t("event.editTitle")}
             </Text>
 
             <View
@@ -272,24 +294,24 @@ export default function EditEventScreen() {
                 borderColor: "#ECE7DF",
               }}
             >
-              <Text style={labelStyle}>Event Title</Text>
+              <Text style={labelStyle}>{t("event.title")}</Text>
               <TextInput
                 value={title}
                 onChangeText={setTitle}
                 style={inputStyle}
               />
 
-              <Text style={labelStyle}>Organizer / Host Name</Text>
+              <Text style={labelStyle}>{t("event.organizer")}</Text>
               <TextInput
                 value={organizerName}
                 onChangeText={setOrganizerName}
-                placeholder="Farir Auto, Tapesh TV, PCC, Iranian Society of San Diego"
+                placeholder={t("event.organizerPlaceholder")}
                 placeholderTextColor="#999"
                 style={inputStyle}
                 autoCapitalize="words"
               />
 
-              <Text style={labelStyle}>Description</Text>
+              <Text style={labelStyle}>{t("event.description")}</Text>
               <TextInput
                 value={description}
                 onChangeText={setDescription}
@@ -314,13 +336,16 @@ export default function EditEventScreen() {
               {initialEventIso ? (
                 <EventDateTimeFields
                   initialIso={initialEventIso}
+                  initialEndIso={initialEndEventIso}
                   onChange={(value) => {
                     eventDateRef.current = value;
                   }}
                 />
               ) : null}
 
-              <Text style={labelStyle}>Event Flyer (optional)</Text>
+              <EventTicketUrlField value={ticketUrl} onChangeText={setTicketUrl} />
+
+              <Text style={labelStyle}>{t("event.flyer")}</Text>
               <Pressable
                 onPress={() => void pickFlyerImage()}
                 style={{
@@ -338,7 +363,7 @@ export default function EditEventScreen() {
                 />
                 <View style={{ padding: 12, alignItems: "center" }}>
                   <Text style={{ color: "#14B8A6", fontWeight: "800" }}>
-                    {flyerImage ? "Change Flyer" : "Upload Flyer"}
+                    {flyerImage ? t("event.changeFlyer") : t("event.uploadFlyer")}
                   </Text>
                 </View>
               </Pressable>
@@ -359,7 +384,7 @@ export default function EditEventScreen() {
                   <ActivityIndicator color="#FFF" />
                 ) : (
                   <Text style={{ color: "#FFF", fontSize: 18, fontWeight: "800" }}>
-                    Save Changes
+                    {t("event.saveButton")}
                   </Text>
                 )}
               </Pressable>

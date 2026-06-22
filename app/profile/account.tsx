@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { confirmDeleteAccount } from "../../lib/accountActions";
 import { showComingSoon } from "./comingSoon";
+import { useTranslation } from "../../lib/i18n";
 
 const BG = "#F6F5F2";
 const CARD = "#FFFFFF";
@@ -20,6 +21,9 @@ const TURQUOISE = "#11998E";
 const SOFT = "#E7F6F4";
 
 export default function AccountScreen() {
+  const { t, isRTL } = useTranslation();
+  const textAlign = isRTL ? "right" : "left";
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
       <ScrollView
@@ -30,7 +34,6 @@ export default function AccountScreen() {
           paddingBottom: 100,
         }}
       >
-        {/* Back */}
         <Pressable
           onPress={() => router.back()}
           style={{
@@ -45,14 +48,9 @@ export default function AccountScreen() {
             marginBottom: 24,
           }}
         >
-          <Ionicons
-            name="arrow-back"
-            size={22}
-            color={TURQUOISE}
-          />
+          <Ionicons name="arrow-back" size={22} color={TURQUOISE} />
         </Pressable>
 
-        {/* Header */}
         <Text
           style={{
             fontSize: 34,
@@ -60,9 +58,10 @@ export default function AccountScreen() {
             color: TEXT,
             letterSpacing: -0.8,
             marginBottom: 8,
+            textAlign,
           }}
         >
-          Account
+          {t("account.title")}
         </Text>
 
         <Text
@@ -71,33 +70,32 @@ export default function AccountScreen() {
             lineHeight: 24,
             color: MUTED,
             marginBottom: 24,
+            textAlign,
           }}
         >
-          Manage your profile, security, password,
-          and account settings.
+          {t("account.subtitle")}
         </Text>
 
-        {/* Profile Info */}
         <View style={cardStyle}>
           <AccountRow
             icon="person-outline"
-            title="Profile Information"
-            subtitle="Update your name, username, bio, and profile photo"
-            onPress={() =>
-              router.push("/profile/edit-v2")
-            }
+            title={t("account.profileInfo")}
+            subtitle={t("account.profileInfoSubtitle")}
+            textAlign={textAlign}
+            onPress={() => router.push("/profile/edit-v2")}
           />
 
           <Divider />
 
           <AccountRow
             icon="mail-outline"
-            title="Email Address"
-            subtitle="Email management and verification"
+            title={t("account.emailAddress")}
+            subtitle={t("account.emailSubtitle")}
+            textAlign={textAlign}
             onPress={() =>
               showComingSoon(
-                "Email management",
-                "You'll be able to update and verify your email address from this screen in a future release."
+                t("account.emailComingSoonTitle"),
+                t("account.emailComingSoonBody")
               )
             }
           />
@@ -106,22 +104,23 @@ export default function AccountScreen() {
 
           <AccountRow
             icon="lock-closed-outline"
-            title="Change Password"
-            subtitle="Update and secure your password"
+            title={t("account.changePassword")}
+            subtitle={t("account.changePasswordSubtitle")}
+            textAlign={textAlign}
             onPress={() => router.push("/profile/change-password")}
           />
         </View>
 
-        {/* Security */}
         <View style={cardStyle}>
           <AccountRow
             icon="shield-checkmark-outline"
-            title="Login & Security"
-            subtitle="Device sessions and account protection"
+            title={t("account.loginSecurity")}
+            subtitle={t("account.loginSecuritySubtitle")}
+            textAlign={textAlign}
             onPress={() =>
               showComingSoon(
-                "Login & Security",
-                "Session management, two-factor authentication, and device controls are planned for a future release."
+                t("account.loginSecurityComingSoonTitle"),
+                t("account.loginSecurityComingSoonBody")
               )
             }
           />
@@ -130,13 +129,13 @@ export default function AccountScreen() {
 
           <AccountRow
             icon="trash-outline"
-            title="Delete Account"
-            subtitle="Permanently remove your account"
+            title={t("account.deleteAccount")}
+            subtitle={t("account.deleteAccountSubtitle")}
+            textAlign={textAlign}
             onPress={confirmDeleteAccount}
           />
         </View>
 
-        {/* Note */}
         <View style={cardStyle}>
           <Text
             style={{
@@ -144,9 +143,10 @@ export default function AccountScreen() {
               fontWeight: "800",
               color: TEXT,
               marginBottom: 8,
+              textAlign,
             }}
           >
-            Security Note
+            {t("account.securityNote")}
           </Text>
 
           <Text
@@ -154,11 +154,10 @@ export default function AccountScreen() {
               fontSize: 14.5,
               lineHeight: 22,
               color: MUTED,
+              textAlign,
             }}
           >
-            IranianApp should protect user identity,
-            passwords, and personal information with
-            secure authentication and privacy controls.
+            {t("account.securityNoteBody")}
           </Text>
         </View>
       </ScrollView>
@@ -170,11 +169,13 @@ function AccountRow({
   icon,
   title,
   subtitle,
+  textAlign,
   onPress,
 }: {
-  icon: any;
+  icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
+  textAlign: "left" | "right";
   onPress?: () => void;
 }) {
   return (
@@ -198,11 +199,7 @@ function AccountRow({
           marginRight: 14,
         }}
       >
-        <Ionicons
-          name={icon}
-          size={21}
-          color={TURQUOISE}
-        />
+        <Ionicons name={icon} size={21} color={TURQUOISE} />
       </View>
 
       <View style={{ flex: 1 }}>
@@ -211,6 +208,7 @@ function AccountRow({
             fontSize: 16,
             fontWeight: "800",
             color: TEXT,
+            textAlign,
           }}
         >
           {title}
@@ -222,6 +220,7 @@ function AccountRow({
             lineHeight: 20,
             color: MUTED,
             marginTop: 3,
+            textAlign,
           }}
         >
           {subtitle}
@@ -229,11 +228,7 @@ function AccountRow({
       </View>
 
       {onPress ? (
-        <Ionicons
-          name="chevron-forward"
-          size={22}
-          color="#9CA3AF"
-        />
+        <Ionicons name="chevron-forward" size={22} color="#9CA3AF" />
       ) : null}
     </Pressable>
   );

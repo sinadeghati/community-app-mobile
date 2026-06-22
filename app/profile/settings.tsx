@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
     SafeAreaView,
     ScrollView,
@@ -11,10 +11,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { showComingSoon } from "./comingSoon";
 import {
-    AppLanguage,
     loadUserSettings,
     saveUserSettings,
 } from "./settingsStorage";
+import { useTranslation } from "../../lib/i18n";
+import type { AppLocale } from "../../lib/i18n";
 
 const BG = "#F6F5F2";
 const CARD = "#FFFFFF";
@@ -25,16 +26,15 @@ const TURQUOISE = "#11998E";
 const SOFT = "#E7F6F4";
 
 export default function SettingsScreen() {
+    const { t, locale, setLocale, isRTL } = useTranslation();
     const [notifications, setNotifications] = useState(true);
     const [locationVisibility, setLocationVisibility] = useState(true);
-    const [language, setLanguage] = useState<AppLanguage>("en");
 
     useEffect(() => {
         const loadSettings = async () => {
             const saved = await loadUserSettings();
             setNotifications(saved.notifications ?? true);
             setLocationVisibility(saved.locationVisibility ?? true);
-            setLanguage(saved.language === "fa-preview" ? "fa-preview" : "en");
         };
 
         loadSettings();
@@ -44,20 +44,11 @@ export default function SettingsScreen() {
         await saveUserSettings(partial);
     };
 
-    const selectLanguage = async (next: AppLanguage) => {
-        if (next === "fa-preview") {
-            showComingSoon(
-                "Persian language",
-                "Persian (Farsi) is in preview. Your preference will be saved, and the app will continue in English until this feature launches."
-            );
-            setLanguage("fa-preview");
-            await persist({ language: "fa-preview" });
-            return;
-        }
-
-        setLanguage("en");
-        await persist({ language: "en" });
+    const selectLanguage = async (next: AppLocale) => {
+        await setLocale(next);
     };
+
+    const chevronName = "chevron-forward" as const;
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
@@ -83,7 +74,11 @@ export default function SettingsScreen() {
                         marginBottom: 24,
                     }}
                 >
-                    <Ionicons name="arrow-back" size={22} color={TURQUOISE} />
+                    <Ionicons
+                        name="arrow-back"
+                        size={22}
+                        color={TURQUOISE}
+                    />
                 </Pressable>
 
                 <Text
@@ -93,9 +88,10 @@ export default function SettingsScreen() {
                         color: TEXT,
                         letterSpacing: -0.8,
                         marginBottom: 10,
+                        textAlign: isRTL ? "right" : "left",
                     }}
                 >
-                    Settings
+                    {t("settings.title")}
                 </Text>
 
                 <Text
@@ -104,17 +100,18 @@ export default function SettingsScreen() {
                         lineHeight: 24,
                         color: MUTED,
                         marginBottom: 24,
+                        textAlign: isRTL ? "right" : "left",
                     }}
                 >
-                    Manage your app preferences, privacy, notifications, and account
-                    options.
+                    {t("settings.subtitle")}
                 </Text>
 
                 <View style={cardStyle}>
                     <SettingRow
                         icon="notifications-outline"
-                        title="Notifications"
-                        subtitle="Business updates, messages, and events"
+                        title={t("settings.notifications")}
+                        subtitle={t("settings.notificationsSubtitle")}
+                        isRTL={isRTL}
                         right={
                             <Switch
                                 value={notifications}
@@ -132,12 +129,13 @@ export default function SettingsScreen() {
 
                     <SettingRow
                         icon="location-outline"
-                        title="Location Visibility"
+                        title={t("settings.locationVisibility")}
                         subtitle={
                             locationVisibility
-                                ? "Your city may appear on your profile"
-                                : "City hidden from your public profile"
+                                ? t("settings.locationVisible")
+                                : t("settings.locationHidden")
                         }
+                        isRTL={isRTL}
                         right={
                             <Switch
                                 value={locationVisibility}
@@ -152,88 +150,102 @@ export default function SettingsScreen() {
                     />
                 </View>
 
-                <Text style={sectionLabelStyle}>Language</Text>
+                <Text style={[sectionLabelStyle, { textAlign: isRTL ? "right" : "left" }]}>
+                    {t("settings.language")}
+                </Text>
 
                 <View style={cardStyle}>
                     <LanguageRow
-                        label="English"
-                        subtitle="Active · app UI in English"
-                        selected={language === "en"}
-                        onPress={() => selectLanguage("en")}
+                        label={t("settings.english")}
+                        subtitle={t("settings.englishSubtitle")}
+                        selected={locale === "en"}
+                        isRTL={isRTL}
+                        onPress={() => void selectLanguage("en")}
                     />
                     <Divider />
                     <LanguageRow
-                        label="Persian (Farsi)"
-                        subtitle="Preview · Coming soon"
-                        selected={language === "fa-preview"}
-                        comingSoon
-                        onPress={() => selectLanguage("fa-preview")}
+                        label={t("settings.persian")}
+                        subtitle={t("settings.persianSubtitle")}
+                        selected={locale === "fa"}
+                        isRTL={isRTL}
+                        onPress={() => void selectLanguage("fa")}
                     />
                 </View>
 
-                <Text style={sectionLabelStyle}>Privacy</Text>
+                <Text style={[sectionLabelStyle, { textAlign: isRTL ? "right" : "left" }]}>
+                    {t("settings.privacy")}
+                </Text>
 
                 <View style={cardStyle}>
                     <SettingRow
                         icon="shield-checkmark-outline"
-                        title="Privacy & Safety"
-                        subtitle="Visibility, blocked users, and reports"
+                        title={t("settings.privacySafety")}
+                        subtitle={t("settings.privacySafetySubtitle")}
+                        isRTL={isRTL}
                         onPress={() => router.push("/profile/privacy")}
-                        right={<Chevron />}
+                        right={<Chevron name={chevronName} />}
                     />
                 </View>
 
-                <Text style={sectionLabelStyle}>Business</Text>
+                <Text style={[sectionLabelStyle, { textAlign: isRTL ? "right" : "left" }]}>
+                    {t("settings.business")}
+                </Text>
 
                 <View style={cardStyle}>
                     <SettingRow
                         icon="business-outline"
-                        title="Business Tools"
-                        subtitle="Verification, visibility, and insights"
+                        title={t("settings.businessTools")}
+                        subtitle={t("settings.businessToolsSubtitle")}
+                        isRTL={isRTL}
                         onPress={() =>
                             showComingSoon(
-                                "Business Tools",
+                                t("settings.businessTools"),
                                 "Verification, featured placement, ads, and performance insights are on the roadmap for business owners."
                             )
                         }
-                        right={<Chevron />}
+                        right={<Chevron name={chevronName} />}
                     />
 
                     <Divider />
 
                     <SettingRow
                         icon="card-outline"
-                        title="Billing & Plans"
-                        subtitle="Subscriptions and promotions"
+                        title={t("settings.billing")}
+                        subtitle={t("settings.billingSubtitle")}
+                        isRTL={isRTL}
                         onPress={() =>
                             showComingSoon(
-                                "Billing & Plans",
+                                t("settings.billing"),
                                 "Premium subscriptions and business promotion tools will be available in a future release."
                             )
                         }
-                        right={<Chevron />}
+                        right={<Chevron name={chevronName} />}
                     />
                 </View>
 
-                <Text style={sectionLabelStyle}>Account</Text>
+                <Text style={[sectionLabelStyle, { textAlign: isRTL ? "right" : "left" }]}>
+                    {t("settings.account")}
+                </Text>
 
                 <View style={cardStyle}>
                     <SettingRow
                         icon="person-circle-outline"
-                        title="Account"
-                        subtitle="Profile, security, and login settings"
+                        title={t("settings.account")}
+                        subtitle={t("settings.accountSubtitle")}
+                        isRTL={isRTL}
                         onPress={() => router.push("/profile/account")}
-                        right={<Chevron />}
+                        right={<Chevron name={chevronName} />}
                     />
 
                     <Divider />
 
                     <SettingRow
                         icon="information-circle-outline"
-                        title="About IranianApp"
-                        subtitle="Version, mission, and support"
+                        title={t("settings.about")}
+                        subtitle={t("settings.aboutSubtitle")}
+                        isRTL={isRTL}
                         onPress={() => router.push("/profile/about")}
-                        right={<Chevron />}
+                        right={<Chevron name={chevronName} />}
                     />
                 </View>
             </ScrollView>
@@ -245,13 +257,13 @@ function LanguageRow({
     label,
     subtitle,
     selected,
-    comingSoon,
+    isRTL,
     onPress,
 }: {
     label: string;
     subtitle: string;
     selected: boolean;
-    comingSoon?: boolean;
+    isRTL: boolean;
     onPress: () => void;
 }) {
     return (
@@ -264,37 +276,23 @@ function LanguageRow({
             }}
         >
             <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text style={{ fontSize: 16, fontWeight: "800", color: TEXT }}>
-                        {label}
-                    </Text>
-                    {comingSoon ? (
-                        <View
-                            style={{
-                                backgroundColor: SOFT,
-                                paddingHorizontal: 8,
-                                paddingVertical: 3,
-                                borderRadius: 999,
-                            }}
-                        >
-                            <Text
-                                style={{
-                                    fontSize: 10,
-                                    fontWeight: "800",
-                                    color: TURQUOISE,
-                                }}
-                            >
-                                COMING SOON
-                            </Text>
-                        </View>
-                    ) : null}
-                </View>
+                <Text
+                    style={{
+                        fontSize: 16,
+                        fontWeight: "800",
+                        color: TEXT,
+                        textAlign: isRTL ? "right" : "left",
+                    }}
+                >
+                    {label}
+                </Text>
                 <Text
                     style={{
                         fontSize: 13.5,
                         lineHeight: 19,
                         color: MUTED,
                         marginTop: 3,
+                        textAlign: isRTL ? "right" : "left",
                     }}
                 >
                     {subtitle}
@@ -323,8 +321,16 @@ function SettingRow({
     title,
     subtitle,
     right,
+    isRTL,
     onPress,
-}: any) {
+}: {
+    icon: keyof typeof Ionicons.glyphMap;
+    title: string;
+    subtitle: string;
+    right?: React.ReactNode;
+    isRTL: boolean;
+    onPress?: () => void;
+}) {
     return (
         <Pressable
             onPress={onPress}
@@ -343,7 +349,7 @@ function SettingRow({
                     backgroundColor: SOFT,
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 13,
+                    marginEnd: 13,
                 }}
             >
                 <Ionicons name={icon} size={21} color={TURQUOISE} />
@@ -356,6 +362,7 @@ function SettingRow({
                         fontWeight: "800",
                         color: TEXT,
                         marginBottom: 3,
+                        textAlign: isRTL ? "right" : "left",
                     }}
                 >
                     {title}
@@ -366,6 +373,7 @@ function SettingRow({
                         fontSize: 13.5,
                         lineHeight: 19,
                         color: MUTED,
+                        textAlign: isRTL ? "right" : "left",
                     }}
                 >
                     {subtitle}
@@ -377,8 +385,8 @@ function SettingRow({
     );
 }
 
-function Chevron() {
-    return <Ionicons name="chevron-forward" size={21} color="#9CA3AF" />;
+function Chevron({ name }: { name: keyof typeof Ionicons.glyphMap }) {
+    return <Ionicons name={name} size={21} color="#9CA3AF" />;
 }
 
 function Divider() {
@@ -410,5 +418,6 @@ const sectionLabelStyle = {
     letterSpacing: 0.6,
     textTransform: "uppercase" as const,
     marginBottom: 10,
-    marginLeft: 4,
+    marginStart: 4,
+    marginEnd: 4,
 };

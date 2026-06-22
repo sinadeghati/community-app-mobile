@@ -37,6 +37,7 @@ import {
 import type { EventMapItem } from "../../lib/mapEvents";
 import { ensureLoggedInForSave } from "../../lib/savedActions";
 import { theme } from "../../lib/theme";
+import { useTranslation } from "../../lib/i18n";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1497366754035-f200968a6e72?q=80&w=900";
@@ -62,6 +63,7 @@ const cardStyle = {
 };
 
 export default function FavoritesScreen() {
+  const { t } = useTranslation();
   const [businesses, setBusinesses] = useState<FavoriteBusiness[]>([]);
   const [events, setEvents] = useState<EventMapItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -241,7 +243,7 @@ export default function FavoritesScreen() {
 
   const formatBusinessLocation = (item: FavoriteBusiness) => {
     if (item.address?.trim()) return item.address.trim();
-    return [item.city, item.state].filter(Boolean).join(", ") || "Address not available";
+    return [item.city, item.state].filter(Boolean).join(", ") || t("favorites.addressUnavailable");
   };
 
   const showSkeleton = loading && !showContent;
@@ -346,7 +348,7 @@ export default function FavoritesScreen() {
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search saved businesses and events..."
+            placeholder={t("favorites.searchPlaceholder")}
             placeholderTextColor="#9CA3AF"
             style={{
               flex: 1,
@@ -371,13 +373,13 @@ export default function FavoritesScreen() {
 
         <SectionTitle
           icon="heart"
-          title="Saved Businesses"
+          title={t("favorites.savedBusinesses")}
           count={showSkeleton ? 0 : filteredBusinesses.length}
           accent={theme.colors.danger}
         />
 
         {loggedIn && !showSkeleton && filteredBusinesses.length === 0 ? (
-          <EmptyHint text="Businesses you favorite will appear here." />
+          <EmptyHint text={t("favorites.savedBusinessesEmpty")} />
         ) : null}
 
         {!showSkeleton
@@ -478,13 +480,13 @@ export default function FavoritesScreen() {
 
         <SectionTitle
           icon="calendar"
-          title="Interested Events"
+          title={t("favorites.interestedEvents")}
           count={showSkeleton ? 0 : filteredEvents.length}
           accent={theme.colors.eventPurple}
         />
 
         {loggedIn && !showSkeleton && filteredEvents.length === 0 ? (
-          <EmptyHint text="Events you mark as interested will appear here." />
+          <EmptyHint text={t("favorites.interestedEventsEmpty")} />
         ) : null}
 
         {!showSkeleton

@@ -1,16 +1,16 @@
-
-// app/_layout.tsx
 import React from "react";
 import { Stack } from "expo-router";
+import { LanguageProvider } from "../lib/i18n/LanguageProvider";
 
 export default function RootLayout() {
   return (
-    <Stack
-      initialRouteName="(tabs)"
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
+    <LanguageProvider>
+      <Stack
+        initialRouteName="(tabs)"
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
       {/* صفحه لاگین (اولین صفحه) */}
       <Stack.Screen
         name="login"
@@ -50,6 +50,7 @@ export default function RootLayout() {
           headerShown: false,
         }}
       />
-    </Stack>
+      </Stack>
+    </LanguageProvider>
   );
 }

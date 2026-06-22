@@ -50,22 +50,15 @@ export {
   getEventOrganizer,
 } from "./eventOrganizer";
 
-export const getEventTicketUrl = (event?: EventMapItem | null): string | null => {
-  const candidates = [
-    (event as Record<string, unknown>)?.ticket_url,
-    (event as Record<string, unknown>)?.tickets_url,
-    (event as Record<string, unknown>)?.ticketUrl,
-    event?.website,
-  ];
-
-  for (const raw of candidates) {
-    const value = String(raw || "").trim();
-    if (!value) continue;
-    if (/^https?:\/\//i.test(value)) return value;
-  }
-
-  return null;
-};
+export {
+  getBuyTicketsLabel,
+  getEventTicketUrl,
+  getTicketProvider,
+  getTicketProviderLabel,
+  isValidTicketUrl,
+  normalizeTicketUrl,
+  openEventTicketUrl,
+} from "./eventTickets";
 
 export const getEventAddressQuery = (event: EventMapItem) => {
   const formatted = formatEventLocation(event);

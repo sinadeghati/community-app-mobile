@@ -1,8 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { normalizeStoredLocale } from "../../lib/i18n/resources";
 
 const KEY = "user_settings_v1";
 
-export type AppLanguage = "en" | "fa-preview";
+export type AppLanguage = "en" | "fa";
 
 export type UserSettings = {
   notifications?: boolean;
@@ -22,7 +23,11 @@ export async function loadUserSettings(): Promise<UserSettings> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
     if (!raw) return { ...DEFAULT_USER_SETTINGS };
-    return { ...DEFAULT_USER_SETTINGS, ...JSON.parse(raw) };
+    const parsed = { ...DEFAULT_USER_SETTINGS, ...JSON.parse(raw) };
+    return {
+      ...parsed,
+      language: normalizeStoredLocale(parsed.language),
+    };
   } catch {
     return { ...DEFAULT_USER_SETTINGS };
   }

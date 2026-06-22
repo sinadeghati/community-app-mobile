@@ -4,7 +4,6 @@ import {
   Alert,
   Image,
   ImageBackground,
-  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -32,18 +31,22 @@ import {
   getEventDescription,
   getEventOrganizer,
   openEventDirections,
+  getBuyTicketsLabel,
   getEventTicketUrl,
   getEventTitle,
   isEventSaved,
   loadMapEventSnapshot,
+  openEventTicketUrl,
   saveMapEventSnapshot,
   toggleEventSaved,
   type EventMapItem,
 } from "../../lib/mapEventDetails";
 import { ensureLoggedInForSave } from "../../lib/savedActions";
 import { theme } from "../../lib/theme";
+import { useTranslation } from "../../lib/i18n";
 
 export default function EventDetailsScreen() {
+  const { t } = useTranslation();
   const params = useLocalSearchParams();
   const eventId = String(params?.id || "");
 
@@ -180,7 +183,7 @@ export default function EventDetailsScreen() {
 
   const onTickets = () => {
     if (!ticketUrl) return;
-    Linking.openURL(ticketUrl);
+    void openEventTicketUrl(ticketUrl);
   };
 
   const onEditEvent = () => {
@@ -192,12 +195,12 @@ export default function EventDetailsScreen() {
 
   const onDeleteEvent = () => {
     Alert.alert(
-      "Delete event",
-      "Delete this event permanently?",
+      t("event.deleteTitle"),
+      t("event.deleteConfirm"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: t("common.delete"),
           style: "destructive",
           onPress: () => {
             void (async () => {
@@ -245,7 +248,7 @@ export default function EventDetailsScreen() {
               color: theme.colors.charcoal,
             }}
           >
-            Event not found
+            {t("event.notFound")}
           </Text>
         </View>
       </SafeAreaView>
@@ -337,19 +340,19 @@ export default function EventDetailsScreen() {
           >
             <DetailRow
               icon="calendar-outline"
-              label="Date & time"
+              label={t("event.detailsDateTime")}
               value={formatEventDateTime(event)}
             />
             <DetailRow
               icon="location-outline"
-              label="Location"
+              label={t("event.detailsLocation")}
               value={formatEventLocation(event)}
               isLast={!organizer}
             />
             {organizer ? (
               <DetailRow
                 icon="business-outline"
-                label="Organizer / Host"
+                label={t("event.detailsOrganizer")}
                 value={organizer}
                 isLast
               />
@@ -375,7 +378,7 @@ export default function EventDetailsScreen() {
                 marginBottom: 8,
               }}
             >
-              About this event
+              {t("event.detailsAbout")}
             </Text>
             <Text
               style={{
@@ -388,6 +391,35 @@ export default function EventDetailsScreen() {
             </Text>
           </View>
 
+          {ticketUrl ? (
+            <Pressable
+              onPress={onTickets}
+              style={{
+                marginTop: theme.spacing.md,
+                backgroundColor: theme.colors.eventPurple,
+                borderRadius: theme.radius.md,
+                paddingVertical: 16,
+                paddingHorizontal: theme.spacing.md,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                ...theme.shadow.soft,
+              }}
+            >
+              <Ionicons name="ticket-outline" size={20} color="#FFFFFF" />
+              <Text
+                style={{
+                  marginLeft: 8,
+                  color: "#FFFFFF",
+                  fontSize: 16,
+                  fontWeight: "900",
+                }}
+              >
+                {getBuyTicketsLabel(event) || t("event.buyTickets")}
+              </Text>
+            </Pressable>
+          ) : null}
+
           <View
             style={{
               marginTop: theme.spacing.md,
@@ -396,15 +428,15 @@ export default function EventDetailsScreen() {
               gap: 10,
             }}
           >
-            <ActionChip icon="share-outline" label="Share" onPress={shareEvent} />
+            <ActionChip icon="share-outline" label={t("common.share")} onPress={shareEvent} />
             <ActionChip
               icon="navigate-outline"
-              label="Directions"
+              label={t("common.directions")}
               onPress={openDirections}
             />
             <ActionChip
               icon={saved ? "heart" : "heart-outline"}
-              label={saved ? "Interested ✓" : "Interested"}
+              label={saved ? t("event.interestedSaved") : t("event.interested")}
               onPress={onToggleSaved}
               accent
             />
@@ -412,48 +444,17 @@ export default function EventDetailsScreen() {
               <>
                 <ActionChip
                   icon="create-outline"
-                  label="Edit"
+                  label={t("common.edit")}
                   onPress={onEditEvent}
                   accent
                 />
                 <ActionChip
                   icon="trash-outline"
-                  label="Delete"
+                  label={t("common.delete")}
                   onPress={onDeleteEvent}
                 />
               </>
             ) : null}
-            {ticketUrl ? (
-              <ActionChip
-                icon="open-outline"
-                label="Tickets"
-                onPress={onTickets}
-                accent
-              />
-            ) : (
-              <View
-                style={{
-                  flex: 1,
-                  minWidth: "46%",
-                  paddingVertical: 12,
-                  paddingHorizontal: 14,
-                  borderRadius: theme.radius.sm,
-                  backgroundColor: theme.colors.softCard,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: "700",
-                    color: theme.colors.muted,
-                  }}
-                >
-                  Tickets coming soon
-                </Text>
-              </View>
-            )}
           </View>
         </View>
       </ScrollView>
