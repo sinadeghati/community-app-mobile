@@ -101,6 +101,82 @@ const parseStateCode = (raw: string) => {
   return US_STATE_ABBREV[value.toLowerCase()] || value.slice(0, 2).toUpperCase();
 };
 
+type HouseNumberQuery = {
+  houseNumber: string;
+  streetQuery: string;
+  hasHouseNumber: boolean;
+  fullStreetLine: string;
+};
+
+/** Leading house number + street, e.g. "4440 Twain Avenue", "123 Main St". */
+export const parseHouseNumberFromQuery = (query: string): HouseNumberQuery => {
+  const trimmed = query.trim();
+  const match = trimmed.match(/^(\d+[A-Za-z]?(?:-\d+[A-Za-z]?)?)\s+(.+)$/);
+
+  if (!match) {
+    return {
+      houseNumber: "",
+      streetQuery: trimmed,
+      hasHouseNumber: false,
+      fullStreetLine: trimmed,
+    };
+  }
+
+  return {
+    houseNumber: match[1],
+    streetQuery: match[2].trim(),
+    hasHouseNumber: true,
+    fullStreetLine: trimmed,
+  };
+};
+
+const STREET_SUFFIX_MAP: Record<string, string> = {
+  st: "street",
+  str: "street",
+  ave: "avenue",
+  av: "avenue",
+  blvd: "boulevard",
+  dr: "drive",
+  rd: "road",
+  ln: "lane",
+  ct: "court",
+  pl: "place",
+  pkwy: "parkway",
+  hwy: "highway",
+  cir: "circle",
+};
+
+const normalizeStreetName = (value: string) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[.,#]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => STREET_SUFFIX_MAP[token] || token)
+    .join(" ");
+
+const streetNamesMatch = (left: string, right: string) => {
+  const a = normalizeStreetName(left);
+  const b = normalizeStreetName(right);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+};
+
+const isRoadOnlyNominatimResult = (result: NominatimResult) => {
+  const address = result.address;
+  if (!address) return true;
+  if (address.house_number) return false;
+  return result.class === "highway" || result.addresstype === "road";
+};
+
+const dedupeNominatimResults = (results: NominatimResult[]) => {
+  const byId = new Map<string, NominatimResult>();
+  for (const result of results) {
+    byId.set(String(result.place_id), result);
+  }
+  return Array.from(byId.values());
+};
+
 const formatSuggestionLabel = (
   parsed: ParsedAddress,
   displayName?: string
@@ -170,6 +246,270 @@ export type PlaceSearchSuggestion = {
   longitude: number;
 };
 
+export type AddressSearchBias = {
+  latitude: number;
+  longitude: number;
+  /** Nominatim viewbox: west, north, east, south */
+  viewbox?: {
+    west: number;
+    south: number;
+    east: number;
+    north: number;
+  };
+};
+
+/** Default San Diego County bias when device location is unavailable. */
+export const SAN_DIEGO_ADDRESS_BIAS: AddressSearchBias = {
+  latitude: 32.7157,
+  longitude: -117.1611,
+  viewbox: {
+    west: -117.35,
+    south: 32.53,
+    east: -116.85,
+    north: 33.05,
+  },
+};
+
+export type AddressSearchOptions = {
+  bias?: AddressSearchBias | null;
+  city?: string;
+  state?: string;
+};
+
+const distanceKm = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+) => {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const buildAddressSearchQuery = (
+  query: string,
+  options?: AddressSearchOptions
+) => {
+  const trimmed = query.trim();
+  if (!trimmed) return trimmed;
+
+  const city = options?.city?.trim();
+  const state = options?.state?.trim()?.toUpperCase();
+
+  if (city) {
+    const cityPattern = new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    const statePattern = state
+      ? new RegExp(`\\b${state.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
+      : null;
+
+    if (!cityPattern.test(trimmed)) {
+      return `${trimmed}, ${city}${state ? `, ${state}` : ""}`;
+    }
+
+    if (state && !statePattern?.test(trimmed)) {
+      return `${trimmed}, ${state}`;
+    }
+
+    return trimmed;
+  }
+
+  if (
+    !/\b(ca|california)\b/i.test(trimmed) &&
+    !/\b(san diego|la jolla|chula vista|escondido)\b/i.test(trimmed)
+  ) {
+    return `${trimmed}, San Diego, CA`;
+  }
+
+  return trimmed;
+};
+
+const buildStructuredStreetParam = (
+  query: string,
+  houseCtx: HouseNumberQuery
+) => {
+  const firstSegment = query.split(",")[0]?.trim() || query.trim();
+  if (houseCtx.hasHouseNumber) {
+    return firstSegment;
+  }
+  return firstSegment;
+};
+
+const appendViewboxParams = (
+  params: URLSearchParams,
+  bias?: AddressSearchBias | null
+) => {
+  const box = bias?.viewbox;
+  if (!box) return;
+
+  params.set(
+    "viewbox",
+    `${box.west},${box.north},${box.east},${box.south}`
+  );
+  params.set("bounded", "0");
+};
+
+const fetchNominatimResults = async (
+  params: URLSearchParams
+): Promise<NominatimResult[]> => {
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+    {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "PersianMapMobile/1.0",
+      },
+    }
+  );
+
+  if (!response.ok) return [];
+
+  const results = (await response.json()) as NominatimResult[];
+  return Array.isArray(results) ? results : [];
+};
+
+const applyHouseNumberFromQuery = (
+  parsed: ParsedAddress,
+  result: NominatimResult,
+  houseCtx: HouseNumberQuery
+): ParsedAddress => {
+  if (!houseCtx.hasHouseNumber) {
+    return parsed;
+  }
+
+  const resultHouse = String(result.address?.house_number || "").trim();
+  const resultRoad = String(
+    result.address?.road || result.address?.pedestrian || ""
+  ).trim();
+
+  if (resultHouse && resultHouse !== houseCtx.houseNumber) {
+    return parsed;
+  }
+
+  if (resultHouse === houseCtx.houseNumber) {
+    return parsed;
+  }
+
+  if (!resultRoad || !streetNamesMatch(houseCtx.streetQuery, resultRoad)) {
+    return parsed;
+  }
+
+  const streetAddress = `${houseCtx.houseNumber} ${resultRoad}`.trim();
+  const nextParsed = {
+    ...parsed,
+    streetAddress,
+  };
+
+  return {
+    ...nextParsed,
+    formatted: formatSuggestionLabel(nextParsed, result.display_name),
+  };
+};
+
+const rankAddressResults = (
+  results: NominatimResult[],
+  bias: AddressSearchBias,
+  query: string,
+  houseCtx: HouseNumberQuery
+) => {
+  const preferredState = "CA";
+  const localRadiusKm = 90;
+  const queryStreet = query.split(",")[0]?.trim().toLowerCase() || "";
+
+  const scored = results
+    .map((result) => {
+      const latitude = Number(result.lat);
+      const longitude = Number(result.lon);
+      const parsed = parseNominatimResult(result);
+      const distance =
+        Number.isFinite(latitude) && Number.isFinite(longitude)
+          ? distanceKm(bias.latitude, bias.longitude, latitude, longitude)
+          : Number.POSITIVE_INFINITY;
+      const state = parsed?.state || "";
+      const city = parsed?.city || "";
+      const stateBoost =
+        state === preferredState ? 0 : state ? 250 : 120;
+      const sanDiegoBoost = /san diego/i.test(city) ? -40 : 0;
+
+      let matchBoost = 0;
+      const resultHouse = String(result.address?.house_number || "").trim();
+      const resultRoad = String(
+        result.address?.road || result.address?.pedestrian || ""
+      ).trim();
+      const streetLine = String(parsed?.streetAddress || "").toLowerCase();
+
+      if (houseCtx.hasHouseNumber) {
+        if (resultHouse === houseCtx.houseNumber) {
+          matchBoost -= 900;
+          if (streetNamesMatch(houseCtx.streetQuery, resultRoad)) {
+            matchBoost -= 200;
+          }
+        } else if (resultHouse) {
+          matchBoost += 500;
+        } else if (streetNamesMatch(houseCtx.streetQuery, resultRoad)) {
+          matchBoost -= 350;
+        } else if (isRoadOnlyNominatimResult(result)) {
+          matchBoost += 250;
+        }
+      }
+
+      if (queryStreet && streetLine) {
+        if (streetLine === queryStreet) {
+          matchBoost -= 300;
+        } else if (
+          streetLine.startsWith(queryStreet) ||
+          queryStreet.startsWith(streetLine)
+        ) {
+          matchBoost -= 150;
+        }
+      }
+
+      return {
+        result,
+        distance,
+        score: distance + stateBoost + sanDiegoBoost + matchBoost,
+      };
+    })
+    .sort((a, b) => a.score - b.score);
+
+  const local = scored.filter((entry) => entry.distance <= localRadiusKm);
+  return (local.length > 0 ? local : scored).map((entry) => entry.result);
+};
+
+const resultsToAddressSuggestions = (
+  results: NominatimResult[],
+  houseCtx: HouseNumberQuery
+): AddressSuggestion[] => {
+  const suggestions: AddressSuggestion[] = [];
+  const seenLabels = new Set<string>();
+
+  for (const result of results) {
+    const baseParsed = parseNominatimResult(result);
+    if (!baseParsed) continue;
+
+    const parsed = applyHouseNumberFromQuery(baseParsed, result, houseCtx);
+    const label = formatSuggestionLabel(parsed, result.display_name);
+    const labelKey = label.toLowerCase();
+    if (seenLabels.has(labelKey)) continue;
+    seenLabels.add(labelKey);
+
+    suggestions.push({
+      id: String(result.place_id),
+      label,
+      parsed,
+    });
+  }
+
+  return suggestions;
+};
+
 /** City / region / place search — shared Nominatim stack, no hardcoded cities. */
 export const searchPlaceSuggestions = async (
   query: string
@@ -230,54 +570,97 @@ export const searchPlaceSuggestions = async (
 };
 
 export const searchAddressSuggestions = async (
-  query: string
+  query: string,
+  options?: AddressSearchOptions
 ): Promise<AddressSuggestion[]> => {
   const trimmed = query.trim();
   if (trimmed.length < 3) {
     return [];
   }
 
-  const params = new URLSearchParams({
-    q: trimmed,
+  const bias = options?.bias ?? SAN_DIEGO_ADDRESS_BIAS;
+  const houseCtx = parseHouseNumberFromQuery(trimmed);
+  const searchQuery = buildAddressSearchQuery(trimmed, options);
+  const city = options?.city?.trim();
+  const state = options?.state?.trim();
+
+  const baseParams = {
     format: "json",
     addressdetails: "1",
-    limit: "6",
+    limit: "12",
     countrycodes: "us",
-  });
+  };
 
-  const response = await fetch(
-    `https://nominatim.openstreetmap.org/search?${params.toString()}`,
-    {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "PersianMapMobile/1.0",
-      },
+  try {
+    const requests: Promise<NominatimResult[]>[] = [
+      (async () => {
+        const params = new URLSearchParams({ ...baseParams, q: searchQuery });
+        appendViewboxParams(params, bias);
+        return fetchNominatimResults(params);
+      })(),
+    ];
+
+    if (searchQuery !== trimmed) {
+      requests.push(
+        (async () => {
+          const params = new URLSearchParams({ ...baseParams, q: trimmed });
+          appendViewboxParams(params, bias);
+          return fetchNominatimResults(params);
+        })()
+      );
     }
-  );
 
-  if (!response.ok) {
+    if (houseCtx.hasHouseNumber) {
+      requests.push(
+        (async () => {
+          const params = new URLSearchParams({
+            ...baseParams,
+            street: buildStructuredStreetParam(trimmed, houseCtx),
+          });
+          if (city) params.set("city", city);
+          if (state) params.set("state", state);
+          appendViewboxParams(params, bias);
+          return fetchNominatimResults(params);
+        })()
+      );
+    }
+
+    const batches = await Promise.all(requests);
+    let results = dedupeNominatimResults(batches.flat());
+
+    if (results.length === 0 && searchQuery !== trimmed) {
+      const fallbackParams = new URLSearchParams({
+        ...baseParams,
+        q: trimmed,
+      });
+      appendViewboxParams(fallbackParams, bias);
+      results = await fetchNominatimResults(fallbackParams);
+    }
+
+    if (results.length === 0) {
+      return [];
+    }
+
+    const ranked = rankAddressResults(results, bias, trimmed, houseCtx);
+
+    if (houseCtx.hasHouseNumber) {
+      const matching = ranked.filter((result) => {
+        const resultHouse = String(result.address?.house_number || "").trim();
+        const resultRoad = String(
+          result.address?.road || result.address?.pedestrian || ""
+        ).trim();
+        if (resultHouse === houseCtx.houseNumber) return true;
+        return streetNamesMatch(houseCtx.streetQuery, resultRoad);
+      });
+      if (matching.length > 0) {
+        return resultsToAddressSuggestions(matching, houseCtx).slice(0, 6);
+      }
+    }
+
+    return resultsToAddressSuggestions(ranked, houseCtx).slice(0, 6);
+  } catch {
     return [];
   }
-
-  const results = (await response.json()) as NominatimResult[];
-  if (!Array.isArray(results)) {
-    return [];
-  }
-
-  const suggestions: AddressSuggestion[] = [];
-
-  for (const result of results) {
-    const parsed = parseNominatimResult(result);
-    if (!parsed) continue;
-
-    suggestions.push({
-      id: String(result.place_id),
-      label: formatSuggestionLabel(parsed, result.display_name),
-      parsed,
-    });
-  }
-
-  return suggestions;
 };
 
 export type StructuredAddressQuery = {

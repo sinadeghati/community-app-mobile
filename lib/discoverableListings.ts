@@ -13,6 +13,14 @@ import {
 } from "./discoverySearch";
 import { getMapLat } from "./mapCoordinates";
 import { setCachedDiscoverListings } from "./discoverListingsCache";
+import {
+  buildDisplayableListingContext,
+  filterDisplayableDiscoverableListings,
+  filterLocalDiscoveryCandidates,
+  pruneOrphanedLocalBusinessProfiles,
+} from "./businessListingVisibility";
+import { filterDisplayableEventListings } from "./eventListingVisibility";
+import { isNonProductionApi } from "./apiConfig";
 
 export type DiscoverableListing = {
   id: number | string;
@@ -653,6 +661,10 @@ export const matchesDiscoverySearchFilter = (
   const trimmed = query.trim();
   if (!trimmed) return true;
 
+  if (matchesListingSearch(item, trimmed)) {
+    return true;
+  }
+
   const categoryIntent = findDiscoveryFilterKey(trimmed, [
     ...DISCOVERY_CATEGORY_FILTERS,
   ]);
@@ -662,7 +674,7 @@ export const matchesDiscoverySearchFilter = (
     return matchesListingCategory(item, categoryIntent);
   }
 
-  return matchesListingSearch(item, trimmed);
+  return false;
 };
 
 /** Search AND category — both must pass; empty search does not bypass category. */
@@ -813,18 +825,37 @@ export const loadDiscoverableListings = async (): Promise<DiscoverableListing[]>
 
   console.log("[discover] community event ids", communityEvents.map(getListingId));
 
+  if (isNonProductionApi()) {
+    await pruneOrphanedLocalBusinessProfiles(apiListings);
+  }
+
+  const listingContext = await buildDisplayableListingContext();
+  const filteredProfiles = filterLocalDiscoveryCandidates(
+    apiListings,
+    profiles,
+    listingContext
+  );
+  const filteredLocal = filterLocalDiscoveryCandidates(
+    apiListings,
+    local,
+    listingContext
+  );
+
   const merged = mergeListingsById(apiListings, [
-    ...profiles,
-    ...local,
+    ...filteredProfiles,
+    ...filteredLocal,
     ...communityEvents,
   ]);
 
-  const mergedEventIds = merged
+  const filtered = await filterDisplayableDiscoverableListings(merged);
+  const eventFiltered = await filterDisplayableEventListings(filtered);
+
+  const mergedEventIds = eventFiltered
     .filter((item) => isEventListing(item))
     .map(getListingId);
   console.log("[discover] merged event ids", mergedEventIds);
 
-  setCachedDiscoverListings(merged);
+  setCachedDiscoverListings(eventFiltered);
   logLoaderDone("loadDiscoverableListings");
-  return merged;
+  return eventFiltered;
 };

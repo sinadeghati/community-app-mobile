@@ -1,10 +1,12 @@
 // app/listing/[id].tsx
+// @deprecated Legacy listing detail screen. All business profile navigation must use /profile/v2.
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Image, ActivityIndicator, ScrollView, Alert, Button, TouchableOpacity} from "react-native";
 import { Linking } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { API } from "../../lib/api"; // اگر مسیرت فرق دارد، فقط همین import را مطابق پروژه‌ات کن
+import { API_BASE_URL } from "../../lib/apiConfig";
 import authStorage from "../utils/authStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -181,6 +183,16 @@ export default function ListingDetails() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const [MyUserId, setMyUserId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const listingId = String(id || "").trim();
+    if (!listingId) return;
+
+    router.replace({
+      pathname: "/profile/v2",
+      params: { id: listingId },
+    });
+  }, [id, router]);
   
 
 
@@ -252,7 +264,7 @@ const isOwner =
           return;
         }
 
-        const res = await fetch(`${API_BASE()}/listings/${id}/`);
+        const res = await fetch(`${API_BASE_URL}/listings/${id}/`);
         if (!res.ok) {
           if (!mounted) return;
           setListing(null);
@@ -568,16 +580,6 @@ const isOwner =
   </SafeAreaView>
 );
 
-}
-
-/**
- * اگر پروژه‌ات API_BASE را جای دیگری تعریف کرده، این تابع را حذف کن
- * و همان BASE_URL / API URL خودت را استفاده کن.
- */
-function API_BASE() {
-  // اگر در api.ts BASE_URL داری، بهتره همون را import کنی.
-  // اینجا فقط برای اینکه فایل مستقل باشد.
-  return "https://community-app-backend-production.up.railway.app/api"
 }
 
 const styles = StyleSheet.create({

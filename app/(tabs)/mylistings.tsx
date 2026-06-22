@@ -176,7 +176,7 @@ export default function MyListingsScreen() {
 
   const goListingDetails = (id: string) => {
     router.push({
-      pathname: "/listing/[id]",
+      pathname: "/profile/v2",
       params: { id },
     });
   };

@@ -3,7 +3,11 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "expo start",
+    "start": "cross-env EXPO_PUBLIC_API_ENV=development expo start",
+    "start:dev": "cross-env EXPO_PUBLIC_API_ENV=development expo start",
+    "start:staging": "cross-env EXPO_PUBLIC_API_ENV=staging expo start",
+    "start:production": "cross-env EXPO_PUBLIC_API_ENV=production expo start",
+    "verify:api": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-api-environments.ps1",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
@@ -48,6 +52,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "cross-env": "^7.0.3",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"

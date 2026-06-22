@@ -1,0 +1,45 @@
+---
+description: Branch strategy and release workflow — develop first, never ship untested to main
+alwaysApply: true
+---
+
+# Release workflow (mandatory)
+
+## Branches
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Production only. Must stay stable. **No feature work.** |
+| `develop` | All active development. Default branch for Cursor work. |
+
+**Never commit new features, fixes, UI, routing, or refactors directly to `main`.**
+
+## Environments
+
+| Env | Use |
+|-----|-----|
+| **development** | Cursor work, experiments, breaking changes OK (`npm run start:dev`) |
+| **staging** | QA / device testing — production-like config (`npm run start:staging`) |
+| **production** | Stable user-facing builds only (`npm run start:production`) |
+
+Do not use production API or production builds to validate new work.
+
+## Required flow
+
+Feature → `develop` → internal test → staging validation → regression checklist → approval → merge `develop` → `main` → production release
+
+## Before every commit (on `develop`)
+
+1. Confirm current branch is `develop` (not `main`).
+2. List **changed files** and **affected screens** in the commit/PR summary.
+3. Note routing or cache-touching changes explicitly.
+
+## Before merge to `main`
+
+1. Complete `docs/REGRESSION_CHECKLIST.md`.
+2. If any item fails: fix on `develop`, do **not** merge.
+3. Staging validation required for user-facing changes.
+
+## Protected areas
+
+Treat production as read-only for development. Major in-flight features (Events, Messaging, Ticketing, Payments, Premium, Business Tools) must not destabilize production users.

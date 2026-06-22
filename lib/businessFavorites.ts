@@ -1,6 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { isUserLoggedIn } from "./businessReviews";
 import { notifyFavoritesChanged } from "./favoritesRefresh";
+import {
+  isDeletedBusinessId,
+  loadDeletedBusinessIds,
+} from "./deletedBusinessRegistry";
 
 export type FavoriteBusiness = {
   id: string;
@@ -75,11 +79,14 @@ export const loadFavoriteBusinessMap = async (): Promise<
 
   const keys = await AsyncStorage.getAllKeys();
   const favMap: Record<string, boolean> = {};
+  const deletedIds = await loadDeletedBusinessIds();
 
   keys.forEach((key) => {
     if (key.startsWith(FLAG_PREFIX) && !key.includes("data")) {
       const id = key.replace(FLAG_PREFIX, "");
-      favMap[id] = true;
+      if (!isDeletedBusinessId(id, deletedIds)) {
+        favMap[id] = true;
+      }
     }
   });
 
@@ -131,9 +138,10 @@ export const toggleBusinessFavorite = async (
 const readFavoriteBusinessesFromKeys = async (): Promise<FavoriteBusiness[]> => {
   const keys = await AsyncStorage.getAllKeys();
   const dataKeys = keys.filter((key) => key.startsWith(DATA_PREFIX));
-  const result = await AsyncStorage.multiGet(dataKeys);
+  const pairs = await AsyncStorage.multiGet(dataKeys);
+  const deletedIds = await loadDeletedBusinessIds();
 
-  return result
+  const favorites = pairs
     .map(([, value]) => {
       if (!value) return null;
       try {
@@ -142,7 +150,26 @@ const readFavoriteBusinessesFromKeys = async (): Promise<FavoriteBusiness[]> => 
         return null;
       }
     })
-    .filter((item): item is FavoriteBusiness => Boolean(item?.id));
+    .filter((item): item is FavoriteBusiness => {
+      if (!item?.id) return false;
+      if (isDeletedBusinessId(item.id, deletedIds)) return false;
+      if (!String(item.name || item.title || "").trim()) return false;
+      return true;
+    });
+
+  const validIds = new Set(favorites.map((item) => item.id));
+  const staleKeys = dataKeys.filter((key) => {
+    const id = key.slice(DATA_PREFIX.length);
+    return !validIds.has(id);
+  });
+  if (staleKeys.length) {
+    const staleFlagKeys = staleKeys.map((key) =>
+      favoriteBusinessFlagKey(key.slice(DATA_PREFIX.length))
+    );
+    await AsyncStorage.multiRemove([...staleKeys, ...staleFlagKeys]);
+  }
+
+  return favorites;
 };
 
 /** Reads cached favorite payloads without auth or network. */

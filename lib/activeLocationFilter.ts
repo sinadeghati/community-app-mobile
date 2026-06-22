@@ -1,9 +1,13 @@
 import type { DiscoverableListing } from "./discoverableListings";
-import { isEventListing } from "./discoverableListings";
+import {
+  isEventListing,
+  matchesDiscoverySearchFilter,
+} from "./discoverableListings";
 import {
   getCityFallbackCoordinate,
   getMapLat,
   getMapLng,
+  parseCityKey,
 } from "./mapCoordinates";
 import type { AppLocationBounds, AppLocationState } from "./appLocation";
 
@@ -54,7 +58,27 @@ export const getListingFilterCoordinates = (
   return null;
 };
 
-const listingMatchesLocationLabel = (
+export const getListingLocationHaystack = (item: DiscoverableListing) => {
+  const record = item as Record<string, unknown>;
+  const parsedCity = parseCityKey(item);
+  return [
+    item.city,
+    item.state,
+    item.address,
+    record.location,
+    record.region,
+    record.zip_code,
+    record.zipCode,
+    parsedCity,
+    item.description,
+    item.about,
+  ]
+    .filter((value) => value != null && String(value).trim() !== "")
+    .join(" ")
+    .toLowerCase();
+};
+
+export const listingMatchesLocationLabel = (
   item: DiscoverableListing,
   label: string
 ) => {
@@ -66,18 +90,40 @@ const listingMatchesLocationLabel = (
 
   if (!terms.length) return true;
 
-  const haystack = [
-    item.city,
-    item.state,
-    item.address,
-    item.description,
-    item.about,
-  ]
-    .filter((value) => value != null && String(value).trim() !== "")
-    .join(" ")
-    .toLowerCase();
-
+  const haystack = getListingLocationHaystack(item);
   return terms.some((term) => haystack.includes(term));
+};
+
+/** Active location radius/bounds, or — when searching — listings in the searched place. */
+export const listingMatchesDiscoveryLocation = (
+  item: DiscoverableListing,
+  location: AppLocationState,
+  options?: { searchQuery?: string }
+): boolean => {
+  if (listingMatchesActiveLocation(item, location)) {
+    return true;
+  }
+
+  const trimmed = String(options?.searchQuery ?? "").trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  return listingMatchesLocationLabel(item, trimmed);
+};
+
+/** Text search plus location-aware place queries (e.g. "San Diego"). */
+export const matchesDiscoverySearchQuery = (
+  item: DiscoverableListing,
+  query: string
+) => {
+  const trimmed = query.trim();
+  if (!trimmed) return true;
+
+  return (
+    matchesDiscoverySearchFilter(item, trimmed) ||
+    listingMatchesLocationLabel(item, trimmed)
+  );
 };
 
 export const listingMatchesActiveLocation = (

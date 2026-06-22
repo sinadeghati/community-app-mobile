@@ -1,6 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Linking, Platform } from "react-native";
 import { notifyFavoritesChanged } from "./favoritesRefresh";
+import {
+  isDeletedEventId,
+  loadDeletedEventIds,
+} from "./deletedEventRegistry";
 import { getActiveUserId } from "./userSessionStorage";
 import {
   getMapLat,
@@ -12,6 +16,7 @@ import {
 import {
   formatEventDateTime,
   formatEventLocation,
+  isUpcomingEvent,
   type EventMapItem,
 } from "./mapEvents";
 
@@ -152,6 +157,16 @@ export const loadMapEventSnapshot = async (
 ): Promise<EventMapItem | null> => {
   if (!eventId) return null;
 
+  const deletedIds = await loadDeletedEventIds();
+  if (isDeletedEventId(eventId, deletedIds)) {
+    try {
+      await AsyncStorage.removeItem(`${EVENT_SNAPSHOT_PREFIX}${eventId}`);
+    } catch {
+      // Best-effort stale snapshot cleanup.
+    }
+    return null;
+  }
+
   try {
     const raw = await AsyncStorage.getItem(`${EVENT_SNAPSHOT_PREFIX}${eventId}`);
     if (!raw) return null;
@@ -167,7 +182,12 @@ const readInterestedEventIds = async (): Promise<string[]> => {
   try {
     const raw = await AsyncStorage.getItem(INTERESTED_EVENTS_KEY);
     const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list.map(String) : [];
+    if (!Array.isArray(list)) return [];
+
+    const deletedIds = await loadDeletedEventIds();
+    return list
+      .map(String)
+      .filter((id) => id && !isDeletedEventId(id, deletedIds));
   } catch {
     return [];
   }
@@ -249,8 +269,12 @@ export const loadInterestedEvents = async (): Promise<EventMapItem[]> => {
   const ids = await loadInterestedEventIds();
   if (!ids.length) return [];
 
+  const deletedIds = await loadDeletedEventIds();
+  const activeIds = ids.filter((id) => !isDeletedEventId(id, deletedIds));
+  if (!activeIds.length) return [];
+
   const byId = new Map(
-    (await readInterestedEventSnapshots(ids)).map((event) => [
+    (await readInterestedEventSnapshots(activeIds)).map((event) => [
       getEventId(event),
       event,
     ])
@@ -259,15 +283,20 @@ export const loadInterestedEvents = async (): Promise<EventMapItem[]> => {
   const { getCommunityEventById } = await import("./communityEvents");
 
   const resolved = await Promise.all(
-    ids.map(async (id) => {
-      const cached = byId.get(id);
-      if (cached) return cached;
+    activeIds.map(async (id) => {
+      if (isDeletedEventId(id, deletedIds)) return null;
 
       const event = await getCommunityEventById(id);
-      if (!event) return null;
+      if (event) {
+        if (!isUpcomingEvent(event)) return null;
+        await saveMapEventSnapshot(event);
+        return event;
+      }
 
-      await saveMapEventSnapshot(event);
-      return event;
+      const cached = byId.get(id);
+      if (cached && isUpcomingEvent(cached)) return cached;
+
+      return null;
     })
   );
 

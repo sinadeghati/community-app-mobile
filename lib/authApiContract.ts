@@ -8,7 +8,11 @@
  *   Response: 200/204 on success (same response whether email exists)
  *
  * POST /api/accounts/password/change/  (Authorization: Bearer <access>)
- *   Body: { "old_password": "...", "new_password": "..." }
+ *   Body: {
+ *     "current_password": "...",
+ *     "new_password": "...",
+ *     "confirm_password": "..."
+ *   }
  *   Response: 200/204 on success
  *   Errors: 400 for weak password or wrong current password
  */

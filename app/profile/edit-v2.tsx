@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
     Alert,
-    Image,
     Keyboard,
     KeyboardAvoidingView,
     Platform,
@@ -21,7 +20,6 @@ import {
     saveUserProfile,
 } from "../../lib/userSessionStorage";
 import { fetchAccountProfile, ProfileApiError } from "../../lib/profileApi";
-import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 
@@ -31,10 +29,6 @@ const TEXT = "#111111";
 const MUTED = "#6B7280";
 const BORDER = "#ECE7DF";
 const TURQUOISE = "#11998E";
-const SOFT = "#E7F6F4";
-
-const DEFAULT_AVATAR =
-    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=900";
 
 type UserProfile = {
     name?: string;
@@ -85,35 +79,6 @@ export default function EditProfileV2() {
             setProfileImage(saved.profileImage || saved.profile_image || null);
         } catch (error) {
             console.log("EDIT PROFILE LOAD ERROR:", error);
-        }
-    };
-
-    const pickProfileImage = async () => {
-        try {
-            const permission =
-                await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-            if (!permission.granted) {
-                Alert.alert(
-                    "Permission needed",
-                    "Please allow photo access to change your profile photo."
-                );
-                return;
-            }
-
-            const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ["images"],
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.85,
-            });
-
-            if (!result.canceled && result.assets?.[0]?.uri) {
-                setProfileImage(result.assets[0].uri);
-            }
-        } catch (error) {
-            console.log("PICK PROFILE IMAGE ERROR:", error);
-            Alert.alert("Error", "Could not open your photo library.");
         }
     };
 
@@ -232,73 +197,9 @@ export default function EditProfileV2() {
                                 marginBottom: 24,
                             }}
                         >
-                            Update your personal profile, photo, and contact details.
+                            Update your name, bio, location, and contact details.
+                            Change your photo from the Profile screen.
                         </Text>
-
-                        <View
-                            style={{
-                                backgroundColor: CARD,
-                                borderRadius: 26,
-                                padding: 22,
-                                borderWidth: 1,
-                                borderColor: BORDER,
-                                marginBottom: 18,
-                                alignItems: "center",
-                            }}
-                        >
-                            <Pressable onPress={pickProfileImage}>
-                                <Image
-                                    source={{ uri: profileImage || DEFAULT_AVATAR }}
-                                    style={{
-                                        width: 108,
-                                        height: 108,
-                                        borderRadius: 54,
-                                        backgroundColor: BORDER,
-                                    }}
-                                />
-
-                                <View
-                                    style={{
-                                        position: "absolute",
-                                        right: 0,
-                                        bottom: 2,
-                                        width: 34,
-                                        height: 34,
-                                        borderRadius: 17,
-                                        backgroundColor: TURQUOISE,
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        borderWidth: 3,
-                                        borderColor: CARD,
-                                    }}
-                                >
-                                    <Ionicons name="camera" size={16} color="#FFFFFF" />
-                                </View>
-                            </Pressable>
-
-                            <Pressable
-                                onPress={pickProfileImage}
-                                style={{
-                                    marginTop: 16,
-                                    height: 40,
-                                    paddingHorizontal: 22,
-                                    borderRadius: 20,
-                                    backgroundColor: SOFT,
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                }}
-                            >
-                                <Text
-                                    style={{
-                                        color: TURQUOISE,
-                                        fontSize: 14.5,
-                                        fontWeight: "800",
-                                    }}
-                                >
-                                    Change Photo
-                                </Text>
-                            </Pressable>
-                        </View>
 
                         <View
                             style={{

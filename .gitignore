@@ -31,7 +31,13 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# database / backup artifacts (never commit)
+backups/
+*.dump
+*.sql
 
 # typescript
 *.tsbuildinfo

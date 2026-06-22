@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { confirmDeleteAccount } from "../../lib/accountActions";
 import { showComingSoon } from "./comingSoon";
 
 const BG = "#F6F5F2";
@@ -131,12 +132,7 @@ export default function AccountScreen() {
             icon="trash-outline"
             title="Delete Account"
             subtitle="Permanently remove your account"
-            onPress={() =>
-              showComingSoon(
-                "Delete Account",
-                "Permanent account deletion will require confirmation and verification. This feature is not yet available in the MVP."
-              )
-            }
+            onPress={confirmDeleteAccount}
           />
         </View>
 

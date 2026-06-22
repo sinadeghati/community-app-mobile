@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+// @deprecated Hidden duplicate business profile experiment. Approved route: /profile/v2.
 import {
   ActivityIndicator,
   Alert,

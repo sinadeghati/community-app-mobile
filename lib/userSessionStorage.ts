@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import authStorage from "../app/utils/authStorage";
+import { markBusinessDeleted } from "./deletedBusinessRegistry";
 import {
   getLastSessionUserId,
   invalidateAuthSession,
@@ -794,16 +795,12 @@ const dedupeBusinessesById = (list: Record<string, unknown>[]) => {
 
 const canClaimLegacyRecord = async (
   userId: string,
-  recordUserId: string | null,
-  identity?: { username?: string; email?: string },
-  legacy?: Record<string, unknown> | null
+  recordUserId: string | null
 ) => {
   if (recordUserId && recordUserId === userId) return true;
   if (recordUserId) return false;
-  if (legacy && identity && profileIdentityMatches(legacy, identity)) {
-    return true;
-  }
-  return false;
+  const lastUser = await getLastSessionUserId();
+  return lastUser === userId;
 };
 
 const readLegacyProfile = async (): Promise<Record<string, unknown> | null> => {
@@ -932,7 +929,7 @@ export const loadUserProfile = async (
       const legacyMatches =
         legacyId === userId ||
         (identity && profileIdentityMatches(legacy, identity)) ||
-        (await canClaimLegacyRecord(userId, legacyId, identity, legacy));
+        (await canClaimLegacyRecord(userId, legacyId));
 
       if (legacyMatches) {
         const migrated = mergeStoredUserProfiles(userId, legacy);
@@ -1097,7 +1094,7 @@ export const adoptLegacyProfileIfMatching = async (
   const matches =
     legacyId === userId ||
     profileIdentityMatches(legacy, identity) ||
-    (await canClaimLegacyRecord(userId, legacyId, identity, legacy));
+    (await canClaimLegacyRecord(userId, legacyId));
 
   if (!matches) return existing;
 
@@ -1105,22 +1102,6 @@ export const adoptLegacyProfileIfMatching = async (
   await saveUserProfile(userId, migrated);
   return migrated;
 };
-
-export const tagBusinessOwnership = (
-  business: Record<string, unknown>,
-  userId: string,
-  ownerUsername?: string
-): Record<string, unknown> => ({
-  ...business,
-  owner_id: business.owner_id ?? businessOwnerId(business) ?? userId,
-  user_id: business.user_id ?? businessListingUserId(business) ?? userId,
-  owner_username:
-    business.owner_username ?? business.ownerUsername ?? ownerUsername,
-  ownerUsername:
-    business.ownerUsername ?? business.owner_username ?? ownerUsername,
-  is_owner: true,
-  owner_is_current_user: true,
-});
 
 export const saveUserProfile = async (
   userId: string,
@@ -1247,7 +1228,19 @@ export const loadMyBusinessesForProfile = async (
       }
     }
 
-    return Array.from(ownedById.values());
+    const { loadDeletedBusinessIds, isDeletedBusinessId } = await import(
+      "./deletedBusinessRegistry"
+    );
+    const { isDisplayableBusinessRecord } = await import(
+      "./businessListingVisibility"
+    );
+    const deletedIds = await loadDeletedBusinessIds();
+
+    return Array.from(ownedById.values()).filter((business) => {
+      const id = String(business.id || "").trim();
+      if (!id || isDeletedBusinessId(id, deletedIds)) return false;
+      return isDisplayableBusinessRecord(business, deletedIds);
+    });
   } catch {
     return [];
   }
@@ -1411,6 +1404,34 @@ export const saveUserBusinesses = async (
   await markSessionUser(userId);
 };
 
+export const tagBusinessOwnership = (
+  business: Record<string, unknown>,
+  userId: string,
+  ownerUsername?: string | null
+): Record<string, unknown> => {
+  const username =
+    ownerUsername ?? businessOwnerUsername(business) ?? undefined;
+
+  return {
+    ...business,
+    owner_id: business.owner_id ?? userId,
+    user_id: business.user_id ?? userId,
+    owner_username:
+      business.owner_username ??
+      business.ownerUsername ??
+      username ??
+      undefined,
+    ownerUsername:
+      business.ownerUsername ??
+      business.owner_username ??
+      username ??
+      undefined,
+    is_owner: true,
+    owner_is_current_user: true,
+    can_edit: true,
+  };
+};
+
 export const upsertUserBusiness = async (
   userId: string,
   business: Record<string, unknown>,
@@ -1541,6 +1562,42 @@ export const deleteUserBusiness = async (
     await removeBusinessFavorite(id);
   } catch {
     // Favorites cleanup is best-effort; business removal already succeeded.
+  }
+
+  await markBusinessDeleted(id);
+
+  const serverListingId = String(
+    record.server_listing_id ?? record.listing_id ?? ""
+  ).trim();
+  const apiDeleteId = Number(serverListingId || id);
+  if (Number.isFinite(apiDeleteId) && apiDeleteId > 0) {
+    try {
+      const { API } = await import("./api");
+      await API.deleteListing(apiDeleteId);
+    } catch (error) {
+      console.log("BUSINESS_API_DELETE_ERROR:", error);
+    }
+  }
+
+  try {
+    const { removeBusinessFromDiscoverCache } = await import(
+      "./discoverListingsCache"
+    );
+    removeBusinessFromDiscoverCache(id);
+    if (serverListingId && serverListingId !== id) {
+      removeBusinessFromDiscoverCache(serverListingId);
+    }
+  } catch {
+    // In-memory cache cleanup is best-effort.
+  }
+
+  try {
+    const { requestDiscoverListingsRefresh } = await import(
+      "./discoverListingsRefresh"
+    );
+    requestDiscoverListingsRefresh();
+  } catch {
+    // Discover refresh is best-effort.
   }
 
   console.log("BUSINESS_STORAGE_DELETE", {

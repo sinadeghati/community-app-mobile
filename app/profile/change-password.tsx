@@ -163,10 +163,16 @@ export default function ChangePasswordScreen() {
 
     try {
       setLoading(true);
-      await API.changePassword(currentPassword, newPassword);
+      const result = await API.changePassword(
+        currentPassword,
+        newPassword,
+        confirmPassword
+      );
       Alert.alert(
         "Password updated",
-        "Your password has been changed. You are still signed in.",
+        typeof result?.message === "string"
+          ? result.message
+          : "Your password has been changed. You are still signed in.",
         [{ text: "OK", onPress: () => router.back() }]
       );
     } catch (error) {

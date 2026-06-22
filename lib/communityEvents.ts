@@ -1,6 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { DiscoverableListing } from "./discoverableListings";
+import {
+  isDeletedEventId,
+  loadDeletedEventIds,
+} from "./deletedEventRegistry";
 import { requestDiscoverListingsRefresh } from "./discoverListingsRefresh";
+import { purgeEventFromClientCaches } from "./eventListingVisibility";
 import { logDiscoverPipeline, logEventSaved } from "./eventDiagnostics";
 import { resolveEventDateTimeIso, syncEventScheduleFields } from "./eventDateTime";
 import {
@@ -10,6 +15,7 @@ import {
 } from "./eventLocation";
 import {
   getEventScheduleIso,
+  isUpcomingEvent,
   parseEventDate,
   type EventMapItem,
 } from "./mapEvents";
@@ -82,6 +88,17 @@ const readAllEvents = async (): Promise<CommunityEvent[]> => {
   } catch {
     return [];
   }
+};
+
+export const readCommunityEventIds = async (): Promise<Set<string>> => {
+  const events = await readAllEvents();
+  return new Set(events.map((event) => String(event.id || "").trim()).filter(Boolean));
+};
+
+const readActiveEvents = async (): Promise<CommunityEvent[]> => {
+  const deletedIds = await loadDeletedEventIds();
+  const events = await readAllEvents();
+  return events.filter((event) => !isDeletedEventId(String(event.id || ""), deletedIds));
 };
 
 const writeAllEvents = async (events: CommunityEvent[]) => {
@@ -173,7 +190,7 @@ const hasEventSchedule = (event: CommunityEvent) =>
   Boolean(parseEventDate(event));
 
 export const listPublicCommunityEvents = async (): Promise<CommunityEvent[]> => {
-  const events = await readAllEvents();
+  const events = await readActiveEvents();
   logDiscoverPipeline("storage", events);
 
   const publicEvents = events.filter((event) => event.is_public !== false);
@@ -193,7 +210,9 @@ export const listPublicCommunityEvents = async (): Promise<CommunityEvent[]> => 
       .map((event) => event.id),
   });
 
-  const normalized = withSchedule.map(normalizeEventRecord);
+  const normalized = withSchedule
+    .map(normalizeEventRecord)
+    .filter((event) => isUpcomingEvent(event));
   logDiscoverPipeline("normalized", normalized);
   return normalized;
 };
@@ -210,7 +229,7 @@ export const listCommunityEventsForOwner = async (
   ownerId: string
 ): Promise<CommunityEvent[]> => {
   if (!ownerId) return [];
-  const events = await readAllEvents();
+  const events = await readActiveEvents();
   return events
     .filter((event) => String(event.owner_id) === String(ownerId))
     .sort(
@@ -224,7 +243,13 @@ export const getCommunityEventById = async (
   eventId: string
 ): Promise<CommunityEvent | null> => {
   if (!eventId) return null;
-  const events = await readAllEvents();
+
+  const deletedIds = await loadDeletedEventIds();
+  if (isDeletedEventId(eventId, deletedIds)) {
+    return null;
+  }
+
+  const events = await readActiveEvents();
   const found = events.find((event) => String(event.id) === String(eventId));
   return found ? normalizeEventRecord(found) : null;
 };
@@ -453,19 +478,38 @@ export const deleteCommunityEvent = async (
 
   const nextEvents = events.filter((event) => String(event.id) !== String(eventId));
   await writeAllEvents(nextEvents);
-  requestDiscoverListingsRefresh();
-
-  try {
-    const { removeInterestedEvent } = await import("./mapEventDetails");
-    await removeInterestedEvent(eventId);
-    await AsyncStorage.removeItem(`map_event_snapshot_${eventId}`);
-  } catch {
-    // best effort cleanup
-  }
+  await purgeEventFromClientCaches(eventId);
 
   return { ok: true };
 };
 
+const fetchCommunityEventsFromApi = async (): Promise<CommunityEvent[]> => {
+  try {
+    const { API } = await import("./api");
+    const response = await API.getEvents();
+    const list = Array.isArray(response)
+      ? response
+      : (response as { results?: CommunityEvent[] })?.results || [];
+
+    return list
+      .map((row) => normalizeEventRecord(row as CommunityEvent))
+      .filter((event) => hasEventLocation(event) && hasEventSchedule(event));
+  } catch {
+    return [];
+  }
+};
+
 export const loadCommunityEventsForDiscover = async (): Promise<
   DiscoverableListing[]
-> => listPublicCommunityEvents();
+> => {
+  const deletedIds = await loadDeletedEventIds();
+  const apiEvents = await fetchCommunityEventsFromApi();
+
+  if (apiEvents.length > 0) {
+    return apiEvents.filter(
+      (event) => !isDeletedEventId(String(event.id || ""), deletedIds)
+    );
+  }
+
+  return listPublicCommunityEvents();
+};

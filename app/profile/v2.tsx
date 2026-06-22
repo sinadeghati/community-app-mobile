@@ -1,6 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Image,
   ImageBackground,
@@ -9,7 +8,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   Share,
   Text,
@@ -19,6 +17,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API } from "../../lib/api";
 import {
@@ -40,7 +39,8 @@ import {
   getBusinessHoursFromRecord,
   getWeeklyHoursRows,
 } from "../../lib/businessHours";
-import { getBusinessGalleryUris } from "../../lib/businessGallery";
+import { getBusinessGalleryUris, addBusinessGalleryPhoto } from "../../lib/businessGallery";
+import { BusinessGalleryGrid } from "../../components/business/BusinessGalleryGrid";
 import { getBusinessDirectionsQuery } from "../../lib/businessLocation";
 import {
   createReviewId,
@@ -118,6 +118,12 @@ const DEFAULT_COVER =
 const DEFAULT_AVATAR =
   "https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=900&auto=format&fit=crop";
 
+const COVER_HEIGHT = 260;
+const HERO_TOOLBAR_BUTTON_SIZE = 42;
+const INFO_CARD_TOP = 204;
+const HERO_SECTION_HEIGHT = 360;
+const GALLERY_GRID_GAP = 10;
+
 const getId = (item?: Business | null) => String(item?.id || "");
 
 const getTitle = (item?: Business | null) =>
@@ -136,15 +142,13 @@ const getAddress = (item?: Business | null) =>
   item?.address ||
   item?.street_address ||
   [item?.city, item?.state].filter(Boolean).join(", ") ||
-  "San Diego, CA";
+  "";
 
 const getPhone = (item?: Business | null) =>
   item?.phone || item?.contact_info || "";
 
 const getAbout = (item?: Business | null) =>
-  item?.about ||
-  item?.description ||
-  "A trusted local business serving the Persian community with professional service, local knowledge, and reliable support.";
+  String(item?.about || item?.description || "").trim();
 
 const isVerified = (item?: Business | null) =>
   Boolean(item?.is_verified || item?.verified);
@@ -289,11 +293,15 @@ function Section({
   title,
   action,
   onActionPress,
+  secondaryAction,
+  onSecondaryActionPress,
   children,
 }: {
   title: string;
   action?: string;
   onActionPress?: () => void;
+  secondaryAction?: string;
+  onSecondaryActionPress?: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -315,6 +323,25 @@ function Section({
         >
           {title}
         </Text>
+
+        {secondaryAction ? (
+          <Pressable
+            onPress={onSecondaryActionPress}
+            disabled={!onSecondaryActionPress}
+            hitSlop={8}
+            style={{ marginRight: action ? 10 : 0 }}
+          >
+            <Text
+              style={{
+                color: theme.colors.turquoise,
+                fontSize: 12,
+                fontWeight: "700",
+              }}
+            >
+              {secondaryAction}
+            </Text>
+          </Pressable>
+        ) : null}
 
         {action ? (
           <Pressable onPress={onActionPress} hitSlop={8}>
@@ -937,35 +964,167 @@ const BusinessReviewCard = memo(function BusinessReviewCard({
   );
 });
 
-const GALLERY_SKELETON_CELL = {
-  width: "48%" as const,
-  height: 128,
-  borderRadius: 14,
-  backgroundColor: "#E8EAED",
-};
-
 function GalleryPhotosSkeleton({ count }: { count: number }) {
-  const cells = Array.from({ length: count }, (_, index) => index);
+  const cells = Array.from({ length: Math.min(count, 4) }, (_, index) => index);
 
   return (
     <View
       style={{
         flexDirection: "row",
         flexWrap: "wrap",
-        gap: 10,
+        gap: GALLERY_GRID_GAP,
         paddingTop: 4,
       }}
     >
       {cells.map((index) => (
-        <View key={`gallery-skeleton-${index}`} style={GALLERY_SKELETON_CELL} />
+        <View
+          key={`gallery-skeleton-${index}`}
+          style={{
+            width: "48%",
+            height: 132,
+            borderRadius: 14,
+            backgroundColor: "#E8EAED",
+          }}
+        />
       ))}
     </View>
   );
 }
 
+function BusinessProfileSkeleton() {
+  return (
+    <SafeAreaView
+      edges={["top", "bottom"]}
+      style={{ flex: 1, backgroundColor: theme.colors.ivory }}
+    >
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={{ height: HERO_SECTION_HEIGHT }}>
+          <View
+            style={{
+              height: COVER_HEIGHT,
+              backgroundColor: "#DDE3E8",
+            }}
+          />
+          <View
+            style={{
+              position: "absolute",
+              left: theme.spacing.md,
+              right: theme.spacing.md,
+              top: INFO_CARD_TOP,
+              backgroundColor: theme.colors.card,
+              borderRadius: theme.radius.md,
+              padding: theme.spacing.md,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View
+                style={{
+                  marginTop: -36,
+                  width: 82,
+                  height: 82,
+                  borderRadius: 16,
+                  backgroundColor: "#E8EAED",
+                }}
+              />
+              <View style={{ flex: 1, marginLeft: 14, gap: 8 }}>
+                <View
+                  style={{
+                    height: 20,
+                    width: "72%",
+                    borderRadius: 8,
+                    backgroundColor: "#E8EAED",
+                  }}
+                />
+                <View
+                  style={{
+                    height: 14,
+                    width: "42%",
+                    borderRadius: 8,
+                    backgroundColor: "#EEF1F4",
+                  }}
+                />
+                <View
+                  style={{
+                    height: 14,
+                    width: "58%",
+                    borderRadius: 8,
+                    backgroundColor: "#EEF1F4",
+                  }}
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 8,
+            paddingHorizontal: theme.spacing.md,
+            marginTop: theme.spacing.md,
+          }}
+        >
+          {[0, 1, 2, 3].map((item) => (
+            <View
+              key={`action-skeleton-${item}`}
+              style={{
+                flex: 1,
+                height: 64,
+                borderRadius: theme.radius.sm,
+                backgroundColor: "#E8EAED",
+              }}
+            />
+          ))}
+        </View>
+
+        <View
+          style={{
+            marginTop: theme.spacing.md,
+            marginHorizontal: theme.spacing.md,
+            height: 42,
+            borderRadius: theme.radius.sm,
+            backgroundColor: "#E8EAED",
+          }}
+        />
+
+        <View style={{ ...profileSectionCardStyle, gap: 10 }}>
+          <View
+            style={{
+              height: 18,
+              width: "34%",
+              borderRadius: 8,
+              backgroundColor: "#E8EAED",
+            }}
+          />
+          <View
+            style={{
+              height: 14,
+              width: "100%",
+              borderRadius: 8,
+              backgroundColor: "#EEF1F4",
+            }}
+          />
+          <View
+            style={{
+              height: 14,
+              width: "92%",
+              borderRadius: 8,
+              backgroundColor: "#EEF1F4",
+            }}
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 export default function BusinessProfileV2() {
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const profileId = String(params?.id || "");
+  const routeProfileIdRef = useRef(profileId);
   const [showFullAbout, setShowFullAbout] = useState(false);
   const [hoursExpanded, setHoursExpanded] = useState(false);
   const [reviews, setReviews] = useState<BusinessReview[]>([]);
@@ -998,6 +1157,7 @@ export default function BusinessProfileV2() {
   const [selectedGalleryImage, setSelectedGalleryImage] = useState<string | null>(
     null
   );
+  const [addingGalleryPhoto, setAddingGalleryPhoto] = useState(false);
 
   const focusUpdates = String(params?.focus || "") === "updates";
 
@@ -1090,9 +1250,22 @@ export default function BusinessProfileV2() {
   const loadBusiness = React.useCallback(
     async (options?: { silent?: boolean }) => {
       const silent = options?.silent === true;
+      const requestProfileId = profileId;
+      const isStaleRequest = () => routeProfileIdRef.current !== requestProfileId;
 
       try {
         if (!silent) setLoading(true);
+
+        const { loadDeletedBusinessIds, isDeletedBusinessId } = await import(
+          "../../lib/deletedBusinessRegistry"
+        );
+        const { isDisplayableBusinessRecord, purgeBusinessFromClientCaches } =
+          await import("../../lib/businessListingVisibility");
+        const deletedIds = await loadDeletedBusinessIds();
+        if (isDeletedBusinessId(requestProfileId, deletedIds)) {
+          if (!isStaleRequest()) setBusiness(null);
+          return;
+        }
 
         const {
           loadMyBusinessesForProfile,
@@ -1109,57 +1282,110 @@ export default function BusinessProfileV2() {
           };
           const myBusinesses = await loadMyBusinessesForProfile(userId, identity);
           const owned = myBusinesses.find(
-            (item) => String(item.id || "") === profileId
+            (item) => String(item.id || "") === requestProfileId
           );
-          if (owned) {
-            setBusiness(owned as Business);
-            setFavorite(await isBusinessFavorited(getId(owned)));
+          if (owned && isDisplayableBusinessRecord(owned, deletedIds)) {
+            if (!isStaleRequest()) {
+              setBusiness(owned as Business);
+              setFavorite(await isBusinessFavorited(getId(owned)));
+            }
             return;
           }
         }
 
-        const localRaw = await AsyncStorage.getItem(`profile_v2_${profileId}`);
+        const localRaw = await AsyncStorage.getItem(`profile_v2_${requestProfileId}`);
 
         if (localRaw) {
           const localBusiness = JSON.parse(localRaw);
-          setBusiness(localBusiness);
-          setFavorite(await isBusinessFavorited(getId(localBusiness)));
-          return;
+          if (isDisplayableBusinessRecord(localBusiness, deletedIds)) {
+            if (!isStaleRequest()) {
+              setBusiness(localBusiness);
+              setFavorite(await isBusinessFavorited(getId(localBusiness)));
+            }
+            return;
+          }
         }
 
         let data: Business | null = null;
+
+        try {
+          const direct = await API.getListing(requestProfileId);
+          if (direct && typeof direct === "object") {
+            data = direct as Business;
+          }
+        } catch (error: unknown) {
+          const status = (error as { response?: { status?: number } })?.response
+            ?.status;
+          if (status === 404) {
+            await purgeBusinessFromClientCaches(requestProfileId);
+            if (!isStaleRequest()) setBusiness(null);
+            return;
+          }
+        }
 
         if (!data) {
           const response = await API.getListings();
           const list = Array.isArray(response) ? response : response?.results || [];
 
           data =
-            list.find((item: Business) => String(item?.id) === profileId) || null;
+            list.find((item: Business) => String(item?.id) === requestProfileId) ||
+            null;
         }
 
-        setBusiness(data);
-
-        if (data) {
-          setFavorite(await isBusinessFavorited(getId(data)));
+        if (
+          data &&
+          isDisplayableBusinessRecord(data as Record<string, unknown>, deletedIds)
+        ) {
+          if (!isStaleRequest()) {
+            setBusiness(data);
+            setFavorite(await isBusinessFavorited(getId(data)));
+          }
+          return;
         }
+
+        await purgeBusinessFromClientCaches(requestProfileId);
+        if (!isStaleRequest()) setBusiness(null);
       } catch (error) {
         console.log("Business profile load error:", error);
         if (!silent) {
           Alert.alert("Error", "Could not load this business profile.");
         }
       } finally {
-        await refreshReviews();
-        if (!silent) setLoading(false);
+        if (!isStaleRequest()) {
+          await refreshReviews();
+          if (!silent) setLoading(false);
+        }
       }
     },
     [profileId]
   );
 
-  useEffect(() => {
-    void loadBusiness();
-  }, [loadBusiness]);
-
   const skipNextFocusReloadRef = useRef(true);
+
+  useEffect(() => {
+    routeProfileIdRef.current = profileId;
+    setBusiness(null);
+    setLoading(true);
+    setIsBusinessOwner(false);
+    setIsOwnerCheckReady(false);
+    setGalleryReady(false);
+    setSelectedGalleryImage(null);
+    setReviews([]);
+    setReplyDrafts({});
+    setDraftText("");
+    setDraftRating(5);
+    setFavorite(false);
+    setEditingReviewId(null);
+    setEditingReplyId(null);
+    setSubmittingReview(false);
+    setSubmittingReplyId(null);
+    setAddingGalleryPhoto(false);
+    if (!focusUpdates) {
+      setActiveTab("Overview");
+    }
+    skipNextFocusReloadRef.current = true;
+    void loadBusiness();
+  }, [profileId, loadBusiness, focusUpdates]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -1268,6 +1494,12 @@ export default function BusinessProfileV2() {
 
   const hasInstagram = Boolean(getInstagram(business));
   const hasWebsite = Boolean(getWebsite(business));
+  const hasPhone = Boolean(getPhone(business));
+  const businessAddress = getAddress(business);
+  const businessAbout = getAbout(business);
+  const canOpenDirections = Boolean(
+    getBusinessDirectionsQuery((business || {}) as Record<string, unknown>)
+  );
 
   const businessOfferings = useMemo(
     () => getBusinessOfferings(business),
@@ -1371,6 +1603,66 @@ export default function BusinessProfileV2() {
 
     Linking.openURL(normalizeWebsiteUrl(website));
   };
+
+  const quickActions = useMemo(() => {
+    const actions: Array<{
+      key: string;
+      icon: keyof typeof Ionicons.glyphMap;
+      label: string;
+      onPress: () => void;
+      accent?: boolean;
+    }> = [];
+
+    if (hasPhone) {
+      actions.push({
+        key: "call",
+        icon: "call",
+        label: "Call",
+        onPress: openCall,
+        accent: true,
+      });
+      actions.push({
+        key: "message",
+        icon: "chatbubble-ellipses-outline",
+        label: "Message",
+        onPress: openMessage,
+      });
+    }
+
+    if (canOpenDirections) {
+      actions.push({
+        key: "directions",
+        icon: "navigate",
+        label: "Directions",
+        onPress: openDirections,
+      });
+    }
+
+    if (hasInstagram) {
+      actions.push({
+        key: "instagram",
+        icon: "logo-instagram",
+        label: "Instagram",
+        onPress: openInstagram,
+      });
+    }
+
+    if (hasWebsite) {
+      actions.push({
+        key: "website",
+        icon: "globe-outline",
+        label: "Website",
+        onPress: openWebsite,
+      });
+    }
+
+    return actions;
+  }, [
+    canOpenDirections,
+    hasInstagram,
+    hasPhone,
+    hasWebsite,
+  ]);
 
   const persistBusinessPhoto = async (field: "cover" | "logo", uri: string) => {
     if (!business || !profileId) return;
@@ -1508,6 +1800,47 @@ export default function BusinessProfileV2() {
       pathname: "/profile/gallery",
       params: { id: getId(business) },
     });
+  };
+
+  const handleAddGalleryPhoto = async () => {
+    if (!isBusinessOwner || !profileId || addingGalleryPhoto) return;
+
+    if (galleryPhotos.length >= 24) {
+      Alert.alert("Limit reached", "Maximum 24 gallery photos.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+
+    if (result.canceled || !result.assets?.[0]?.uri) {
+      return;
+    }
+
+    try {
+      setAddingGalleryPhoto(true);
+      const saved = await addBusinessGalleryPhoto(
+        profileId,
+        result.assets[0].uri
+      );
+
+      if (!saved.ok) {
+        Alert.alert("Could not add photo", saved.message);
+        return;
+      }
+
+      setBusiness(saved.record as Business);
+      setGalleryReady(true);
+    } catch (error) {
+      console.log("BUSINESS_PROFILE_ADD_GALLERY_ERROR:", error);
+      Alert.alert("Could not add photo", "Please try again.");
+    } finally {
+      setAddingGalleryPhoto(false);
+    }
   };
 
   const openLoginForReview = () => {
@@ -1752,8 +2085,13 @@ export default function BusinessProfileV2() {
   const shareBusiness = async () => {
     if (!business) return;
 
+    const lines = [getTitle(business), getCategory(business)];
+    if (businessAddress) {
+      lines.push(businessAddress);
+    }
+
     await Share.share({
-      message: `${getTitle(business)}\n${getCategory(business)}\n${getAddress(business)}`,
+      message: lines.join("\n"),
     });
   };
 
@@ -2044,21 +2382,10 @@ export default function BusinessProfileV2() {
 
         {isEditing ? (
           <View style={{ marginTop: 10 }}>
-            {console.log("REVIEW_FOCUS_DIAG_EDIT_INPUT_RENDER", {
-              reviewId: review.id,
-              textInputKey: editTextInputKey,
-              editingReviewId,
-              hasExplicitKeyProp: false,
-            })}
             <StarRatingPicker value={editRating} onChange={setEditRating} />
             <TextInput
               value={editText}
               onChangeText={(value) => {
-                console.log("REVIEW_FOCUS_DIAG_EDIT_ON_CHANGE", {
-                  reviewId: review.id,
-                  nextLength: value.length,
-                  editingReviewId,
-                });
                 setEditText(value);
               }}
               placeholder="Update your review..."
@@ -2208,23 +2535,9 @@ export default function BusinessProfileV2() {
             >
               Edit owner response
             </Text>
-            {console.log("REVIEW_FOCUS_DIAG_REPLY_INPUT_RENDER", {
-              reviewId: review.id,
-              textInputKey: replyTextInputKey,
-              editingReplyId,
-              replyingToReviewId: null,
-              mode: "edit_owner_reply",
-              hasExplicitKeyProp: false,
-            })}
             <TextInput
               value={replyDrafts[review.id] || ""}
               onChangeText={(value) => {
-                console.log("REVIEW_FOCUS_DIAG_REPLY_ON_CHANGE", {
-                  reviewId: review.id,
-                  nextLength: value.length,
-                  editingReplyId,
-                  mode: "edit_owner_reply",
-                });
                 setReplyDrafts((prev) => ({ ...prev, [review.id]: value }));
               }}
               placeholder="Update your public response..."
@@ -2298,24 +2611,9 @@ export default function BusinessProfileV2() {
             >
               Reply
             </Text>
-            {console.log("REVIEW_FOCUS_DIAG_REPLY_INPUT_RENDER", {
-              reviewId: review.id,
-              textInputKey: replyTextInputKey,
-              editingReplyId,
-              replyingToReviewId: review.id,
-              mode: "new_owner_reply",
-              hasExplicitKeyProp: false,
-            })}
             <TextInput
               value={replyDrafts[review.id] || ""}
               onChangeText={(value) => {
-                console.log("REVIEW_FOCUS_DIAG_REPLY_ON_CHANGE", {
-                  reviewId: review.id,
-                  nextLength: value.length,
-                  editingReplyId,
-                  replyingToReviewId: review.id,
-                  mode: "new_owner_reply",
-                });
                 setReplyDrafts((prev) => ({ ...prev, [review.id]: value }));
               }}
               placeholder="Write a public response..."
@@ -2417,24 +2715,17 @@ export default function BusinessProfileV2() {
     "Reviews",
   ];
 
-  if (loading) {
-    return (
-      <SafeAreaView
-        style={{
-          flex: 1,
-          backgroundColor: theme.colors.ivory,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <ActivityIndicator size="large" color={theme.colors.turquoise} />
-      </SafeAreaView>
-    );
+  const businessMatchesRoute =
+    business != null && getId(business) === profileId;
+
+  if (loading || (business != null && !businessMatchesRoute)) {
+    return <BusinessProfileSkeleton />;
   }
 
   if (!business) {
     return (
       <SafeAreaView
+        edges={["top", "bottom"]}
         style={{
           flex: 1,
           backgroundColor: theme.colors.ivory,
@@ -2470,7 +2761,10 @@ export default function BusinessProfileV2() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
+    <SafeAreaView
+      edges={["bottom"]}
+      style={{ flex: 1, backgroundColor: theme.colors.ivory }}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -2488,12 +2782,12 @@ export default function BusinessProfileV2() {
               activeTab === "Reviews" ? 320 : theme.spacing.xl,
           }}
         >
-        <View style={{ height: 352 }}>
+        <View style={{ height: HERO_SECTION_HEIGHT }}>
           <ImageBackground
             source={{ uri: getCover(business) }}
             resizeMode="cover"
             style={{
-              height: 248,
+              height: COVER_HEIGHT,
               width: "100%",
               backgroundColor: theme.colors.deepTeal,
             }}
@@ -2508,7 +2802,7 @@ export default function BusinessProfileV2() {
             <View
               style={{
                 position: "absolute",
-                top: theme.spacing.sm,
+                top: Math.max(insets.top, theme.spacing.sm),
                 left: theme.spacing.md,
                 right: theme.spacing.md,
                 flexDirection: "row",
@@ -2518,8 +2812,8 @@ export default function BusinessProfileV2() {
               <Pressable
                 onPress={handleProfileBack}
                 style={{
-                  width: 42,
-                  height: 42,
+                  width: HERO_TOOLBAR_BUTTON_SIZE,
+                  height: HERO_TOOLBAR_BUTTON_SIZE,
                   borderRadius: 14,
                   backgroundColor: "rgba(255,255,255,0.97)",
                   alignItems: "center",
@@ -2540,8 +2834,8 @@ export default function BusinessProfileV2() {
               <Pressable
                 onPress={shareBusiness}
                 style={{
-                  width: 42,
-                  height: 42,
+                  width: HERO_TOOLBAR_BUTTON_SIZE,
+                  height: HERO_TOOLBAR_BUTTON_SIZE,
                   borderRadius: 14,
                   backgroundColor: "rgba(255,255,255,0.97)",
                   alignItems: "center",
@@ -2561,8 +2855,8 @@ export default function BusinessProfileV2() {
               <Pressable
                 onPress={toggleFavorite}
                 style={{
-                  width: 42,
-                  height: 42,
+                  width: HERO_TOOLBAR_BUTTON_SIZE,
+                  height: HERO_TOOLBAR_BUTTON_SIZE,
                   borderRadius: 14,
                   backgroundColor: "rgba(255,255,255,0.97)",
                   alignItems: "center",
@@ -2618,7 +2912,7 @@ export default function BusinessProfileV2() {
               position: "absolute",
               left: theme.spacing.md,
               right: theme.spacing.md,
-              top: 196,
+              top: INFO_CARD_TOP,
               backgroundColor: theme.colors.card,
               borderRadius: theme.radius.md,
               padding: theme.spacing.md,
@@ -2704,7 +2998,7 @@ export default function BusinessProfileV2() {
                       fontSize: 14,
                     }}
                   >
-                    {" · No reviews yet"}
+                    No reviews yet
                   </Text>
                 )}
 
@@ -2719,18 +3013,19 @@ export default function BusinessProfileV2() {
                   {` · ${hoursDisplay.primary}`}
                 </Text>
 
-                {isBusinessOwner ? (
-                  <Text
-                    onPress={openEdit}
-                    style={{
-                      marginLeft: 6,
-                      color: theme.colors.turquoise,
-                      fontWeight: "700",
-                      fontSize: 13,
-                    }}
-                  >
-                    · Edit details
-                  </Text>
+                {isBusinessOwner && isOwnerCheckReady ? (
+                  <Pressable onPress={openEdit} disabled={editNavigating}>
+                    <Text
+                      style={{
+                        marginLeft: 6,
+                        color: theme.colors.turquoise,
+                        fontWeight: "700",
+                        fontSize: 13,
+                      }}
+                    >
+                      · Edit details
+                    </Text>
+                  </Pressable>
                 ) : null}
               </View>
 
@@ -2775,34 +3070,26 @@ export default function BusinessProfileV2() {
           </View>
         </View>
 
-        <View
-          style={{
-            flexDirection: "row",
-            gap: 8,
-            paddingHorizontal: theme.spacing.md,
-            marginTop: theme.spacing.md,
-          }}
-        >
-          <ActionButton icon="call" label="Call" onPress={openCall} accent />
-          <ActionButton
-            icon="chatbubble-ellipses-outline"
-            label="Message"
-            onPress={openMessage}
-          />
-          <ActionButton icon="navigate" label="Directions" onPress={openDirections} />
-          <ActionButton
-            icon="logo-instagram"
-            label="Instagram"
-            onPress={openInstagram}
-            disabled={!hasInstagram}
-          />
-          <ActionButton
-            icon="globe-outline"
-            label="Website"
-            onPress={openWebsite}
-            disabled={!hasWebsite}
-          />
-        </View>
+        {quickActions.length > 0 ? (
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 8,
+              paddingHorizontal: theme.spacing.md,
+              marginTop: theme.spacing.md,
+            }}
+          >
+            {quickActions.map((action) => (
+              <ActionButton
+                key={action.key}
+                icon={action.icon}
+                label={action.label}
+                onPress={action.onPress}
+                accent={action.accent}
+              />
+            ))}
+          </View>
+        ) : null}
 
         <View
           style={{
@@ -2814,6 +3101,7 @@ export default function BusinessProfileV2() {
             padding: 4,
             borderWidth: 1,
             borderColor: theme.colors.border,
+            minHeight: 42,
           }}
         >
           {tabs.map((tab) => {
@@ -2825,7 +3113,7 @@ export default function BusinessProfileV2() {
                 onPress={() => setActiveTab(tab)}
                 style={{
                   flex: 1,
-                  height: 38,
+                  minHeight: 38,
                   borderRadius: 10,
                   alignItems: "center",
                   justifyContent: "center",
@@ -2833,6 +3121,7 @@ export default function BusinessProfileV2() {
                 }}
               >
                 <Text
+                  numberOfLines={1}
                   style={{
                     fontWeight: "700",
                     color: active ? theme.colors.turquoise : theme.colors.muted,
@@ -2849,32 +3138,47 @@ export default function BusinessProfileV2() {
         {activeTab === "Overview" ? (
           <>
             <Section title="About">
-              <Text
-                numberOfLines={showFullAbout ? undefined : 2}
-                style={{
-                  fontSize: 14,
-                  lineHeight: 22,
-                  color: theme.colors.charcoal,
-                  fontWeight: "500",
-                }}
-              >
-                {getAbout(business)}
-              </Text>
+              {businessAbout ? (
+                <>
+                  <Text
+                    numberOfLines={showFullAbout ? undefined : 2}
+                    style={{
+                      fontSize: 14,
+                      lineHeight: 22,
+                      color: theme.colors.charcoal,
+                      fontWeight: "500",
+                    }}
+                  >
+                    {businessAbout}
+                  </Text>
 
-              <Pressable
-                onPress={() => setShowFullAbout(!showFullAbout)}
-              >
+                  <Pressable onPress={() => setShowFullAbout(!showFullAbout)}>
+                    <Text
+                      style={{
+                        marginTop: 8,
+                        color: theme.colors.turquoise,
+                        fontWeight: "700",
+                        fontSize: 13,
+                      }}
+                    >
+                      {showFullAbout ? "See less" : "See more"}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : (
                 <Text
                   style={{
-                    marginTop: 8,
-                    color: theme.colors.turquoise,
-                    fontWeight: "700",
-                    fontSize: 13,
+                    fontSize: 14,
+                    lineHeight: 21,
+                    color: theme.colors.muted,
+                    fontWeight: "600",
                   }}
                 >
-                  {showFullAbout ? "See less" : "See more"}
+                  {isBusinessOwner
+                    ? "Add an about section in Edit details to tell customers about your business."
+                    : "No business description yet."}
                 </Text>
-              </Pressable>
+              )}
 
               <View
                 style={{
@@ -3060,10 +3364,12 @@ export default function BusinessProfileV2() {
                     marginLeft: 8,
                     fontSize: 14,
                     lineHeight: 20,
-                    color: theme.colors.charcoal,
+                    color: businessAddress
+                      ? theme.colors.charcoal
+                      : theme.colors.muted,
                   }}
                 >
-                  {getAddress(business)}
+                  {businessAddress || "Address not added"}
                 </Text>
               </View>
 
@@ -3146,17 +3452,29 @@ export default function BusinessProfileV2() {
 
             <Section title="Highlights">
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <HighlightBox value="Active" label="Business" icon="flash" />
+                <HighlightBox
+                  value={String(galleryPhotos.length)}
+                  label="Photos"
+                  icon="images-outline"
+                />
                 <HighlightBox
                   value={
                     reviewSummary.count > 0
                       ? reviewSummary.averageRating.toFixed(1)
                       : "—"
                   }
-                  label="Rating"
+                  label={
+                    reviewSummary.count > 0
+                      ? `${reviewSummary.count} review${reviewSummary.count === 1 ? "" : "s"}`
+                      : "Rating"
+                  }
                   icon="star"
                 />
-                <HighlightBox value="Local" label="Community" icon="people" />
+                <HighlightBox
+                  value={hoursDisplay.primary.split("·")[0]?.trim() || "—"}
+                  label="Hours"
+                  icon="time-outline"
+                />
                 <HighlightBox
                   value={isVerified(business) ? "Verified" : "Public"}
                   label="Profile"
@@ -3169,6 +3487,18 @@ export default function BusinessProfileV2() {
         {activeTab === "Photos" ? (
           <Section
             title="Photos & Gallery"
+            secondaryAction={
+              isBusinessOwner && isOwnerCheckReady
+                ? addingGalleryPhoto
+                  ? "Adding..."
+                  : "+ Add photo"
+                : undefined
+            }
+            onSecondaryActionPress={
+              isBusinessOwner && isOwnerCheckReady
+                ? () => void handleAddGalleryPhoto()
+                : undefined
+            }
             action={
               galleryReady && galleryPhotos.length > 0 ? "Open gallery" : undefined
             }
@@ -3177,34 +3507,10 @@ export default function BusinessProfileV2() {
             {!galleryReady && galleryPhotos.length > 0 ? (
               <GalleryPhotosSkeleton count={galleryPhotos.length} />
             ) : galleryReady && galleryPhotos.length > 0 ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: 10,
-                  paddingTop: 4,
-                }}
-              >
-                {galleryPhotos.map((uri, index) => (
-                  <Pressable
-                    key={`${uri}-${index}`}
-                    onPress={() => setSelectedGalleryImage(uri)}
-                    style={{
-                      width: "48%",
-                      height: 128,
-                      borderRadius: 14,
-                      overflow: "hidden",
-                      backgroundColor: "#eee",
-                    }}
-                  >
-                    <Image
-                      source={{ uri }}
-                      style={{ width: "100%", height: "100%" }}
-                      resizeMode="cover"
-                    />
-                  </Pressable>
-                ))}
-              </View>
+              <BusinessGalleryGrid
+                uris={galleryPhotos}
+                onPressPhoto={setSelectedGalleryImage}
+              />
             ) : (
               <EmptyState
                 icon="images-outline"
@@ -3220,26 +3526,7 @@ export default function BusinessProfileV2() {
         ) : null}
 
         {activeTab === "Services" ? (
-          <>
-            <Section title="Announcements & Promotions">
-              {businessUpdates.length > 0 ? (
-                businessUpdates.map((update) => (
-                  <BusinessUpdateCard key={update.id} update={update} />
-                ))
-              ) : (
-                <EmptyState
-                  icon="megaphone-outline"
-                  title="No announcements yet"
-                  subtitle={
-                    isBusinessOwner
-                      ? "Use Edit profile to add specials, offers, events, and announcements."
-                      : "This business has not posted any announcements or promotions yet."
-                  }
-                />
-              )}
-            </Section>
-
-            <Section title="Services & menu">
+          <Section title="Services & menu">
               {businessOfferings.length > 0 ? (
                 businessOfferings.map((item) => (
                   <View
@@ -3443,7 +3730,6 @@ export default function BusinessProfileV2() {
                 />
               )}
             </Section>
-          </>
         ) : null}
 
         {activeTab === "Reviews" ? (
@@ -3452,14 +3738,6 @@ export default function BusinessProfileV2() {
               reviewsBlockOffsetYRef.current = event.nativeEvent.layout.y;
             }}
           >
-            {console.log("REVIEW_FOCUS_DIAG_PARENT_REVIEWS_TAB", {
-              editingReviewId,
-              editingReplyId,
-              editTextLength: editText.length,
-              replyDraftKeys: Object.keys(replyDrafts),
-              parentComponent: "BusinessProfileV2",
-              nestedReviewCardLine: 1289,
-            })}
             {reviewSummary.count > 0 ? (
               <Section title="Rating summary">
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -3603,9 +3881,20 @@ export default function BusinessProfileV2() {
         >
           <Pressable
             onPress={() => setSelectedGalleryImage(null)}
-            style={{ position: "absolute", top: 60, right: 24, zIndex: 10 }}
+            style={{
+              position: "absolute",
+              top: Math.max(insets.top + 12, 52),
+              right: 24,
+              zIndex: 10,
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: "rgba(255,255,255,0.16)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
-            <Text style={{ color: "#fff", fontSize: 32 }}>×</Text>
+            <Ionicons name="close" size={24} color="#fff" />
           </Pressable>
 
           {selectedGalleryImage ? (

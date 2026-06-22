@@ -19,9 +19,11 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
     getActiveUserId,
+    loadMyBusinessesForProfile,
     loadUserProfile,
     upsertUserBusiness,
 } from "../../lib/userSessionStorage";
+import { API } from "../../lib/api";
 import authStorage from "../utils/authStorage";
 import * as ImagePicker from "expo-image-picker";
 import { StreetAddressAutocomplete } from "../../components/business/StreetAddressAutocomplete";
@@ -72,6 +74,52 @@ const resolveCreateBusinessSession = async (): Promise<string | null> => {
 };
 
 const isValidZipCode = (zipCode: string) => /^\d{5}$/.test(zipCode.trim());
+
+const extractCreatedBusinessId = (created: unknown, fallbackId: string) => {
+    if (!created || typeof created !== "object") {
+        return fallbackId;
+    }
+    const record = created as Record<string, unknown>;
+    const raw = record.id ?? record.pk ?? record.listing_id;
+    if (raw === undefined || raw === null || String(raw).trim() === "") {
+        return fallbackId;
+    }
+    return String(raw);
+};
+
+const resolveNewestOwnedBusinessId = async (
+    ownerId: string,
+    identity: { username?: string; email?: string },
+    businessName: string
+) => {
+    const owned = await loadMyBusinessesForProfile(ownerId, identity);
+    if (!owned.length) {
+        return "";
+    }
+
+    const trimmedName = businessName.trim().toLowerCase();
+    const nameMatch = owned.find(
+        (item) =>
+            String(item.business_name || item.name || "")
+                .trim()
+                .toLowerCase() === trimmedName
+    );
+    if (nameMatch?.id) {
+        return String(nameMatch.id);
+    }
+
+    const sorted = [...owned].sort(
+        (a, b) => Number(b.id || 0) - Number(a.id || 0)
+    );
+    return String(sorted[0]?.id || "");
+};
+
+const openCreatedBusinessProfile = (businessId: string) => {
+    router.replace({
+        pathname: "/profile/v2",
+        params: { id: businessId, fromCreate: "1" },
+    });
+};
 
 export default function CreateBusiness() {
     useEffect(() => {
@@ -289,12 +337,96 @@ export default function CreateBusiness() {
             );
             logBusinessSavedCoordinates(businessData);
             await upsertUserBusiness(ownerId, businessData, ownerUsername);
+
+            const listingPayload = {
+                title: businessName,
+                city: city.trim(),
+                state: state.trim().toUpperCase(),
+                description,
+                contact_info: phone,
+                category,
+                latitude: resolved.latitude,
+                longitude: resolved.longitude,
+            };
+
+            let navigableId = businessId;
+            let persistedBusiness: Record<string, unknown> = businessData;
+
+            try {
+                const created = await API.createListing(listingPayload);
+                const apiId = extractCreatedBusinessId(created, "");
+
+                if (apiId) {
+                    persistedBusiness = {
+                        ...businessData,
+                        id: apiId,
+                        server_listing_id: apiId,
+                        listing_id: apiId,
+                    };
+
+                    if (apiId !== businessId) {
+                        await AsyncStorage.removeItem(profileStorageKey);
+                    }
+
+                    await AsyncStorage.setItem(
+                        `profile_v2_${apiId}`,
+                        JSON.stringify(persistedBusiness)
+                    );
+                    await upsertUserBusiness(
+                        ownerId,
+                        persistedBusiness,
+                        ownerUsername
+                    );
+                    navigableId = apiId;
+
+                    if (
+                        coverImage &&
+                        (coverImage.startsWith("file:") ||
+                            coverImage.startsWith("content:"))
+                    ) {
+                        try {
+                            await API.uploadListingImage(apiId, coverImage);
+                        } catch (uploadError) {
+                            console.log(
+                                "CREATE BUSINESS IMAGE UPLOAD ERROR:",
+                                uploadError
+                            );
+                        }
+                    }
+                }
+            } catch (apiError) {
+                console.log("CREATE BUSINESS API ERROR:", apiError);
+            }
+
+            if (!navigableId) {
+                navigableId = await resolveNewestOwnedBusinessId(
+                    ownerId,
+                    {
+                        username: ownerUsername || undefined,
+                        email: ownerEmail || undefined,
+                    },
+                    businessName
+                );
+            }
+
             requestDiscoverListingsRefresh();
 
-            router.replace({
-              pathname: "/profile/v2",
-              params: { id: businessId, fromCreate: "1" },
-            });
+            if (!navigableId) {
+                Alert.alert(
+                    "Business created",
+                    "Your business was saved, but we could not open its profile automatically. Open it from My Businesses.",
+                    [
+                        {
+                            text: "My Businesses",
+                            onPress: () =>
+                                router.replace("/profile/my-businesses"),
+                        },
+                    ]
+                );
+                return;
+            }
+
+            openCreatedBusinessProfile(navigableId);
         } catch (error) {
             console.log("CREATE BUSINESS ERROR:", error);
             Alert.alert(
@@ -395,6 +527,8 @@ export default function CreateBusiness() {
                     onChangeText={handleStreetAddressChange}
                     onAddressSelected={handleAddressSelected}
                     placeholder="Start typing your street address"
+                    city={city}
+                    state={state}
                 />
 
                 <Input
@@ -749,7 +883,7 @@ export default function CreateBusiness() {
                     }}
                 >
                     <Text style={{ color: "#fff", fontSize: 18, fontWeight: "900" }}>
-                        {saving ? "Verifying address..." : "Create Business Profile"}
+                        {saving ? "Creating..." : "Create Business Profile"}
                     </Text>
                 </Pressable>
             </View>

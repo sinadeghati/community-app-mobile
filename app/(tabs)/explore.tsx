@@ -17,16 +17,16 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import {
-  isEventListing,
   loadDiscoverableListings,
-  matchesDiscoverySearchFilter,
   matchesListingCategory,
 } from "../../lib/discoverableListings";
 import { DISCOVER_LISTINGS_REFRESH_EVENT } from "../../lib/discoverListingsRefresh";
 import {
   getCachedDiscoverListings,
+  sanitizeCachedDiscoverListings,
   setCachedDiscoverListings,
 } from "../../lib/discoverListingsCache";
+import { runDevStagingDiscoverCleanup } from "../../lib/discoverCacheCleanup";
 import { logLoadedListingEventIds } from "../../lib/eventDiagnostics";
 import {
   formatEventDateTime,
@@ -35,6 +35,7 @@ import {
   getEventTitle,
 } from "../../lib/mapEventDetails";
 import {
+  isMapEvent,
   isUpcomingEvent,
   sortEventsByDate,
   type EventMapItem,
@@ -60,7 +61,11 @@ import {
   saveSearchAppLocation,
   type AppLocationState,
 } from "../../lib/appLocation";
-import { listingMatchesActiveLocation } from "../../lib/activeLocationFilter";
+import {
+  listingMatchesActiveLocation,
+  listingMatchesDiscoveryLocation,
+  matchesDiscoverySearchQuery,
+} from "../../lib/activeLocationFilter";
 import type { PlaceSearchSuggestion } from "../../lib/addressAutocomplete";
 import { AdvancedLocationFilters } from "../../components/location/AdvancedLocationFilters";
 import {
@@ -377,6 +382,23 @@ export default function ExploreScreen() {
   }, []);
 
   useEffect(() => {
+    void (async () => {
+      await runDevStagingDiscoverCleanup();
+      const sanitized = await sanitizeCachedDiscoverListings();
+      if (!sanitized.length) return;
+
+      const allowedIds = new Set(
+        sanitized.map((item) => String((item as { id?: unknown }).id ?? ""))
+      );
+
+      setListings((prev) => {
+        const next = prev.filter((item) => allowedIds.has(getId(item)));
+        return next.length === prev.length ? prev : next;
+      });
+    })();
+  }, []);
+
+  useEffect(() => {
     loadListings();
     void (async () => {
       logLoaderStart("explore.location");
@@ -519,7 +541,7 @@ export default function ExploreScreen() {
 
   const handleBusinessCardPress = useCallback(
     (item: Listing) => {
-      if (isEventListing(item)) {
+      if (isMapEvent(item)) {
         openEvent(item);
         return;
       }
@@ -546,14 +568,17 @@ export default function ExploreScreen() {
 
   const searchResults = useMemo(
     () =>
-      locationListings.filter((item) =>
-        matchesDiscoverySearchFilter(item, search)
+      listings.filter(
+        (item) =>
+          listingMatchesDiscoveryLocation(item, locationState, {
+            searchQuery: search,
+          }) && matchesDiscoverySearchQuery(item, search)
       ),
-    [locationListings, search]
+    [listings, locationState, search]
   );
 
   const browseBusinessListings = useMemo(
-    () => browseListings.filter((item) => !isEventListing(item)),
+    () => browseListings.filter((item) => !isMapEvent(item)),
     [browseListings]
   );
 
@@ -561,7 +586,7 @@ export default function ExploreScreen() {
     () =>
       browseListings.filter(
         (item) =>
-          isEventListing(item) && isUpcomingEvent(item as EventMapItem)
+          isMapEvent(item) && isUpcomingEvent(item as EventMapItem)
       ) as EventMapItem[],
     [browseListings]
   );
@@ -584,7 +609,7 @@ export default function ExploreScreen() {
     () =>
       searchResults.map((item) => ({
         item,
-        type: (isEventListing(item) ? "event" : "business") as ExploreItemType,
+        type: (isMapEvent(item) ? "event" : "business") as ExploreItemType,
       })),
     [searchResults]
   );

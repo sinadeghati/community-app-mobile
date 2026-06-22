@@ -54,7 +54,7 @@ import {
   saveViewportAppLocation,
   type AppLocationState,
 } from "../../lib/appLocation";
-import { listingMatchesActiveLocation } from "../../lib/activeLocationFilter";
+import { listingMatchesDiscoveryLocation, matchesDiscoverySearchQuery } from "../../lib/activeLocationFilter";
 import type { PlaceSearchSuggestion } from "../../lib/addressAutocomplete";
 import { AdvancedLocationFilters } from "../../components/location/AdvancedLocationFilters";
 import { Ionicons } from "@expo/vector-icons";
@@ -65,7 +65,6 @@ import {
   loadDiscoverableListings,
   MapMarkerKind,
   matchesListingCategory,
-  matchesListingSearch,
 } from "../../lib/discoverableListings";
 import { CategoryIconBadge } from "../../components/category/CategoryIconBadge";
 import { getCategoryChipVisual } from "../../lib/categoryChipTheme";
@@ -87,7 +86,8 @@ import {
 import {
   DISCOVER_LISTINGS_REFRESH_EVENT,
 } from "../../lib/discoverListingsRefresh";
-import { getCachedDiscoverListings } from "../../lib/discoverListingsCache";
+import { getCachedDiscoverListings, sanitizeCachedDiscoverListings } from "../../lib/discoverListingsCache";
+import { runDevStagingDiscoverCleanup } from "../../lib/discoverCacheCleanup";
 import {
   ensureBusinessMapCoordinatesBatch,
   mergeBusinessProfileLocation,
@@ -174,13 +174,6 @@ const SAN_DIEGO_REGION: Region = {
 
 const categoryFilters = [...QUICK_DISCOVERY_CATEGORY_CHIPS];
 
-const offsetEventDate = (days = 0, months = 0) => {
-  const date = new Date();
-  if (months) date.setMonth(date.getMonth() + months);
-  if (days) date.setDate(date.getDate() + days);
-  return date.toISOString();
-};
-
 type MapTypeFilter = "all" | "businesses" | "events";
 
 const EVENT_TIME_FILTERS: { key: EventTimeFilter; label: string }[] = [
@@ -189,78 +182,6 @@ const EVENT_TIME_FILTERS: { key: EventTimeFilter; label: string }[] = [
   { key: "week", label: "This Week" },
   { key: "month", label: "This Month" },
   { key: "later", label: "Later" },
-];
-
-const demoEvents: MapItem[] = [
-  {
-    id: "event-live-music-tonight",
-    title: "Persian Live Music Night",
-    category: "Concert",
-    city: "San Diego",
-    state: "CA",
-    event_date: offsetEventDate(0),
-    latitude: 32.728,
-    longitude: -117.15,
-    image:
-      "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=1200",
-    description:
-      "An evening of live Persian music, community, and culture in the heart of San Diego.",
-    organizer: "Persian Cultural Center",
-    rating: 4.8,
-    reviews: 24,
-    is_featured: true,
-  },
-  {
-    id: "event-community-meetup",
-    title: "Persian Community Meetup",
-    category: "Community Gathering",
-    city: "La Mesa",
-    state: "CA",
-    event_date: offsetEventDate(5),
-    latitude: 32.7678,
-    longitude: -117.0231,
-    image:
-      "https://images.unsplash.com/photo-1511578314322-379afb4768f1?q=80&w=1200",
-    description:
-      "Meet neighbors, share stories, and connect with the local Persian community.",
-    organizer: "Iranian Community Network",
-  },
-  {
-    id: "event-food-festival",
-    title: "Persian Food Festival",
-    category: "Festival",
-    city: "Chula Vista",
-    state: "CA",
-    event_date: offsetEventDate(18),
-    latitude: 32.64,
-    longitude: -117.0842,
-    image:
-      "https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=1200",
-  },
-  {
-    id: "event-nowruz",
-    title: "Nowruz Community Celebration",
-    category: "Persian Culture",
-    city: "Escondido",
-    state: "CA",
-    event_date: offsetEventDate(0, 3),
-    latitude: 33.1192,
-    longitude: -117.0864,
-    image:
-      "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200",
-  },
-  {
-    id: "event-yalda-concert",
-    title: "Yalda Night Concert",
-    category: "Concert",
-    city: "Carlsbad",
-    state: "CA",
-    event_date: offsetEventDate(0, 6),
-    latitude: 33.1581,
-    longitude: -117.3506,
-    image:
-      "https://images.unsplash.com/photo-1459749411177-041980c57401?q=80&w=1200",
-  },
 ];
 
 const getId = (item: MapItem) => String(item?.id || "");
@@ -298,17 +219,8 @@ const findCategoryFilterByQuery = (query: string) => {
   return categoryFilters.find((filter) => filter.key === filterKey) ?? null;
 };
 
-const matchesMapSearchFilter = (item: MapItem, query: string) => {
-  const trimmed = query.trim();
-  if (!trimmed) return true;
-
-  const categoryFilter = findCategoryFilterByQuery(trimmed);
-  if (categoryFilter) {
-    return matchesMapCategoryFilter(item, categoryFilter.key);
-  }
-
-  return matchesListingSearch(item, trimmed);
-};
+const matchesMapSearchFilter = (item: MapItem, query: string) =>
+  matchesDiscoverySearchQuery(item, query);
 
 /** Map-only category rules — All includes businesses + events; Events is events-only. */
 const matchesMapCategoryFilter = (item: MapItem, category: string) => {
@@ -1329,20 +1241,17 @@ export default function MapScreenV25() {
     }
   };
 
-  const openEventDetails = async (event: MapItem) => {
+  const openEventDetails = async (item: MapItem) => {
     dismissKeyboard();
-    const id = getId(event);
+    const id = getId(item);
     if (!id) return;
 
-    if (!id.startsWith("event-") && !id.startsWith("festival-")) {
-      router.push({
-        pathname: "/listing/[id]",
-        params: { id },
-      });
+    if (!isMapEvent(item)) {
+      openProfile(item);
       return;
     }
 
-    await saveMapEventSnapshot(event as EventMapItem);
+    await saveMapEventSnapshot(item as EventMapItem);
     router.push({
       pathname: "/event/[id]",
       params: { id },
@@ -1499,10 +1408,10 @@ export default function MapScreenV25() {
           background ? cachedFallback : []
         );
         const enriched = await withTimeout(
-          enrichMapItemsWithProfileUpdates([...data, ...demoEvents]),
+          enrichMapItemsWithProfileUpdates(data),
           5000,
           "map.enrichMapItems",
-          background ? [...cachedFallback, ...demoEvents] : [...data, ...demoEvents]
+          background ? cachedFallback : data
         );
 
         if (background) {
@@ -1549,7 +1458,7 @@ export default function MapScreenV25() {
       } catch (e) {
         console.log("[loader] map.loadMapItems error:", e);
         if (!background) {
-          setItems([...demoEvents]);
+          setItems([]);
         }
       } finally {
         logLoaderDone("map.loadMapItems");
@@ -1600,6 +1509,23 @@ export default function MapScreenV25() {
   );
 
   useEffect(() => {
+    void (async () => {
+      await runDevStagingDiscoverCleanup();
+      const sanitized = await sanitizeCachedDiscoverListings();
+      if (!sanitized.length && !itemsRef.current.length) return;
+
+      const allowedIds = new Set(
+        sanitized.map((item) => String((item as { id?: unknown }).id ?? ""))
+      );
+
+      setItems((prev) => {
+        const next = prev.filter((item) => allowedIds.has(getId(item)));
+        return next.length === prev.length ? prev : next;
+      });
+    })();
+  }, []);
+
+  useEffect(() => {
     const sub = DeviceEventEmitter.addListener(
       DISCOVER_LISTINGS_REFRESH_EVENT,
       () => {
@@ -1633,7 +1559,11 @@ export default function MapScreenV25() {
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
-      const matchesLocation = listingMatchesActiveLocation(item, mapFilterLocation);
+      const matchesLocation = listingMatchesDiscoveryLocation(
+        item,
+        mapFilterLocation,
+        isSearchMode ? { searchQuery: search } : undefined
+      );
       if (!matchesLocation) return false;
 
       if (!matchesMapTypeFilter(item, mapTypeFilter)) return false;
@@ -1659,14 +1589,14 @@ export default function MapScreenV25() {
   useEffect(() => {
     if (!selectedItem) return;
 
+    const selectedId = getId(selectedItem);
     const stillVisible = filteredItems.some(
-      (item) => getId(item) === getId(selectedItem)
+      (item) => getId(item) === selectedId
     );
 
     if (!stillVisible) {
-      const nextBusiness =
-        filteredItems.find((item) => !isMapEvent(item)) ?? null;
-      setSelectedItem(nextBusiness);
+      businessPreviewOpenRef.current = false;
+      setSelectedItem(null);
     }
   }, [filteredItems, selectedItem]);
 
@@ -2003,13 +1933,32 @@ export default function MapScreenV25() {
     options?: { focusUpdates?: boolean }
   ) => {
     dismissKeyboard();
-    router.push({
-      pathname: "/profile/v2",
-      params: {
-        id: getId(item),
-        ...(options?.focusUpdates ? { focus: "updates" } : {}),
-      },
-    });
+    clearSelectedMapItem();
+
+    void (async () => {
+      const id = getId(item);
+      const { loadDeletedBusinessIds, isDeletedBusinessId } = await import(
+        "../../lib/deletedBusinessRegistry"
+      );
+      const { purgeBusinessFromClientCaches } = await import(
+        "../../lib/businessListingVisibility"
+      );
+      const deletedIds = await loadDeletedBusinessIds();
+
+      if (isDeletedBusinessId(id, deletedIds)) {
+        await purgeBusinessFromClientCaches(id);
+        setItems((prev) => prev.filter((row) => getId(row) !== id));
+        return;
+      }
+
+      router.push({
+        pathname: "/profile/v2",
+        params: {
+          id,
+          ...(options?.focusUpdates ? { focus: "updates" } : {}),
+        },
+      });
+    })();
   };
 
   const openProfileUpdates = (item: MapItem) => {

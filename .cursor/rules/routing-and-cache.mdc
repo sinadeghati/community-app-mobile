@@ -1,0 +1,26 @@
+---
+description: Prevent routing regressions and stale cache bugs
+globs: app/**/*.{tsx,ts},lib/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# Routing & cache safety
+
+## Business profile routing
+
+- Canonical business profile route: `/profile/v2`
+- Do not reintroduce `/listing/[id]` or `/profile/[id]` as primary entry points
+- Map, Explore, Favorites, and My Businesses must navigate to `/profile/v2`
+
+## Discover / map cache
+
+- Deleted or tombstoned businesses must not appear on Map, Explore, Favorites, or My Businesses
+- Use `lib/businessListingVisibility.ts` and `lib/deletedBusinessRegistry.ts` for filtering
+- On 404 or purge: call `purgeBusinessFromClientCaches()` and refresh discover listings
+- Do not bypass `filterDisplayableDiscoverableListings()` when merging discover data
+
+## Before changing routes or cache logic
+
+1. List all entry points affected (grep for old paths).
+2. Verify delete → marker removal and no stale profile flash.
+3. Run regression items: Map Markers, Business Profile, Favorites, Data Refresh, Routing, Navigation.

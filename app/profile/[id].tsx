@@ -1,4 +1,5 @@
 // app/profile/[id].tsx
+// @deprecated Legacy public profile screen. Use /profile/v2 for business storefront profiles.
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -271,7 +272,10 @@ const heroImageUrl = useMemo(() => {
     return (
       <Pressable
         style={{ width: "48%", margin: "1%", }}
-        onPress={() => router.replace(`/listing/${item.id}`)}
+        onPress={() => router.replace({
+          pathname: "/profile/v2",
+          params: { id: String(item.id) },
+        })}
       >
         {imgUrl ? (
           <Image source={{ uri: imgUrl }} style={styles.image} />

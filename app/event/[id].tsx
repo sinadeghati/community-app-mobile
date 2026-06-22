@@ -19,6 +19,8 @@ import {
   deleteCommunityEvent,
   isCommunityEventOwner,
 } from "../../lib/communityEvents";
+import { isDeletedEventId, loadDeletedEventIds } from "../../lib/deletedEventRegistry";
+import { purgeEventFromClientCaches } from "../../lib/eventListingVisibility";
 import { loadDiscoverableListings } from "../../lib/discoverableListings";
 import { isMapEvent } from "../../lib/mapEvents";
 import { getActiveUserId } from "../../lib/userSessionStorage";
@@ -54,6 +56,14 @@ export default function EventDetailsScreen() {
   const loadEvent = React.useCallback(async () => {
     try {
       setLoading(true);
+
+      const deletedIds = await loadDeletedEventIds();
+      if (isDeletedEventId(eventId, deletedIds)) {
+        await purgeEventFromClientCaches(eventId);
+        setEvent(null);
+        setIsOwner(false);
+        return;
+      }
 
       const communityEvent = await getCommunityEventById(eventId);
       if (communityEvent) {

@@ -45,10 +45,13 @@ import {
   toMyBusinessLogRow,
 } from "../../lib/userSessionStorage";
 import * as ImagePicker from "expo-image-picker";
-import { countCommunityEventsForOwner } from "../../lib/communityEvents";
 import { countSavedFavorites } from "../../lib/favoritesCount";
 import { FAVORITES_CHANGED_EVENT } from "../../lib/favoritesRefresh";
 import { resolveProfileDisplayName } from "../../lib/profileDisplay";
+import { apiUrl } from "../../lib/apiConfig";
+import { confirmDeleteAccount } from "../../lib/accountActions";
+import { showComingSoon } from "../profile/comingSoon";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const USER_AVATAR =
   "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=900";
@@ -58,6 +61,7 @@ const PROFILE_HYDRATION_TIMEOUT_MS = 5000;
 type AuthHydrationState = "loading" | "authenticated" | "guest";
 
 export default function ProfileV2Clean() {
+  const insets = useSafeAreaInsets();
   const [authHydration, setAuthHydration] =
     useState<AuthHydrationState>("loading");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -66,7 +70,6 @@ export default function ProfileV2Clean() {
   const [myBusinessId, setMyBusinessId] = useState<string | null>(null);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [favoritesCount, setFavoritesCount] = useState(0);
-  const [eventsCount, setEventsCount] = useState(0);
   const [profileIdentityLoading, setProfileIdentityLoading] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const activeAccountKeyRef = useRef<string | null>(null);
@@ -215,7 +218,6 @@ export default function ProfileV2Clean() {
     setLocalBusinesses([]);
     setMyBusinessId(null);
     setFavoritesCount(0);
-    setEventsCount(0);
     setProfileIdentityLoading(false);
     setProfileLoadError(null);
     setAuthHydration("guest");
@@ -239,7 +241,6 @@ export default function ProfileV2Clean() {
     setProfileImage(null);
     setLocalBusinesses([]);
     setMyBusinessId(null);
-    setEventsCount(0);
     setProfileLoadError(null);
   };
 
@@ -288,24 +289,55 @@ export default function ProfileV2Clean() {
     email: String(record?.email || "").trim() || undefined,
   });
 
-  const syncEventsCount = async (userId: string) => {
+  const updateProfileAvatar = async () => {
     try {
-      setEventsCount(await countCommunityEventsForOwner(userId));
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          "Permission needed",
+          "Please allow photo access to update your profile photo."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+      });
+
+      if (result.canceled || !result.assets?.[0]?.uri) {
+        return;
+      }
+
+      const uri = result.assets[0].uri;
+      setProfileImage(uri);
+
+      const userId = await getActiveUserId();
+      if (!userId) {
+        return;
+      }
+
+      const identity = identityFromProfile(profile);
+      const current =
+        ((await loadUserProfile(userId, identity)) as Record<string, unknown> | null) ||
+        ({
+          ...(profile || {}),
+          id: userId,
+          user_id: userId,
+        } as Record<string, unknown>);
+
+      const updated = {
+        ...current,
+        profileImage: uri,
+        profile_image: uri,
+      };
+
+      await saveUserProfile(userId, updated);
+      setProfile(updated);
     } catch {
-      setEventsCount(0);
-    }
-  };
-
-  const pickProfileImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      setProfileImage(result.assets[0].uri);
+      Alert.alert("Error", "Could not update your profile photo.");
     }
   };
 
@@ -364,15 +396,12 @@ export default function ProfileV2Clean() {
               PROFILE_HYDRATION_TIMEOUT_MS
             );
             try {
-              return await fetch(
-                "https://community-app-backend-production.up.railway.app/api/accounts/profile/",
-                {
-                  headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                  },
-                  signal: controller.signal,
-                }
-              );
+              return await fetch(apiUrl("/accounts/profile/"), {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+                signal: controller.signal,
+              });
             } finally {
               clearTimeout(timeoutId);
             }
@@ -455,7 +484,6 @@ export default function ProfileV2Clean() {
                 "Session expired. Sign in again to refresh your profile."
               );
               void loadLocalBusinesses(userId, identity);
-              void syncEventsCount(userId);
               return;
             }
 
@@ -466,7 +494,6 @@ export default function ProfileV2Clean() {
               "Could not reach profile service. Showing saved details."
             );
             void loadLocalBusinesses(userId, identity);
-            void syncEventsCount(userId);
             return;
           }
 
@@ -499,7 +526,6 @@ export default function ProfileV2Clean() {
             });
           }
           void loadLocalBusinesses(userId, resolvedIdentity);
-          void syncEventsCount(userId);
 
           if (data?.business_id) {
             setMyBusinessId(String(data.business_id));
@@ -517,7 +543,6 @@ export default function ProfileV2Clean() {
             "Profile load failed. Showing offline details."
           );
           void loadLocalBusinesses(userId, identity);
-          void syncEventsCount(userId);
         }
       };
 
@@ -576,7 +601,6 @@ export default function ProfileV2Clean() {
             );
             finishProfileHydration();
             void loadLocalBusinesses(userId, identity);
-            void syncEventsCount(userId);
             void syncFavoritesCount();
             void refreshProfileFromApi(session, userId, identity);
             return;
@@ -636,7 +660,6 @@ export default function ProfileV2Clean() {
             );
             finishProfileHydration();
             void loadLocalBusinesses(userId, identity);
-            void syncEventsCount(userId);
             void syncFavoritesCount();
             void refreshProfileFromApi(session, userId, identity);
           } else {
@@ -687,89 +710,66 @@ export default function ProfileV2Clean() {
     router.push(path as any);
   };
 
-  const MenuItem = ({
-    icon,
-    title,
-    subtitle,
-    onPress,
-    isLast,
-  }: {
-    icon: keyof typeof Ionicons.glyphMap;
-    title: string;
-    subtitle: string;
-    onPress: () => void;
-    isLast?: boolean;
-  }) => (
-    <Pressable
-      onPress={onPress}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        paddingVertical: 15,
-        borderBottomWidth: isLast ? 0 : 1,
-        borderBottomColor: theme.colors.border,
-      }}
-    >
-      <View
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 14,
-          backgroundColor: "rgba(13,148,136,0.10)",
-          alignItems: "center",
-          justifyContent: "center",
-          marginRight: 13,
-        }}
-      >
-        <Ionicons name={icon} size={21} color={theme.colors.turquoise} />
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <Text
-          style={{
-            fontSize: 16,
-            fontWeight: "900",
-            color: theme.colors.charcoal,
-          }}
-        >
-          {title}
-        </Text>
-        <Text
-          style={{
-            marginTop: 3,
-            fontSize: 13,
-            color: theme.colors.muted,
-            fontWeight: "600",
-          }}
-        >
-          {subtitle}
-        </Text>
-      </View>
-
-      <Ionicons name="chevron-forward" size={21} color={theme.colors.muted} />
-    </Pressable>
+  const isVerifiedMember = Boolean(
+    profile?.is_verified === true || profile?.verified === true
   );
+
+  const profileReviewsCount = (() => {
+    const raw =
+      profile?.reviews_count ??
+      profile?.reviewsCount ??
+      profile?.review_count;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  })();
+
+  const hasProfileIdentity = Boolean(profileDisplayName || profile?.email);
+
+  const openMyBusinesses = () => {
+    router.push("/profile/my-businesses");
+  };
 
   const StatBox = ({
     value,
     label,
+    icon,
+    showDivider,
   }: {
     value: string;
     label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    showDivider?: boolean;
   }) => (
     <View
       style={{
         flex: 1,
         alignItems: "center",
         justifyContent: "center",
-        paddingVertical: 13,
+        paddingVertical: 18,
+        paddingHorizontal: 6,
+        borderRightWidth: showDivider ? 1 : 0,
+        borderRightColor: theme.colors.border,
       }}
     >
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 12,
+          backgroundColor: "rgba(13,148,136,0.10)",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 8,
+        }}
+      >
+        <Ionicons name={icon} size={18} color={theme.colors.turquoise} />
+      </View>
       <Text
         style={{
-          fontSize: 20,
+          fontSize: 21,
           fontWeight: "900",
           color: theme.colors.charcoal,
+          letterSpacing: -0.5,
         }}
       >
         {value}
@@ -778,14 +778,112 @@ export default function ProfileV2Clean() {
       <Text
         style={{
           marginTop: 3,
-          fontSize: 12,
+          fontSize: 11,
           color: theme.colors.muted,
           fontWeight: "700",
+          letterSpacing: 0.2,
+          textAlign: "center",
         }}
       >
         {label}
       </Text>
     </View>
+  );
+
+  const MenuItem = ({
+    icon,
+    title,
+    subtitle,
+    onPress,
+    isLast,
+    comingSoon,
+    trailing,
+  }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    title: string;
+    subtitle: string;
+    onPress?: () => void;
+    isLast?: boolean;
+    comingSoon?: boolean;
+    trailing?: React.ReactNode;
+  }) => (
+    <Pressable
+      onPress={comingSoon ? () => showComingSoon(title, subtitle) : onPress}
+      disabled={!onPress && !comingSoon}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 14,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: theme.colors.border,
+        opacity: pressed ? 0.72 : 1,
+      })}
+    >
+      <View
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 14,
+          backgroundColor: "rgba(13,148,136,0.10)",
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: 12,
+        }}
+      >
+        <Ionicons name={icon} size={20} color={theme.colors.turquoise} />
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: "800",
+              color: theme.colors.charcoal,
+            }}
+          >
+            {title}
+          </Text>
+          {comingSoon ? (
+            <View
+              style={{
+                backgroundColor: "rgba(107,114,128,0.12)",
+                borderRadius: theme.radius.pill,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: "800",
+                  color: theme.colors.muted,
+                  letterSpacing: 0.4,
+                }}
+              >
+                SOON
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <Text
+          style={{
+            marginTop: 2,
+            fontSize: 13,
+            color: theme.colors.muted,
+            fontWeight: "500",
+            lineHeight: 18,
+          }}
+        >
+          {subtitle}
+        </Text>
+      </View>
+
+      {trailing ||
+        (onPress || comingSoon ? (
+          <Ionicons name="chevron-forward" size={20} color={theme.colors.muted} />
+        ) : null)}
+    </Pressable>
   );
 
   if (authHydration === "loading" || profileIdentityLoading) {
@@ -901,16 +999,18 @@ export default function ProfileV2Clean() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
+    <View style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{
+          paddingBottom: Math.max(insets.bottom, 16) + 96,
+        }}
       >
         {profileLoadError ? (
           <View
             style={{
               marginHorizontal: 18,
-              marginTop: 12,
+              marginTop: insets.top + 8,
               padding: 12,
               borderRadius: 12,
               backgroundColor: "#FEF3C7",
@@ -929,14 +1029,15 @@ export default function ProfileV2Clean() {
             </Text>
           </View>
         ) : null}
+
         <View
           style={{
-            paddingTop: 24,
-            paddingHorizontal: 18,
-            paddingBottom: 72,
+            paddingTop: insets.top + 10,
+            paddingHorizontal: 20,
+            paddingBottom: 48,
             backgroundColor: theme.colors.turquoise,
-            borderBottomLeftRadius: 32,
-            borderBottomRightRadius: 32,
+            borderBottomLeftRadius: 28,
+            borderBottomRightRadius: 28,
           }}
         >
           <View
@@ -946,22 +1047,30 @@ export default function ProfileV2Clean() {
               justifyContent: "space-between",
             }}
           >
-            <Text style={{ fontSize: 28, fontWeight: "900", color: "#fff" }}>
+            <Text
+              style={{
+                fontSize: 22,
+                fontWeight: "800",
+                color: "#fff",
+                letterSpacing: -0.3,
+              }}
+            >
               Profile
             </Text>
 
             <Pressable
               onPress={() => go("/profile/settings")}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: "rgba(255,255,255,0.18)",
+              style={({ pressed }) => ({
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: "rgba(255,255,255,0.16)",
                 alignItems: "center",
                 justifyContent: "center",
-              }}
+                opacity: pressed ? 0.75 : 1,
+              })}
             >
-              <Ionicons name="settings-outline" size={22} color="#fff" />
+              <Ionicons name="settings-outline" size={18} color="#fff" />
             </Pressable>
           </View>
         </View>
@@ -969,114 +1078,236 @@ export default function ProfileV2Clean() {
         <View
           style={{
             marginHorizontal: 18,
-            marginTop: -48,
+            marginTop: -32,
             backgroundColor: theme.colors.card,
-            borderRadius: 30,
-            padding: 18,
+            borderRadius: 20,
+            padding: 14,
             borderWidth: 1,
             borderColor: theme.colors.border,
             ...theme.shadow.medium,
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Image
-              source={{ uri: profileImage || USER_AVATAR }}
-              style={{
-                width: 92,
-                height: 92,
-                borderRadius: 30,
-                backgroundColor: "#eee",
-                borderWidth: 4,
-                borderColor: "#fff",
-              }}
-            />
-
-            <View style={{ flex: 1, marginLeft: 15 }}>
-              <Text
-                style={{
-                  fontSize: 25,
-                  fontWeight: "900",
-                  color: theme.colors.charcoal,
-                }}
-              >
-                {profileDisplayName}
-              </Text>
-
-              <Text
-                style={{
-                  marginTop: 4,
-                  color: theme.colors.muted,
-                  fontWeight: "700",
-                }}
-              >
-                {profile?.email || "Complete your profile"}
-              </Text>
-
-              {profile?.city ? (
+          {!hasProfileIdentity ? (
+            <View style={{ paddingVertical: 4 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons
+                  name="person-circle-outline"
+                  size={40}
+                  color={theme.colors.muted}
+                />
                 <Text
                   style={{
-                    marginTop: 4,
-                    fontSize: 13.5,
-                    color: theme.colors.muted,
+                    flex: 1,
+                    marginLeft: 12,
+                    fontSize: 14,
                     fontWeight: "700",
+                    color: theme.colors.muted,
+                    lineHeight: 20,
                   }}
                 >
-                  📍 {profile.city}
+                  Profile details are not available yet. Tap Edit Profile to add
+                  your information.
                 </Text>
-              ) : null}
-
-              <View
-                style={{
+              </View>
+              <Pressable
+                onPress={() => router.push("/profile/edit-v2")}
+                style={({ pressed }) => ({
                   alignSelf: "flex-start",
                   marginTop: 10,
-                  backgroundColor: "rgba(13,148,136,0.12)",
-                  borderRadius: 999,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                }}
+                  height: 36,
+                  paddingHorizontal: 14,
+                  borderRadius: 12,
+                  backgroundColor: "rgba(13,148,136,0.10)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexDirection: "row",
+                  gap: 5,
+                  opacity: pressed ? 0.75 : 1,
+                })}
               >
+                <Ionicons
+                  name="create-outline"
+                  size={15}
+                  color={theme.colors.turquoise}
+                />
                 <Text
                   style={{
                     color: theme.colors.turquoise,
-                    fontWeight: "900",
-                    fontSize: 12,
+                    fontSize: 13,
+                    fontWeight: "800",
                   }}
                 >
-                  Community Member
+                  Edit Profile
                 </Text>
-              </View>
+              </Pressable>
             </View>
+          ) : (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View>
+                  <Image
+                    source={{ uri: profileImage || USER_AVATAR }}
+                    style={{
+                      width: 88,
+                      height: 88,
+                      borderRadius: 44,
+                      backgroundColor: "#eee",
+                      borderWidth: 3,
+                      borderColor: "#fff",
+                    }}
+                  />
+                  <Pressable
+                    onPress={updateProfileAvatar}
+                    style={({ pressed }) => ({
+                      position: "absolute",
+                      right: 0,
+                      bottom: 0,
+                      width: 30,
+                      height: 30,
+                      borderRadius: 15,
+                      backgroundColor: theme.colors.turquoise,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: 2,
+                      borderColor: theme.colors.card,
+                      opacity: pressed ? 0.85 : 1,
+                    })}
+                  >
+                    <Ionicons name="camera" size={14} color="#fff" />
+                  </Pressable>
+                </View>
 
-            <Pressable
-              onPress={() => router.push("/profile/edit-v2")}
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 19,
-                backgroundColor: "rgba(13,148,136,0.10)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="pencil" size={18} color={theme.colors.turquoise} />
-            </Pressable>
-          </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 5,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 19,
+                        fontWeight: "900",
+                        color: theme.colors.charcoal,
+                        letterSpacing: -0.3,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {profileDisplayName || "Community Member"}
+                    </Text>
+                    {isVerifiedMember ? (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color={theme.colors.success}
+                      />
+                    ) : null}
+                  </View>
+
+                  <Text
+                    style={{
+                      marginTop: 3,
+                      fontSize: 13,
+                      color: theme.colors.muted,
+                      fontWeight: "600",
+                    }}
+                    numberOfLines={1}
+                  >
+                    {profile?.email || "No email on file"}
+                  </Text>
+
+                  {!isVerifiedMember ? (
+                    <View
+                      style={{
+                        alignSelf: "flex-start",
+                        marginTop: 6,
+                        backgroundColor: "rgba(13,148,136,0.12)",
+                        borderRadius: theme.radius.pill,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: theme.colors.turquoise,
+                          fontWeight: "800",
+                          fontSize: 11,
+                        }}
+                      >
+                        Community Member
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+
+              <Pressable
+                onPress={() => router.push("/profile/edit-v2")}
+                style={({ pressed }) => ({
+                  alignSelf: "flex-start",
+                  marginTop: 10,
+                  height: 36,
+                  paddingHorizontal: 14,
+                  borderRadius: 12,
+                  backgroundColor: "rgba(13,148,136,0.10)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexDirection: "row",
+                  gap: 5,
+                  opacity: pressed ? 0.75 : 1,
+                })}
+              >
+                <Ionicons
+                  name="create-outline"
+                  size={15}
+                  color={theme.colors.turquoise}
+                />
+                <Text
+                  style={{
+                    color: theme.colors.turquoise,
+                    fontSize: 13,
+                    fontWeight: "800",
+                  }}
+                >
+                  Edit Profile
+                </Text>
+              </Pressable>
+            </>
+          )}
         </View>
+
         <View
           style={{
             flexDirection: "row",
-            marginTop: 18,
+            marginTop: 16,
             marginHorizontal: 18,
             backgroundColor: theme.colors.card,
-            borderRadius: 26,
+            borderRadius: 22,
             borderWidth: 1,
             borderColor: theme.colors.border,
+            overflow: "hidden",
             ...theme.shadow.soft,
           }}
         >
-          <StatBox value={String(localBusinesses.length)} label="My Businesses" />
-          <StatBox value={String(favoritesCount)} label="Favorites" />
-          <StatBox value={String(eventsCount)} label="Events" />
+          <StatBox
+            value={String(localBusinesses.length)}
+            label="My Businesses"
+            icon="business-outline"
+            showDivider
+          />
+          <StatBox
+            value={String(favoritesCount)}
+            label="Favorites"
+            icon="heart-outline"
+            showDivider
+          />
+          <StatBox
+            value={String(profileReviewsCount)}
+            label="Reviews"
+            icon="star-outline"
+          />
         </View>
 
         {profile?.bio ? (
@@ -1101,123 +1332,35 @@ export default function ProfileV2Clean() {
         <View style={sectionCardStyle}>
           <MenuItem
             icon="briefcase-outline"
+            title="My Businesses"
+            subtitle={
+              localBusinesses.length > 0
+                ? `${localBusinesses.length} listing${localBusinesses.length === 1 ? "" : "s"}`
+                : "View and manage your business listings"
+            }
+            onPress={openMyBusinesses}
+          />
+          <MenuItem
+            icon="calendar-outline"
+            title="My Events"
+            subtitle="View and manage your community events"
+            onPress={() => go("/profile/events")}
+          />
+          <MenuItem
+            icon="add-circle-outline"
             title="Add Business Profile"
             subtitle="Create or connect your business page"
             onPress={() => router.push("/profile/create-business")}
-          />
-
-          {localBusinesses.length > 0 ? (
-            <View
-              style={{
-                borderTopWidth: 1,
-                borderTopColor: theme.colors.border,
-                paddingTop: 14,
-                paddingBottom: 4,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 15,
-                  fontWeight: "800",
-                  marginBottom: 12,
-                  color: theme.colors.charcoal,
-                }}
-              >
-                My Businesses
-              </Text>
-
-              {localBusinesses.map((biz, index) => (
-                <Pressable
-                  key={String(biz?.id || index)}
-                  onPress={() =>
-                    router.navigate({
-                      pathname: "/profile/v2",
-                      params: { id: String(biz.id) },
-                    })
-                  }
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    backgroundColor: "#F7F4EE",
-                    borderRadius: 18,
-                    padding: 14,
-                    marginBottom: index === localBusinesses.length - 1 ? 8 : 12,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 58,
-                      height: 58,
-                      borderRadius: 16,
-                      backgroundColor: "#DFF3F1",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      marginRight: 14,
-                    }}
-                  >
-                    <Ionicons
-                      name="business-outline"
-                      size={28}
-                      color="#0F8F87"
-                    />
-                  </View>
-
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontSize: 18,
-                        fontWeight: "700",
-                        color: theme.colors.charcoal,
-                      }}
-                    >
-                      {biz.name || biz.business_name || "Business"}
-                    </Text>
-
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        color: "#777",
-                        marginTop: 3,
-                      }}
-                    >
-                      {[biz.category || biz.business_category, biz.city]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </Text>
-                  </View>
-
-                  <Ionicons
-                    name="chevron-forward"
-                    size={20}
-                    color={theme.colors.muted}
-                  />
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-
-          <MenuItem
-            icon="chatbubble-ellipses-outline"
-            title="Messages"
-            subtitle="Community conversations and chats"
-            onPress={() => go("/profile/messages")}
-          />
-
-          <MenuItem
-            icon="calendar-outline"
-            title="Events"
-            subtitle="Community events and gatherings"
-            onPress={() => go("/profile/events")}
-            isLast={localBusinesses.length === 0}
+            isLast
           />
         </View>
 
         <Text style={sectionLabelStyle}>Account</Text>
-        <View style={[sectionCardStyle, { marginBottom: 24 }]}>
+        <View style={sectionCardStyle}>
           <MenuItem
             icon="shield-checkmark-outline"
             title="Verification"
-            subtitle="Get verified as a trusted member"
+            subtitle="Get verified as a trusted community member"
             onPress={() => go("/profile/verification")}
           />
 
@@ -1252,28 +1395,71 @@ export default function ProfileV2Clean() {
             isLast
           />
         </View>
+
+        <Pressable
+          onPress={confirmDeleteAccount}
+          style={({ pressed }) => ({
+            marginHorizontal: 18,
+            marginTop: 16,
+            marginBottom: 10,
+            backgroundColor: theme.colors.card,
+            borderRadius: 16,
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+            borderWidth: 1,
+            borderColor: "rgba(239,68,68,0.22)",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            opacity: pressed ? 0.88 : 1,
+            ...theme.shadow.soft,
+          })}
+        >
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text
+              style={{
+                fontSize: 15,
+                fontWeight: "700",
+                color: theme.colors.danger,
+              }}
+            >
+              Delete Account
+            </Text>
+            <Text
+              style={{
+                marginTop: 2,
+                fontSize: 12,
+                lineHeight: 17,
+                color: theme.colors.muted,
+              }}
+            >
+              Permanent · cannot be undone
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={theme.colors.danger} />
+        </Pressable>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const sectionLabelStyle = {
-  fontSize: 13,
-  fontWeight: "800" as const,
+  fontSize: 12,
+  fontWeight: "700" as const,
   color: theme.colors.muted,
-  letterSpacing: 0.6,
+  letterSpacing: 0.8,
   textTransform: "uppercase" as const,
-  marginTop: 18,
-  marginBottom: 10,
-  marginLeft: 22,
+  marginTop: 24,
+  marginBottom: 8,
+  marginLeft: 20,
 };
 
 const sectionCardStyle = {
   marginHorizontal: 18,
   backgroundColor: theme.colors.card,
-  borderRadius: 30,
-  paddingHorizontal: 18,
-  paddingVertical: 8,
+  borderRadius: 22,
+  paddingHorizontal: 16,
+  paddingVertical: 6,
   borderWidth: 1,
   borderColor: theme.colors.border,
   ...theme.shadow.soft,

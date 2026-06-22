@@ -5,8 +5,10 @@ import {
   AUTH_PASSWORD_CHANGE_PATH,
   AUTH_PASSWORD_RESET_PATH,
 } from "./authApiContract";
+import { API_BASE_URL } from "./apiConfig";
 import { resolveStoredAccessToken } from "./authSession";
-const BASE_URL = "https://community-app-backend-production.up.railway.app/api";
+
+const BASE_URL = API_BASE_URL;
 
 const client = axios.create({
   baseURL: BASE_URL,
@@ -95,10 +97,15 @@ export const API = {
   },
 
   /** See lib/authApiContract.ts for the backend contract. */
-  async changePassword(currentPassword: string, newPassword: string) {
+  async changePassword(
+    currentPassword: string,
+    newPassword: string,
+    confirmPassword: string
+  ) {
     const res = await client.post(AUTH_PASSWORD_CHANGE_PATH, {
-      old_password: currentPassword,
+      current_password: currentPassword,
       new_password: newPassword,
+      confirm_password: confirmPassword,
     });
     return res.data;
   },
@@ -146,6 +153,11 @@ export const API = {
   async deleteEvent(id: string) {
     await client.delete(`/events/${id}/`);
     return true;
+  },
+
+  async getEvents() {
+    const res = await client.get("/events/");
+    return res.data;
   },
 
   getMyListings: async () => {

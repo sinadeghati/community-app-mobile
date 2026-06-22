@@ -62,6 +62,11 @@ import {
 } from "@/lib/businessLocation";
 import { requestDiscoverListingsRefresh } from "@/lib/discoverListingsRefresh";
 import { fetchAccountProfile, ProfileApiError } from "@/lib/profileApi";
+import {
+  patchOrCreateMyListing,
+  resolveServerListingId,
+  uploadGalleryImagesToListing,
+} from "@/lib/businessListingSync";
 
 const TURQUOISE = "#11998E";
 const BG = "#F5F4F0";
@@ -261,8 +266,13 @@ export default function EditBusinessProfileScreen() {
 
         const myBusinesses = await loadMyBusinessesForProfile(userId, identity);
         let loaded =
-          myBusinesses.find((item) => String(item.id || "") === businessId) ??
-          null;
+          myBusinesses.find((item) => {
+            const id = String(item.id || "");
+            const serverId = String(
+              item.server_listing_id || item.listing_id || ""
+            );
+            return id === businessId || serverId === businessId;
+          }) ?? null;
 
         if (!loaded) {
           const savedRaw = await AsyncStorage.getItem(businessStorageKey);
@@ -701,52 +711,108 @@ export default function EditBusinessProfileScreen() {
         longitude: resolved.longitude,
       };
 
-      const serverId = Number(businessId);
       let persistedBusiness = updatedBusiness as Record<string, unknown>;
-      const hasServerListingId =
-        Number.isFinite(serverId) &&
-        serverId > 0 &&
-        String(serverId) === businessId;
+      let serverListingId: string | null = null;
+      let galleryNotice = "";
 
-      if (hasServerListingId) {
-        await API.updateMyListing(serverId, listingPayload);
-        for (const uri of galleryImages) {
-          if (uri.startsWith("file:") || uri.startsWith("content:")) {
-            await API.uploadListingImage(serverId, uri);
-          }
-        }
-        await AsyncStorage.setItem(
-          `profile_v2_${persistedBusiness.id}`,
-          JSON.stringify(persistedBusiness)
+      try {
+        serverListingId = await resolveServerListingId(
+          businessId,
+          persistedBusiness
         );
-      } else {
-        const created = await API.createListing(listingPayload);
-        const newId = String(created.id);
-        if (businessId !== newId) {
+
+        const syncResult = await patchOrCreateMyListing(
+          serverListingId,
+          listingPayload
+        );
+        serverListingId = syncResult.id;
+
+        if (serverListingId !== businessId) {
           await AsyncStorage.removeItem(businessStorageKey);
         }
+
         persistedBusiness = tagBusinessOwnership(
-          { ...updatedBusiness, id: newId },
+          {
+            ...persistedBusiness,
+            id: serverListingId,
+            server_listing_id: serverListingId,
+            listing_id: serverListingId,
+          },
           ownerId,
           ownerUsername
         );
+
         await AsyncStorage.setItem(
-          `profile_v2_${newId}`,
+          `profile_v2_${serverListingId}`,
           JSON.stringify(persistedBusiness)
         );
         await upsertUserBusiness(ownerId, persistedBusiness, ownerUsername);
+
+        const galleryResult = await uploadGalleryImagesToListing(
+          serverListingId,
+          galleryImages
+        );
+
+        if (galleryResult.uploaded === 0 && galleryResult.failed > 0) {
+          galleryNotice =
+            "\n\nGallery photos are saved on this device only. Server gallery upload is not available yet for these photos.";
+        } else if (galleryResult.failed > 0) {
+          galleryNotice = `\n\n${galleryResult.failed} gallery photo(s) could not upload to the server. Your other changes were saved.`;
+        }
+
+        try {
+          await fetchAccountProfile();
+        } catch (profileError) {
+          console.log("EDIT BUSINESS PROFILE VERIFY ERROR:", profileError);
+        }
+
+        requestDiscoverListingsRefresh();
+
+        Alert.alert("Saved", `Business profile updated.${galleryNotice}`, [
+          {
+            text: "OK",
+            onPress: () => {
+              if (serverListingId && serverListingId !== businessId) {
+                router.replace({
+                  pathname: "/profile/v2",
+                  params: { id: serverListingId },
+                });
+                return;
+              }
+              router.back();
+            },
+          },
+        ]);
+      } catch (apiError) {
+        console.log("EDIT BUSINESS API SAVE ERROR:", apiError);
+        const status = (
+          apiError as { response?: { status?: number; data?: unknown } }
+        )?.response?.status;
+        const body = (apiError as { response?: { data?: unknown } })?.response
+          ?.data;
+
+        const apiMessage =
+          status === 404
+            ? "Business API returned 404. Your edits are saved on this device."
+            : status
+              ? `Server returned ${status}. Your edits are saved on this device.`
+              : "Could not save this business to the server. Your edits are saved on this device.";
+
+        Alert.alert("Save failed", apiMessage, [
+          {
+            text: "Keep editing",
+            style: "cancel",
+          },
+          {
+            text: "View profile",
+            onPress: () => router.back(),
+          },
+        ]);
+
+        if (__DEV__ && body) {
+          console.log("[listing-api] save-failed-body", body);
+        }
       }
-
-      await fetchAccountProfile();
-
-      requestDiscoverListingsRefresh();
-
-      Alert.alert("Saved", "Business profile updated.", [
-        {
-          text: "OK",
-          onPress: () => router.back(),
-        },
-      ]);
     } catch (error) {
       console.log("EDIT BUSINESS SAVE ERROR:", error);
       if (error instanceof ProfileApiError) {
@@ -758,13 +824,11 @@ export default function EditBusinessProfileScreen() {
         return;
       }
 
-      const status = (error as { response?: { status?: number } })?.response
-        ?.status;
-      const message =
-        status === 404
-          ? "Business API returned 404. Your edits are saved on this device."
-          : "Could not save this business to the server.";
-      Alert.alert("Save failed", message, [{ text: "Keep editing" }]);
+      Alert.alert(
+        "Save failed",
+        "Something went wrong while saving locally. Please try again.",
+        [{ text: "Keep editing" }]
+      );
     } finally {
       setSaving(false);
     }
@@ -893,6 +957,8 @@ export default function EditBusinessProfileScreen() {
             onChangeText={handleStreetAddressChange}
             onAddressSelected={handleAddressSelected}
             placeholder="Start typing your street address"
+            city={city}
+            state={state}
           />
           <Field
             label="City *"

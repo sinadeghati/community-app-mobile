@@ -10,9 +10,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import {
   searchAddressSuggestions,
+  SAN_DIEGO_ADDRESS_BIAS,
+  type AddressSearchBias,
   type AddressSuggestion,
   type ParsedAddress,
 } from "../../lib/addressAutocomplete";
+import { loadAppLocationState } from "../../lib/appLocation";
 
 type StreetAddressAutocompleteProps = {
   variant: "create" | "edit";
@@ -23,6 +26,8 @@ type StreetAddressAutocompleteProps = {
   placeholder?: string;
   helperText?: string;
   autoCapitalize?: TextInputProps["autoCapitalize"];
+  city?: string;
+  state?: string;
 };
 
 const CREATE_COLORS = {
@@ -50,13 +55,41 @@ export function StreetAddressAutocomplete({
   placeholder,
   helperText,
   autoCapitalize,
+  city,
+  state,
 }: StreetAddressAutocompleteProps) {
   const colors = variant === "create" ? CREATE_COLORS : EDIT_COLORS;
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchBias, setSearchBias] = useState<AddressSearchBias>(
+    SAN_DIEGO_ADDRESS_BIAS
+  );
   const skipNextSearchRef = useRef(false);
   const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadAppLocationState()
+      .then((location) => {
+        if (cancelled) return;
+        setSearchBias({
+          latitude: location.coordinates.latitude,
+          longitude: location.coordinates.longitude,
+          viewbox: SAN_DIEGO_ADDRESS_BIAS.viewbox,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSearchBias(SAN_DIEGO_ADDRESS_BIAS);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (skipNextSearchRef.current) {
@@ -76,7 +109,11 @@ export function StreetAddressAutocomplete({
     setLoading(true);
 
     const timer = setTimeout(() => {
-      void searchAddressSuggestions(query)
+      void searchAddressSuggestions(query, {
+        bias: searchBias,
+        city,
+        state,
+      })
         .then((results) => {
           if (requestId !== requestIdRef.current) return;
           setSuggestions(results);
@@ -97,7 +134,7 @@ export function StreetAddressAutocomplete({
     return () => {
       clearTimeout(timer);
     };
-  }, [value]);
+  }, [value, city, state, searchBias]);
 
   const handleSelect = (suggestion: AddressSuggestion) => {
     skipNextSearchRef.current = true;
