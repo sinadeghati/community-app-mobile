@@ -24,6 +24,20 @@ export default function AccountScreen() {
   const { t, isRTL } = useTranslation();
   const textAlign = isRTL ? "right" : "left";
 
+  const handleDeleteAccount = () =>
+    confirmDeleteAccount({
+      title: t("account.deleteAccount"),
+      message: t("account.deleteAccountConfirm"),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("account.deleteAccount"),
+      finalConfirmMessage: t("account.deleteAccountFinalConfirm"),
+      successTitle: t("account.deleteAccountSuccessTitle"),
+      successMessage: t("account.deleteAccountSuccessMessage"),
+      unavailableTitle: t("account.deleteAccountUnavailableTitle"),
+      unavailableMessage: t("account.deleteAccountUnavailableMessage"),
+      errorTitle: t("account.deleteAccountErrorTitle"),
+    });
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
       <ScrollView
@@ -132,7 +146,7 @@ export default function AccountScreen() {
             title={t("account.deleteAccount")}
             subtitle={t("account.deleteAccountSubtitle")}
             textAlign={textAlign}
-            onPress={confirmDeleteAccount}
+            onPress={handleDeleteAccount}
           />
         </View>
 

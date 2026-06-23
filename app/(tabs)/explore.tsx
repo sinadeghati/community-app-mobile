@@ -1007,7 +1007,7 @@ export default function ExploreScreen() {
                   <View
                     style={{
                       alignSelf: "flex-start",
-                      backgroundColor: "rgba(13,148,136,0.92)",
+                      backgroundColor: "rgba(0,194,184,0.92)",
                       paddingHorizontal: 10,
                       paddingVertical: 5,
                       borderRadius: theme.radius.pill,

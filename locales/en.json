@@ -52,7 +52,7 @@
     "billingSubtitle": "Subscriptions and promotions",
     "account": "Account",
     "accountSubtitle": "Profile, security, and login settings",
-    "about": "About IranianApp",
+    "about": "About Korook",
     "aboutSubtitle": "Version, mission, and support"
   },
   "home": {
@@ -71,7 +71,7 @@
   "explore": {
     "title": "Explore",
     "subtitle": "Discover the heart of your community",
-    "communityBadge": "PERSIAN COMMUNITY",
+    "communityBadge": "KOROOK",
     "changeLocation": "Change location",
     "changeLocationHint": "Search any city or region, or use your current location.",
     "noBusinessesInLocation": "No businesses in {{location}} yet. Try another location or category.",
@@ -90,7 +90,7 @@
       "homeCatering": "Home Catering"
     },
     "searchPlaceholder": "Search businesses, services, events...",
-    "heroTitle": "Persian businesses & events near you",
+    "heroTitle": "Discover amazing places near you",
     "heroSubtitle": "Local businesses, events, services, and culture on the map.",
     "popularCategories": "Popular Categories",
     "featuredBusinesses": "Featured Businesses",
@@ -140,7 +140,7 @@
     "communityMember": "Community Member",
     "noEmail": "No email on file",
     "profileUnavailable": "Profile details are not available yet. Tap Edit Profile to add your information.",
-    "welcomeTitle": "Welcome to IranianApp",
+    "welcomeTitle": "Welcome to Korook",
     "welcomeSubtitle": "Sign in to manage your listings, favorites, events, and community profile.",
     "deleteAccount": "Delete Account",
     "deleteAccountHint": "Permanent · cannot be undone",
@@ -177,8 +177,15 @@
     "loginSecuritySubtitle": "Device sessions and account protection",
     "deleteAccount": "Delete Account",
     "deleteAccountSubtitle": "Permanently remove your account",
+    "deleteAccountConfirm": "This permanently removes your Korook account, profile, and saved data on our servers. This cannot be undone.",
+    "deleteAccountFinalConfirm": "Are you absolutely sure? Your account and listings will be permanently deleted.",
+    "deleteAccountSuccessTitle": "Account deleted",
+    "deleteAccountSuccessMessage": "Your account has been removed. We're sorry to see you go.",
+    "deleteAccountUnavailableTitle": "Unavailable",
+    "deleteAccountUnavailableMessage": "Account deletion is not available right now. Please try again later or email support@korook.com.",
+    "deleteAccountErrorTitle": "Could not delete account",
     "securityNote": "Security Note",
-    "securityNoteBody": "IranianApp should protect user identity, passwords, and personal information with secure authentication and privacy controls.",
+    "securityNoteBody": "Korook should protect user identity, passwords, and personal information with secure authentication and privacy controls.",
     "emailComingSoonTitle": "Email management",
     "emailComingSoonBody": "You'll be able to update and verify your email address from this screen in a future release.",
     "loginSecurityComingSoonTitle": "Login & Security",
@@ -200,7 +207,7 @@
     "reports": "Reports",
     "reportsSubtitle": "Review reports and safety actions",
     "safetyNote": "Safety note",
-    "safetyNoteBody": "IranianApp is designed to keep precise location private. Other members should see only your city or general area when location visibility is on—never a street address unless you choose to share it elsewhere.",
+    "safetyNoteBody": "Korook is designed to keep precise location private. Other members should see only your city or general area when location visibility is on—never a street address unless you choose to share it elsewhere.",
     "blockedComingSoonTitle": "Blocked Users",
     "blockedComingSoonBody": "You'll be able to review and manage blocked accounts from this screen soon.",
     "reportsComingSoonTitle": "Reports",
@@ -274,5 +281,18 @@
     "loginToCreate": "Please log in to create events.",
     "dateRequired": "Date required",
     "dateRequiredBody": "Please choose a date and time for your event."
+  },
+  "auth": {
+    "verifyTitle": "Verify your email",
+    "verifySubtitle": "Enter the 6-digit code we sent to activate your Korook account.",
+    "activateAccount": "Activate account",
+    "resendCode": "Resend verification code",
+    "resendCooldown": "Resend code in {{seconds}}s",
+    "codeSentTitle": "Code sent",
+    "codeSentBody": "If an account exists for {{email}}, a new verification code has been sent.",
+    "verifyUnavailable": "Email verification is not available on the server yet. Please try again later or contact support@korook.com.",
+    "loginVerifyRequiredTitle": "Verify your email",
+    "loginVerifyRequiredBody": "Your account is not active yet. Enter the verification code we sent to your email.",
+    "enterCode": "Enter code"
   }
 }

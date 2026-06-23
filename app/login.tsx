@@ -16,7 +16,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import authStorage from "./utils/authStorage";
 import { API } from "../lib/api";
-import { formatAuthError } from "../lib/authErrors";
+import { formatAuthError, isEmailVerificationRequired } from "../lib/authErrors";
+import { KorookLogo } from "../components/brand/KorookLogo";
+import { theme } from "../lib/theme";
 
 export default function LoginScreen() {
   const [username, setUsername] = useState("");
@@ -58,6 +60,28 @@ export default function LoginScreen() {
 
       router.replace("/(tabs)/explore");
     } catch (error) {
+      if (isEmailVerificationRequired(error)) {
+        Alert.alert(
+          "Verify your email",
+          "Your account is not active yet. Enter the verification code we sent to your email.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Enter code",
+              onPress: () =>
+                router.push({
+                  pathname: "/verify-email",
+                  params: {
+                    email: cleanUsername.includes("@") ? cleanUsername : "",
+                    username: cleanUsername.includes("@") ? "" : cleanUsername,
+                  },
+                }),
+            },
+          ]
+        );
+        return;
+      }
+
       Alert.alert(
         "Login failed",
         formatAuthError(error, "Please check your username and password and try again.")
@@ -77,7 +101,10 @@ export default function LoginScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.title}>Sign in</Text>
+          <View style={{ alignItems: "center", marginBottom: 24 }}>
+            <KorookLogo width={200} />
+          </View>
+          <Text style={styles.title}>Sign in to Korook</Text>
 
           <View style={styles.inputRow}>
             <Ionicons name="person-outline" size={20} color="#6B7280" />
@@ -137,6 +164,24 @@ export default function LoginScreen() {
           >
             <Text style={styles.footerText}>Create account</Text>
           </Pressable>
+
+          <Text style={styles.legalText}>
+            By signing in you agree to our{" "}
+            <Text
+              onPress={() => router.push("/legal/terms-of-service")}
+              style={styles.legalLink}
+            >
+              Terms of Service
+            </Text>{" "}
+            and{" "}
+            <Text
+              onPress={() => router.push("/legal/privacy-policy")}
+              style={styles.legalLink}
+            >
+              Privacy Policy
+            </Text>
+            .
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -146,7 +191,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F7F5F0",
+    backgroundColor: theme.colors.ivory,
   },
   flex: {
     flex: 1,
@@ -161,7 +206,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
     marginBottom: 28,
-    color: "#111111",
+    color: theme.colors.navy,
   },
   inputRow: {
     flexDirection: "row",
@@ -178,7 +223,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 10,
     fontSize: 16,
-    color: "#111111",
+    color: theme.colors.navy,
     fontWeight: "600",
   },
   forgotLink: {
@@ -186,12 +231,12 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   forgotText: {
-    color: "#0D9488",
+    color: theme.colors.primary,
     fontSize: 14,
     fontWeight: "800",
   },
   button: {
-    backgroundColor: "#0D9488",
+    backgroundColor: theme.colors.primary,
     padding: 16,
     borderRadius: 16,
     alignItems: "center",
@@ -209,8 +254,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   footerText: {
-    color: "#0D9488",
+    color: theme.colors.primary,
     fontSize: 15,
+    fontWeight: "800",
+  },
+  legalText: {
+    marginTop: 18,
+    textAlign: "center",
+    color: "#6B7280",
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "600",
+    paddingHorizontal: 8,
+  },
+  legalLink: {
+    color: theme.colors.primary,
     fontWeight: "800",
   },
 });

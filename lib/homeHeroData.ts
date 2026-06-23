@@ -3,7 +3,7 @@ export const HOME_HERO_FALLBACK_IMAGE =
   "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f0/Pers%C3%A9polis%2C_Ir%C3%A1n%2C_2016-09-24%2C_DD_53.jpg/1280px-Pers%C3%A9polis%2C_Ir%C3%A1n%2C_2016-09-24%2C_DD_53.jpg";
 
 /**
- * Home Hero — premium editorial front page for PersianMap.
+ * Home Hero — premium editorial front page for Korook.
  *
  * PRODUCT RULE (do not violate):
  * - Home Hero is NOT a generic ad slot. It must never feel like Craigslist.
@@ -20,7 +20,7 @@ import {
   type IranHeroSlideSeed,
 } from "./homeHeroIranSlides";
 
-/** Where this slide belongs in the PersianMap editorial system */
+/** Where this slide belongs in the Korook editorial system */
 export type HomeHeroChannel =
   | "editorial_culture"
   | "community_spotlight"
@@ -64,8 +64,8 @@ export const HOME_HERO_FALLBACK_SLIDE: HomeHeroItem = {
   id: "fallback-persepolis",
   channel: "editorial_culture",
   type: "photo",
-  title: "Welcome to PersianMap",
-  subtitle: "Discover Iranian businesses, events, and community near you.",
+  title: "Welcome to Korook",
+  subtitle: "Discover Persian-owned businesses, events, and community near you.",
   image: HOME_HERO_FALLBACK_IMAGE,
   ctaLabel: "Explore",
   targetRoute: "/(tabs)/explore",
@@ -252,7 +252,7 @@ export const HOME_HERO_CHANNEL_LABELS: Record<HomeHeroChannel, string> = {
   photo_of_week: "Photo of the Week",
   event_teaser: "Coming Soon",
   curated_event: "Featured Event",
-  premium_placement: "PersianMap Presents",
+  premium_placement: "Korook Presents",
 };
 
 /** @deprecated Use HOME_HERO_CHANNEL_LABELS */

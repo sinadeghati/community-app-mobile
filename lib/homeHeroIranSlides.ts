@@ -74,7 +74,7 @@ export const IRAN_HERO_SLIDE_SEEDS: IranHeroSlideSeed[] = [
   { id: "shiraz-gardens", title: "Shiraz", subtitle: "City of poets, gardens, and Persian grace.", image: IMG.eramGarden },
   { id: "isfahan-bridges", title: "Isfahan", subtitle: "Half the world — domes, bridges, and Safavid light.", image: IMG.siOSePol },
   { id: "spring-nowruz", title: "Nowruz Spirit", subtitle: "Spring renewal across the Persian world.", image: IMG.nowruz },
-  { id: "welcome-persianmap", title: "Welcome to PersianMap", subtitle: "Persian culture, community, and connection — wherever you are.", image: IMG.persepolis },
+  { id: "welcome-korook", title: "Welcome to Korook", subtitle: "Persian culture, community, and connection — wherever you are.", image: IMG.persepolis },
 ];
 
 /** Lookup for runtime image resolution by slide id */

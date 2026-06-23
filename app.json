@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "iranianapp-mobile",
+    "name": "Korook",
     "slug": "iranianapp-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "iranianappmobile",
+    "icon": "./assets/brand/korook/app-icon-1024.png",
+    "scheme": "korook",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -13,29 +13,27 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/brand/korook/app-icon-1024.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/brand/korook/favicon-32.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/brand/korook/korook-pin-symbol.png",
+          "imageWidth": 120,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#F5F7FA",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#071730"
           }
         }
       ],
@@ -43,7 +41,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "PersianMap uses your location to center the map near you."
+          "locationWhenInUsePermission": "Korook uses your location to show nearby businesses and events on the map."
         }
       ]
     ],

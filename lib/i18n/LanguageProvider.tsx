@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { ActivityIndicator, I18nManager, View } from "react-native";
+import { I18nManager, View } from "react-native";
 import {
   loadUserSettings,
   saveUserSettings,
@@ -77,15 +77,8 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: theme.colors.ivory,
-        }}
-      >
-        <ActivityIndicator size="large" color={theme.colors.turquoise} />
+      <View style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
+        {children}
       </View>
     );
   }

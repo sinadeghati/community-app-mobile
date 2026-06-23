@@ -62,3 +62,70 @@ export const formatAuthError = (
 
 export const isPasswordEndpointUnavailable = (error: unknown): boolean =>
   (error as { response?: { status?: number } })?.response?.status === 404;
+
+export const isAuthEndpointUnavailable = (error: unknown): boolean =>
+  (error as { response?: { status?: number } })?.response?.status === 404;
+
+const UNVERIFIED_HINTS = [
+  "not verified",
+  "unverified",
+  "verify your email",
+  "email verification",
+  "confirmation required",
+];
+
+export const isEmailVerificationRequired = (error: unknown): boolean => {
+  const response = (error as { response?: { status?: number; data?: unknown } })
+    ?.response;
+  if (response?.status !== 403 && response?.status !== 401) {
+    return false;
+  }
+
+  const data = response.data;
+  const messages: string[] = [];
+
+  if (typeof data === "string") {
+    messages.push(data);
+  } else if (data && typeof data === "object") {
+    const payload = data as Record<string, unknown>;
+    if (typeof payload.detail === "string") {
+      messages.push(payload.detail);
+    }
+    for (const value of Object.values(payload)) {
+      if (typeof value === "string") {
+        messages.push(value);
+      } else if (Array.isArray(value)) {
+        value.forEach((entry) => {
+          if (typeof entry === "string") {
+            messages.push(entry);
+          }
+        });
+      }
+    }
+  }
+
+  const haystack = messages.join(" ").toLowerCase();
+  return UNVERIFIED_HINTS.some((hint) => haystack.includes(hint));
+};
+
+export const formatVerificationError = (
+  error: unknown,
+  fallback = "That code did not work. Check the email we sent and try again."
+): string => {
+  const response = (error as { response?: { status?: number; data?: unknown } })
+    ?.response;
+
+  if (response?.status === 404) {
+    return "Email verification is not available on the server yet. Please try again later or contact support.";
+  }
+
+  if (response?.status === 400 || response?.status === 429) {
+    return formatAuthError(error, fallback);
+  }
+
+  if (!response) {
+    return "We could not reach the server. Check your connection and try again.";
+  }
+
+  return formatAuthError(error, fallback);
+};

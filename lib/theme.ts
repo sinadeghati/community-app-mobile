@@ -1,27 +1,32 @@
+import { korookBrand } from "./korookBrand";
+
 export const theme = {
   colors: {
-    turquoise: "#0D9488",
-    deepTeal: "#0F2B33",
-    tealDark: "#063B3E",
-    ivory: "#F7F5F0",
-    card: "#FFFFFF",
-    softCard: "#FBFAF7",
+    turquoise: korookBrand.colors.primary,
+    deepTeal: korookBrand.colors.navy,
+    tealDark: korookBrand.colors.navySoft,
+    navy: korookBrand.colors.navy,
+    ivory: korookBrand.colors.backgroundWarm,
+    card: korookBrand.colors.card,
+    softCard: korookBrand.colors.background,
     gold: "#E6C27A",
     burgundy: "#8B1E3F",
-    charcoal: "#1A1A1A",
-    muted: "#6B7280",
-    border: "#E8E2D8",
-    success: "#16A34A",
-    danger: "#EF4444",
+    charcoal: korookBrand.colors.text,
+    muted: korookBrand.colors.textSecondary,
+    border: korookBrand.colors.border,
+    success: korookBrand.colors.success,
+    danger: korookBrand.colors.danger,
     eventPurple: "#7C3AED",
+    primary: korookBrand.colors.primary,
+    primaryDark: korookBrand.colors.primaryDark,
   },
 
   radius: {
-    sm: 12,
-    md: 18,
-    lg: 24,
+    sm: korookBrand.radius.sm,
+    md: korookBrand.radius.md,
+    lg: korookBrand.radius.lg,
     xl: 30,
-    pill: 999,
+    pill: korookBrand.radius.pill,
   },
 
   spacing: {
@@ -33,27 +38,15 @@ export const theme = {
   },
 
   shadow: {
-    soft: {
-      shadowColor: "#000",
-      shadowOpacity: 0.08,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 8 },
-      elevation: 4,
-    },
-    medium: {
-      shadowColor: "#000",
-      shadowOpacity: 0.12,
-      shadowRadius: 20,
-      shadowOffset: { width: 0, height: 12 },
-      elevation: 7,
-    },
+    soft: korookBrand.shadow.card,
+    medium: korookBrand.shadow.hero,
   },
 
   gradients: {
-    heroTurquoise: ["#0F766E", "#0D9488", "#F7F5F0"],
-    darkTeal: ["#061F24", "#0F2B33"],
-    nowruz: ["#0D9488", "#E6C27A"],
+    heroTurquoise: [...korookBrand.gradients.hero],
+    darkTeal: [korookBrand.colors.navySoft, korookBrand.colors.navy],
+    nowruz: [korookBrand.colors.primary, "#E6C27A"],
     yalda: ["#8B1E3F", "#E6C27A"],
+    korookHeader: [...korookBrand.gradients.header],
   },
 };
-

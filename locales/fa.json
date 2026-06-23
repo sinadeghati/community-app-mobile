@@ -52,7 +52,7 @@
     "billingSubtitle": "اشتراک‌ها و تبلیغات",
     "account": "حساب کاربری",
     "accountSubtitle": "پروفایل، امنیت و تنظیمات ورود",
-    "about": "درباره ایرانی‌اپ",
+    "about": "درباره کوروک",
     "aboutSubtitle": "نسخه، مأموریت و پشتیبانی"
   },
   "home": {
@@ -71,7 +71,7 @@
   "explore": {
     "title": "کاوش",
     "subtitle": "قلب جامعه خود را کشف کنید",
-    "communityBadge": "جامعه ایرانی",
+    "communityBadge": "کوروک",
     "changeLocation": "تغییر موقعیت",
     "changeLocationHint": "هر شهر یا منطقه‌ای را جستجو کنید یا از موقعیت فعلی استفاده کنید.",
     "noBusinessesInLocation": "هنوز کسب‌وکاری در {{location}} نیست. موقعیت یا دسته دیگری را امتحان کنید.",
@@ -140,7 +140,7 @@
     "communityMember": "عضو جامعه",
     "noEmail": "ایمیل ثبت نشده",
     "profileUnavailable": "جزئیات پروفایل هنوز در دسترس نیست. برای افزودن اطلاعات، ویرایش پروفایل را بزنید.",
-    "welcomeTitle": "به ایرانی‌اپ خوش آمدید",
+    "welcomeTitle": "به کوروک خوش آمدید",
     "welcomeSubtitle": "برای مدیریت فهرست‌ها، علاقه‌مندی‌ها، رویدادها و پروفایل جامعه وارد شوید.",
     "deleteAccount": "حذف حساب",
     "deleteAccountHint": "دائمی · قابل بازگشت نیست",
@@ -177,8 +177,15 @@
     "loginSecuritySubtitle": "نشست‌های دستگاه و محافظت از حساب",
     "deleteAccount": "حذف حساب",
     "deleteAccountSubtitle": "حذف دائمی حساب کاربری",
+    "deleteAccountConfirm": "این کار حساب کوروک، پروفایل و داده‌های ذخیره‌شده روی سرورهای ما را برای همیشه حذف می‌کند و قابل بازگشت نیست.",
+    "deleteAccountFinalConfirm": "کاملاً مطمئن هستید؟ حساب و فهرست‌های شما برای همیشه حذف می‌شوند.",
+    "deleteAccountSuccessTitle": "حساب حذف شد",
+    "deleteAccountSuccessMessage": "حساب شما حذف شد. امیدواریم دوباره شما را ببینیم.",
+    "deleteAccountUnavailableTitle": "در دسترس نیست",
+    "deleteAccountUnavailableMessage": "حذف حساب در حال حاضر در دسترس نیست. بعداً دوباره تلاش کنید یا به support@korook.com ایمیل بزنید.",
+    "deleteAccountErrorTitle": "حذف حساب ناموفق بود",
     "securityNote": "نکته امنیتی",
-    "securityNoteBody": "ایرانی‌اپ باید هویت کاربر، رمزها و اطلاعات شخصی را با احراز هویت و کنترل‌های حریم خصوصی ایمن محافظت کند.",
+    "securityNoteBody": "کوروک باید هویت کاربر، رمزها و اطلاعات شخصی را با احراز هویت و کنترل‌های حریم خصوصی ایمن محافظت کند.",
     "emailComingSoonTitle": "مدیریت ایمیل",
     "emailComingSoonBody": "به‌زودی می‌توانید ایمیل خود را از این صفحه به‌روز و تأیید کنید.",
     "loginSecurityComingSoonTitle": "ورود و امنیت",
@@ -274,5 +281,18 @@
     "loginToCreate": "لطفاً برای ایجاد رویداد وارد شوید.",
     "dateRequired": "تاریخ الزامی است",
     "dateRequiredBody": "لطفاً تاریخ و ساعت رویداد را انتخاب کنید."
+  },
+  "auth": {
+    "verifyTitle": "تأیید ایمیل",
+    "verifySubtitle": "کد ۶ رقمی ارسال‌شده را برای فعال‌سازی حساب کوروک وارد کنید.",
+    "activateAccount": "فعال‌سازی حساب",
+    "resendCode": "ارسال مجدد کد تأیید",
+    "resendCooldown": "ارسال مجدد تا {{seconds}} ثانیه دیگر",
+    "codeSentTitle": "کد ارسال شد",
+    "codeSentBody": "اگر حسابی برای {{email}} وجود داشته باشد، کد تأیید جدید ارسال شده است.",
+    "verifyUnavailable": "تأیید ایمیل هنوز روی سرور فعال نیست. بعداً دوباره تلاش کنید یا با support@korook.com تماس بگیرید.",
+    "loginVerifyRequiredTitle": "ایمیل خود را تأیید کنید",
+    "loginVerifyRequiredBody": "حساب شما هنوز فعال نیست. کد تأیید ارسال‌شده به ایمیل را وارد کنید.",
+    "enterCode": "ورود کد"
   }
 }

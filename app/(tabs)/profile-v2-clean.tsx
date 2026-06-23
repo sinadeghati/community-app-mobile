@@ -156,7 +156,7 @@ export default function ProfileV2Clean() {
                                 color: theme.colors.charcoal,
                             }}
                         >
-                            Welcome to IranianApp
+                            Welcome to Korook
                         </Text>
 
                         <Text

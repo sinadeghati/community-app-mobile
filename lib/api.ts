@@ -2,6 +2,9 @@
 import axios from "axios";
 import authStorage from "../app/utils/authStorage"; // اگر مسیرت فرق دارد، فقط همین یک خط را اصلاح کن
 import {
+  AUTH_DELETE_ACCOUNT_PATH,
+  AUTH_EMAIL_RESEND_PATH,
+  AUTH_EMAIL_VERIFY_PATH,
   AUTH_PASSWORD_CHANGE_PATH,
   AUTH_PASSWORD_RESET_PATH,
 } from "./authApiContract";
@@ -85,6 +88,29 @@ export const API = {
       email,
       password,
     });
+    return res.data;
+  },
+
+  /** See lib/authApiContract.ts — verify email before account activation. */
+  async verifyEmail(email: string, code: string) {
+    const res = await client.post(AUTH_EMAIL_VERIFY_PATH, {
+      email: email.trim().toLowerCase(),
+      code: code.trim(),
+    });
+    return res.data;
+  },
+
+  /** See lib/authApiContract.ts — resend verification code. */
+  async resendEmailVerification(email: string) {
+    const res = await client.post(AUTH_EMAIL_RESEND_PATH, {
+      email: email.trim().toLowerCase(),
+    });
+    return res.data;
+  },
+
+  /** See lib/authApiContract.ts — permanently delete the authenticated account. */
+  async deleteAccount() {
+    const res = await client.delete(AUTH_DELETE_ACCOUNT_PATH);
     return res.data;
   },
 

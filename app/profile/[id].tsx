@@ -616,7 +616,7 @@ Linking.openURL(`sms:${cleanPhone}`).catch((err) => {
     if (item === "Share") {
       Share.share({
         message:
-           "Check out this business on IranianApp: Threading by Sherry",
+           "Check out this business on Korook: Threading by Sherry",
       });
       return;
     }

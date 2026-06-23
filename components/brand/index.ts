@@ -1,11 +1,8 @@
-export { PersianMapLogoMark } from "./PersianMapLogoMark";
-export { PersianMapHeroLogo } from "./PersianMapHeroLogo";
-export { PersianMapLogoFull } from "./PersianMapLogoFull";
-export {
-  PersianMapBrandSplash,
-  POST_LOGIN_BRAND_SPLASH_ENABLED,
-} from "./PersianMapBrandSplash";
-export {
-  PERSIANMAP_PIN_PATH,
-  PERSIANMAP_PIN_VIEWBOX,
-} from "./persianMapPinPath";
+export { KorookLogo } from "./KorookLogo";
+export { KorookHeroLogo } from "./KorookHeroLogo";
+export { KorookStartupGate } from "./KorookStartupGate";
+
+/** @deprecated Use KorookHeroLogo */
+export { KorookHeroLogo as PersianMapHeroLogo } from "./KorookHeroLogo";
+/** @deprecated Use KorookLogo */
+export { KorookLogo as PersianMapLogoFull } from "./KorookLogo";

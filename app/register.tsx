@@ -19,17 +19,20 @@ import {
   evaluatePasswordStrength,
   passwordsMatch,
 } from "../lib/authValidation";
-import authStorage from "./utils/authStorage";
+import { setPendingRegistration } from "../lib/pendingRegistration";
+import { KorookLogo } from "../components/brand/KorookLogo";
+import { korookBrand } from "../lib/korookBrand";
+import { theme } from "../lib/theme";
 
 const colors = {
-  bg: "#F7F5F0",
-  card: "#FFFFFF",
-  text: "#111111",
-  muted: "#6B7280",
-  border: "#E5E0D8",
-  teal: "#0D9488",
-  tealDark: "#0F766E",
-  tealSoft: "rgba(13,148,136,0.10)",
+  bg: theme.colors.ivory,
+  card: theme.colors.card,
+  text: theme.colors.navy,
+  muted: theme.colors.muted,
+  border: theme.colors.border,
+  teal: theme.colors.primary,
+  tealDark: theme.colors.primaryDark,
+  tealSoft: "rgba(0,194,184,0.10)",
   gold: "#E6C27A",
   danger: "#DC2626",
   success: "#16A34A",
@@ -153,6 +156,7 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const strength = useMemo(
     () => evaluatePasswordStrength(password),
@@ -178,6 +182,7 @@ export default function RegisterScreen() {
     checks.number &&
     checks.special &&
     checks.match &&
+    agreedToTerms &&
     !loading;
 
   const handleRegister = async () => {
@@ -194,40 +199,19 @@ export default function RegisterScreen() {
 
       await API.register(cleanUsername, cleanEmail, password);
 
-      const loginResult = await API.login(cleanUsername, password);
-
-      const access = loginResult?.access || loginResult?.tokens?.access;
-      const refresh = loginResult?.refresh || loginResult?.tokens?.refresh;
-
-      if (!access) {
-        Alert.alert("Account created", "Please sign in with your new account.");
-        router.back();
-        return;
-      }
-
-      await authStorage.setTokens({
-        access,
-        refresh,
+      setPendingRegistration({
+        username: cleanUsername,
+        email: cleanEmail,
+        password,
       });
 
-      const userId = authStorage.getUserIdStringFromAccessToken(access);
-      if (userId) {
-        const { prepareSessionForUser, saveUserProfile } = await import(
-          "../lib/userSessionStorage"
-        );
-        await saveUserProfile(userId, {
-          id: userId,
-          user_id: userId,
-          username: cleanUsername,
+      router.replace({
+        pathname: "/verify-email",
+        params: {
           email: cleanEmail,
-        });
-        await prepareSessionForUser(userId, {
           username: cleanUsername,
-          email: cleanEmail,
-        });
-      }
-
-      router.replace("/(tabs)/profile");
+        },
+      });
       return;
     } catch (error) {
       Alert.alert(
@@ -274,10 +258,11 @@ export default function RegisterScreen() {
               <Ionicons name="arrow-back" size={24} color="#fff" />
             </Pressable>
 
+            <KorookLogo width={200} />
             <Text
               style={{
-                marginTop: 24,
-                fontSize: 36,
+                marginTop: 20,
+                fontSize: 32,
                 fontWeight: "900",
                 color: "#fff",
               }}
@@ -290,11 +275,11 @@ export default function RegisterScreen() {
                 marginTop: 10,
                 fontSize: 16,
                 lineHeight: 24,
-                color: "rgba(255,255,255,0.86)",
+                color: "rgba(255,255,255,0.9)",
                 fontWeight: "600",
               }}
             >
-              Join the community and discover local businesses, events, and trusted services.
+              Join Korook — {korookBrand.mission}
             </Text>
           </View>
 
@@ -470,6 +455,47 @@ export default function RegisterScreen() {
             </View>
 
             <Pressable
+              onPress={() => setAgreedToTerms((value) => !value)}
+              style={{
+                marginTop: 20,
+                flexDirection: "row",
+                alignItems: "flex-start",
+              }}
+            >
+              <Ionicons
+                name={agreedToTerms ? "checkbox" : "square-outline"}
+                size={22}
+                color={agreedToTerms ? colors.teal : colors.muted}
+                style={{ marginTop: 1 }}
+              />
+              <Text
+                style={{
+                  flex: 1,
+                  marginLeft: 10,
+                  color: colors.text,
+                  fontSize: 13,
+                  lineHeight: 20,
+                  fontWeight: "600",
+                }}
+              >
+                I agree to the{" "}
+                <Text
+                  onPress={() => router.push("/legal/terms-of-service")}
+                  style={{ color: colors.teal, fontWeight: "800" }}
+                >
+                  Terms of Service
+                </Text>{" "}
+                and{" "}
+                <Text
+                  onPress={() => router.push("/legal/privacy-policy")}
+                  style={{ color: colors.teal, fontWeight: "800" }}
+                >
+                  Privacy Policy
+                </Text>
+              </Text>
+            </Pressable>
+
+            <Pressable
               onPress={handleRegister}
               disabled={!canSubmit}
               style={{
@@ -478,7 +504,7 @@ export default function RegisterScreen() {
                 backgroundColor: canSubmit ? colors.teal : "#CBD5E1",
                 alignItems: "center",
                 justifyContent: "center",
-                marginTop: 22,
+                marginTop: 16,
               }}
             >
               {loading ? (
@@ -489,18 +515,6 @@ export default function RegisterScreen() {
                 </Text>
               )}
             </Pressable>
-
-            <Text
-              style={{
-                marginTop: 18,
-                textAlign: "center",
-                color: colors.muted,
-                fontSize: 12,
-                lineHeight: 18,
-              }}
-            >
-              By creating an account, you agree to our Terms and Privacy Policy.
-            </Text>
 
             <Pressable
               onPress={() => router.back()}

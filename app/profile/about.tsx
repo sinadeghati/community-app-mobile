@@ -3,21 +3,16 @@ import { SafeAreaView, ScrollView, Text, View, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import Constants from "expo-constants";
-
-const BG = "#F6F5F2";
-const CARD = "#FFFFFF";
-const TEXT = "#111111";
-const MUTED = "#6B7280";
-const BORDER = "#ECE7DF";
-const TURQUOISE = "#11998E";
-const SOFT = "#E7F6F4";
+import { KorookHeroLogo } from "../../components/brand/KorookHeroLogo";
+import { korookBrand } from "../../lib/korookBrand";
+import { theme } from "../../lib/theme";
 
 const appVersion =
   Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? "1.0.0";
 
 export default function AboutScreen() {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
@@ -32,49 +27,38 @@ export default function AboutScreen() {
             width: 42,
             height: 42,
             borderRadius: 21,
-            backgroundColor: CARD,
+            backgroundColor: theme.colors.card,
             alignItems: "center",
             justifyContent: "center",
             borderWidth: 1,
-            borderColor: BORDER,
+            borderColor: theme.colors.border,
             marginBottom: 24,
           }}
         >
-          <Ionicons name="arrow-back" size={22} color={TURQUOISE} />
+          <Ionicons name="arrow-back" size={22} color={theme.colors.primary} />
         </Pressable>
 
-        <View
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 22,
-            backgroundColor: SOFT,
-            alignItems: "center",
-            justifyContent: "center",
-            marginBottom: 18,
-          }}
-        >
-          <Ionicons name="planet-outline" size={36} color={TURQUOISE} />
-        </View>
+        <KorookHeroLogo size={72} />
 
         <Text
           style={{
             fontSize: 34,
             fontWeight: "800",
-            color: TEXT,
+            color: theme.colors.navy,
             letterSpacing: -0.8,
+            marginTop: 18,
             marginBottom: 6,
           }}
         >
-          About IranianApp
+          About Korook
         </Text>
 
         <Text
           style={{
             fontSize: 14,
             fontWeight: "700",
-            color: TURQUOISE,
-            marginBottom: 16,
+            color: theme.colors.primary,
+            marginBottom: 8,
           }}
         >
           Version {appVersion}
@@ -82,20 +66,31 @@ export default function AboutScreen() {
 
         <Text
           style={{
+            fontSize: 12,
+            fontWeight: "800",
+            letterSpacing: 1.4,
+            color: theme.colors.muted,
+            marginBottom: 16,
+          }}
+        >
+          {korookBrand.tagline}
+        </Text>
+
+        <Text
+          style={{
             fontSize: 15.5,
             lineHeight: 24,
-            color: MUTED,
+            color: theme.colors.muted,
             marginBottom: 24,
           }}
         >
-          IranianApp connects the Persian community with local businesses, events,
-          services, and places—built for discovery, trust, and culture.
+          {korookBrand.mission}
         </Text>
 
         <View style={cardStyle}>
           <AboutBlock
             title="Our mission"
-            body="Help Iranians and Persian speakers find trusted businesses, cultural events, and community resources in one modern app."
+            body="Help Iranians and Persian speakers find trusted businesses, cultural events, and community resources in one modern discovery platform."
           />
         </View>
 
@@ -104,21 +99,31 @@ export default function AboutScreen() {
             title="What you can do today"
             body="Explore listings, save favorites, manage your profile, and discover Persian-owned businesses and events near you."
           />
-          <View style={{ height: 1, backgroundColor: BORDER, marginVertical: 14 }} />
+          <View style={{ height: 1, backgroundColor: theme.colors.border, marginVertical: 14 }} />
           <AboutBlock
             title="Support"
-            body="Questions or feedback? Contact us at support@iranianapp.com (MVP placeholder)."
+            body={`Questions or feedback? Email ${korookBrand.links.supportEmail}`}
           />
+          <Pressable
+            onPress={() => router.push("/legal/contact-us")}
+            style={{ marginTop: 12 }}
+          >
+            <Text style={{ color: theme.colors.primary, fontWeight: "800" }}>
+              Contact Us →
+            </Text>
+          </Pressable>
         </View>
 
         <View style={cardStyle}>
-          <Text style={{ fontSize: 16, fontWeight: "800", color: TEXT, marginBottom: 8 }}>
+          <Text style={{ fontSize: 16, fontWeight: "800", color: theme.colors.navy, marginBottom: 8 }}>
             Legal
           </Text>
-          <Text style={{ fontSize: 14.5, lineHeight: 22, color: MUTED }}>
-            Terms of Service and Privacy Policy pages will be published before public
-            launch. Your data preferences can be managed under Settings → Privacy & Safety.
-          </Text>
+          <Pressable onPress={() => router.push("/legal/privacy-policy")} style={{ paddingVertical: 8 }}>
+            <Text style={{ color: theme.colors.primary, fontWeight: "800" }}>Privacy Policy</Text>
+          </Pressable>
+          <Pressable onPress={() => router.push("/legal/terms-of-service")} style={{ paddingVertical: 8 }}>
+            <Text style={{ color: theme.colors.primary, fontWeight: "800" }}>Terms of Service</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -128,19 +133,19 @@ export default function AboutScreen() {
 function AboutBlock({ title, body }: { title: string; body: string }) {
   return (
     <View>
-      <Text style={{ fontSize: 17, fontWeight: "800", color: TEXT, marginBottom: 6 }}>
+      <Text style={{ fontSize: 16, fontWeight: "800", color: theme.colors.navy, marginBottom: 6 }}>
         {title}
       </Text>
-      <Text style={{ fontSize: 14.5, lineHeight: 22, color: MUTED }}>{body}</Text>
+      <Text style={{ fontSize: 14.5, lineHeight: 22, color: theme.colors.muted }}>{body}</Text>
     </View>
   );
 }
 
 const cardStyle = {
-  backgroundColor: CARD,
+  backgroundColor: theme.colors.card,
   borderRadius: 26,
   padding: 18,
   borderWidth: 1,
-  borderColor: BORDER,
+  borderColor: theme.colors.border,
   marginBottom: 18,
 };

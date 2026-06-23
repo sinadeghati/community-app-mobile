@@ -83,6 +83,20 @@ export default function ProfileV2Clean() {
 
   const profileDisplayName = resolveProfileDisplayName(profile);
 
+  const handleDeleteAccount = () =>
+    confirmDeleteAccount({
+      title: t("account.deleteAccount"),
+      message: t("account.deleteAccountConfirm"),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("account.deleteAccount"),
+      finalConfirmMessage: t("account.deleteAccountFinalConfirm"),
+      successTitle: t("account.deleteAccountSuccessTitle"),
+      successMessage: t("account.deleteAccountSuccessMessage"),
+      unavailableTitle: t("account.deleteAccountUnavailableTitle"),
+      unavailableMessage: t("account.deleteAccountUnavailableMessage"),
+      errorTitle: t("account.deleteAccountErrorTitle"),
+    });
+
   const loadLocalBusinesses = async (
     userId: string | null,
     identity?: { username?: string; email?: string }
@@ -1402,7 +1416,7 @@ export default function ProfileV2Clean() {
         </View>
 
         <Pressable
-          onPress={confirmDeleteAccount}
+          onPress={handleDeleteAccount}
           style={({ pressed }) => ({
             marginHorizontal: 18,
             marginTop: 16,

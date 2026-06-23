@@ -41,7 +41,8 @@ import {
   logLoaderStart,
   withTimeout,
 } from "../../lib/asyncGuards";
-import { PersianMapHeroLogo } from "../../components/brand/PersianMapHeroLogo";
+import { KorookHeroLogo } from "../../components/brand/KorookHeroLogo";
+import { korookBrand } from "../../lib/korookBrand";
 import { theme } from "../../lib/theme";
 import { useTranslation } from "../../lib/i18n";
 
@@ -201,7 +202,7 @@ function HeroCrossfade({
   );
 }
 
-function PersianMapBrandHeader({
+function KorookBrandHeader({
   topInset,
   isLoggedIn,
   displayName,
@@ -213,11 +214,12 @@ function PersianMapBrandHeader({
   return (
     <View style={[styles.headerOverlay, { paddingTop: topInset + 8, paddingHorizontal: 22 }]}>
       <View style={styles.brandRow}>
-        <PersianMapHeroLogo size={40} />
+        <KorookHeroLogo size={44} />
         <View style={styles.brandTextCol}>
-          <Text style={styles.brandTitle}>PersianMap</Text>
-          <Text style={styles.brandSubtitle}>
-            Your Persian community, connected
+          <Text style={styles.brandTitle}>Korook</Text>
+          <Text style={styles.brandSubtitle}>{korookBrand.tagline}</Text>
+          <Text style={styles.brandMission} numberOfLines={2}>
+            Discover Persian-owned businesses, events, and culture near you.
           </Text>
         </View>
       </View>
@@ -576,7 +578,7 @@ export default function HomeLoginV2() {
 
       <View style={styles.flex}>
         <View style={styles.flex} {...panResponder.panHandlers}>
-          <PersianMapBrandHeader
+          <KorookBrandHeader
             topInset={topInset}
             isLoggedIn={isLoggedIn}
             displayName={displayName}
@@ -838,8 +840,16 @@ const styles = StyleSheet.create({
   },
   brandSubtitle: {
     marginTop: 4,
-    fontSize: 14,
-    color: "rgba(255,255,255,0.88)",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.92)",
+    fontWeight: "800",
+    letterSpacing: 1.6,
+  },
+  brandMission: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "rgba(255,255,255,0.86)",
     fontWeight: "600",
   },
   tierPill: {
