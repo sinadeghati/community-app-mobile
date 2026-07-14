@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://korook.com/schemas/home-image-library.v1.json",
+  "title": "Korook Home Image Library Record",
+  "type": "object",
+  "required": [
+    "id",
+    "slug",
+    "title",
+    "collectionSlug",
+    "tags",
+    "description",
+    "source",
+    "aspectRatio",
+    "variants",
+    "active",
+    "featured",
+    "priority",
+    "displayOrder",
+    "artDirection"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "title": { "type": "string", "minLength": 1 },
+    "collectionSlug": { "type": "string" },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "description": { "type": "string" },
+    "source": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "enum": ["ai", "photographer"] },
+        "name": { "type": "string" },
+        "promptVersion": { "type": "string" },
+        "license": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "aspectRatio": { "enum": ["9:16", "16:9", "4:5"] },
+    "variants": {
+      "type": "object",
+      "required": ["mobile"],
+      "properties": {
+        "mobile": { "$ref": "#/$defs/variant" },
+        "tablet": { "$ref": "#/$defs/variant" },
+        "thumb": { "$ref": "#/$defs/variant" }
+      },
+      "additionalProperties": false
+    },
+    "active": { "type": "boolean" },
+    "featured": { "type": "boolean" },
+    "priority": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "displayOrder": { "type": "integer", "minimum": 0 },
+    "startAt": { "type": ["string", "null"], "format": "date-time" },
+    "endAt": { "type": ["string", "null"], "format": "date-time" },
+    "artDirection": {
+      "type": "object",
+      "required": [
+        "styleVersion",
+        "ultraRealistic",
+        "hdr",
+        "goldenHour",
+        "noText",
+        "noWatermark",
+        "noLogo"
+      ],
+      "properties": {
+        "styleVersion": { "type": "string" },
+        "ultraRealistic": { "type": "boolean" },
+        "hdr": { "type": "boolean" },
+        "goldenHour": { "type": "boolean" },
+        "noText": { "type": "boolean" },
+        "noWatermark": { "type": "boolean" },
+        "noLogo": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "archivedAt": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "variant": {
+      "type": "object",
+      "required": ["url", "width", "height"],
+      "properties": {
+        "url": { "type": "string" },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

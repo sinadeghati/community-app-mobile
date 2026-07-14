@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://korook.com/schemas/home-promotion-library.v1.json",
+  "title": "Korook Home Promotion Library Record",
+  "type": "object",
+  "required": [
+    "id",
+    "slug",
+    "type",
+    "title",
+    "backgroundImage",
+    "priority",
+    "active"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "type": {
+      "enum": [
+        "concert",
+        "festival",
+        "nowruz",
+        "sponsor_campaign",
+        "restaurant_promotion",
+        "business_promotion",
+        "movie",
+        "live_event",
+        "community_announcement"
+      ]
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "subtitle": { "type": "string" },
+    "badge": { "type": "string" },
+    "backgroundImage": {
+      "type": "object",
+      "required": ["mobile"],
+      "properties": {
+        "mobile": { "$ref": "#/$defs/variant" },
+        "tablet": { "$ref": "#/$defs/variant" },
+        "thumb": { "$ref": "#/$defs/variant" }
+      },
+      "additionalProperties": false
+    },
+    "backgroundVideo": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string" },
+        "posterUrl": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "cta": {
+      "type": "object",
+      "required": ["enabled", "label", "linkType", "linkValue"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "label": { "type": "string" },
+        "linkType": {
+          "enum": ["internal_route", "external_url", "deep_link"]
+        },
+        "linkValue": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "priority": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "active": { "type": "boolean" },
+    "startAt": { "type": ["string", "null"], "format": "date-time" },
+    "endAt": { "type": ["string", "null"], "format": "date-time" },
+    "targetPlatforms": {
+      "type": "array",
+      "items": { "enum": ["ios", "android", "web"] },
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "variant": {
+      "type": "object",
+      "required": ["url", "width", "height"],
+      "properties": {
+        "url": { "type": "string" },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

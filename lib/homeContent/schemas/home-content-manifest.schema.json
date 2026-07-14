@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://korook.com/schemas/home-content-manifest.v1.json",
+  "title": "Korook Home Content Manifest",
+  "type": "object",
+  "required": [
+    "version",
+    "generatedAt",
+    "environment",
+    "etag",
+    "collections",
+    "hero",
+    "images",
+    "artDirection"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "environment": {
+      "enum": ["development", "staging", "production"]
+    },
+    "etag": { "type": "string", "minLength": 1 },
+    "forceRefresh": { "type": "boolean" },
+    "collections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/collection" }
+    },
+    "hero": {
+      "type": "object",
+      "required": ["campaignId", "playlist", "fallbackImageId"],
+      "properties": {
+        "campaignId": { "type": ["string", "null"] },
+        "playlist": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/playlistItem" }
+        },
+        "fallbackImageId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "promotion": {
+      "oneOf": [{ "$ref": "#/$defs/promotion" }, { "type": "null" }]
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/image" }
+    },
+    "artDirection": { "$ref": "#/$defs/artDirectionPolicy" },
+    "campaigns": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/campaign" }
+    },
+    "seasonalPacks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/seasonalPack" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "collection": {
+      "type": "object",
+      "required": ["id", "slug", "title", "defaultRotationWeight", "displayOrder", "active"],
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "defaultRotationWeight": { "type": "integer", "minimum": 0 },
+        "displayOrder": { "type": "integer" },
+        "active": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "playlistItem": {
+      "type": "object",
+      "required": ["imageId"],
+      "properties": {
+        "imageId": { "type": "string" },
+        "weight": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "imageVariant": {
+      "type": "object",
+      "required": ["url", "width", "height"],
+      "properties": {
+        "url": { "type": "string" },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "imageVariants": {
+      "type": "object",
+      "required": ["mobile"],
+      "properties": {
+        "mobile": { "$ref": "#/$defs/imageVariant" },
+        "tablet": { "$ref": "#/$defs/imageVariant" },
+        "thumb": { "$ref": "#/$defs/imageVariant" }
+      },
+      "additionalProperties": false
+    },
+    "imageSource": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "enum": ["ai", "photographer"] },
+        "name": { "type": "string" },
+        "promptVersion": { "type": "string" },
+        "license": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "artDirectionMeta": {
+      "type": "object",
+      "required": [
+        "styleVersion",
+        "ultraRealistic",
+        "hdr",
+        "goldenHour",
+        "noText",
+        "noWatermark",
+        "noLogo"
+      ],
+      "properties": {
+        "styleVersion": { "type": "string" },
+        "ultraRealistic": { "type": "boolean" },
+        "hdr": { "type": "boolean" },
+        "goldenHour": { "type": "boolean" },
+        "noText": { "type": "boolean" },
+        "noWatermark": { "type": "boolean" },
+        "noLogo": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "image": {
+      "type": "object",
+      "required": [
+        "id",
+        "slug",
+        "title",
+        "collectionSlug",
+        "tags",
+        "description",
+        "source",
+        "aspectRatio",
+        "variants",
+        "active",
+        "featured",
+        "priority",
+        "displayOrder",
+        "artDirection"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "collectionSlug": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" },
+        "source": { "$ref": "#/$defs/imageSource" },
+        "aspectRatio": { "enum": ["9:16", "16:9", "4:5"] },
+        "variants": { "$ref": "#/$defs/imageVariants" },
+        "active": { "type": "boolean" },
+        "featured": { "type": "boolean" },
+        "priority": { "type": "integer" },
+        "displayOrder": { "type": "integer" },
+        "startAt": { "type": ["string", "null"], "format": "date-time" },
+        "endAt": { "type": ["string", "null"], "format": "date-time" },
+        "artDirection": { "$ref": "#/$defs/artDirectionMeta" },
+        "archivedAt": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "promotionCta": {
+      "type": "object",
+      "required": ["enabled", "label", "linkType", "linkValue"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "label": { "type": "string" },
+        "linkType": {
+          "enum": ["internal_route", "external_url", "deep_link"]
+        },
+        "linkValue": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "promotion": {
+      "type": "object",
+      "required": [
+        "id",
+        "slug",
+        "type",
+        "title",
+        "backgroundImage",
+        "priority",
+        "active"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string" },
+        "type": {
+          "enum": [
+            "concert",
+            "festival",
+            "nowruz",
+            "sponsor_campaign",
+            "restaurant_promotion",
+            "business_promotion",
+            "movie",
+            "live_event",
+            "community_announcement"
+          ]
+        },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "badge": { "type": "string" },
+        "backgroundImage": { "$ref": "#/$defs/imageVariants" },
+        "backgroundVideo": {
+          "type": "object",
+          "required": ["url"],
+          "properties": {
+            "url": { "type": "string" },
+            "posterUrl": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "cta": { "$ref": "#/$defs/promotionCta" },
+        "priority": { "type": "integer" },
+        "active": { "type": "boolean" },
+        "startAt": { "type": ["string", "null"], "format": "date-time" },
+        "endAt": { "type": ["string", "null"], "format": "date-time" },
+        "targetPlatforms": {
+          "type": "array",
+          "items": { "enum": ["ios", "android", "web"] }
+        }
+      },
+      "additionalProperties": false
+    },
+    "campaign": {
+      "type": "object",
+      "required": ["id", "slug", "title", "active", "priority", "playlist"],
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "active": { "type": "boolean" },
+        "priority": { "type": "integer" },
+        "startAt": { "type": ["string", "null"], "format": "date-time" },
+        "endAt": { "type": ["string", "null"], "format": "date-time" },
+        "playlist": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/playlistItem" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "seasonalPack": {
+      "type": "object",
+      "required": ["id", "slug", "title", "active", "startAt", "endAt", "imageIds"],
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "active": { "type": "boolean" },
+        "startAt": { "type": "string", "format": "date-time" },
+        "endAt": { "type": "string", "format": "date-time" },
+        "imageIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "artDirectionPolicy": {
+      "type": "object",
+      "required": [
+        "name",
+        "styleVersion",
+        "description",
+        "ultraRealistic",
+        "hdr",
+        "goldenHour",
+        "noText",
+        "noWatermark",
+        "noLogo",
+        "masterMinWidth",
+        "masterMinHeight",
+        "mobileDeliveryWidth",
+        "mobileDeliveryHeight",
+        "forbiddenElements"
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "styleVersion": { "type": "string" },
+        "description": { "type": "string" },
+        "ultraRealistic": { "type": "boolean" },
+        "hdr": { "type": "boolean" },
+        "goldenHour": { "type": "boolean" },
+        "noText": { "type": "boolean" },
+        "noWatermark": { "type": "boolean" },
+        "noLogo": { "type": "boolean" },
+        "masterMinWidth": { "type": "integer", "minimum": 1 },
+        "masterMinHeight": { "type": "integer", "minimum": 1 },
+        "mobileDeliveryWidth": { "type": "integer", "minimum": 1 },
+        "mobileDeliveryHeight": { "type": "integer", "minimum": 1 },
+        "forbiddenElements": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

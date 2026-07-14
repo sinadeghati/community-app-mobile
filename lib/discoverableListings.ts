@@ -21,6 +21,7 @@ import {
 } from "./businessListingVisibility";
 import { filterDisplayableEventListings } from "./eventListingVisibility";
 import { isNonProductionApi } from "./apiConfig";
+import { logDiscoverListStage } from "./discoverListTrace";
 
 export type DiscoverableListing = {
   id: number | string;
@@ -808,8 +809,10 @@ export const loadDiscoverableListings = async (): Promise<DiscoverableListing[]>
     apiListings = Array.isArray(response)
       ? response
       : response?.results || [];
+    logDiscoverListStage("1_get_listings_response", apiListings);
   } catch (e) {
     console.log("[loader] discoverableListings API error:", e);
+    logDiscoverListStage("1_get_listings_response", []);
   }
 
   const [local, profiles, communityEvents] = await Promise.all([
@@ -833,12 +836,14 @@ export const loadDiscoverableListings = async (): Promise<DiscoverableListing[]>
   const filteredProfiles = filterLocalDiscoveryCandidates(
     apiListings,
     profiles,
-    listingContext
+    listingContext,
+    "profiles"
   );
   const filteredLocal = filterLocalDiscoveryCandidates(
     apiListings,
     local,
-    listingContext
+    listingContext,
+    "local"
   );
 
   const merged = mergeListingsById(apiListings, [
@@ -856,6 +861,7 @@ export const loadDiscoverableListings = async (): Promise<DiscoverableListing[]>
   console.log("[discover] merged event ids", mergedEventIds);
 
   setCachedDiscoverListings(eventFiltered);
+  logDiscoverListStage("2_loadDiscoverableListings", eventFiltered);
   logLoaderDone("loadDiscoverableListings");
   return eventFiltered;
 };

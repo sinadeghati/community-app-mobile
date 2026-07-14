@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image } from "expo-image";
 import {
   ActivityIndicator,
   Alert,
@@ -27,13 +26,8 @@ import {
   setCachedDiscoverListings,
 } from "../../lib/discoverListingsCache";
 import { runDevStagingDiscoverCleanup } from "../../lib/discoverCacheCleanup";
+import { logDiscoverIdStage, logDiscoverListStage, logExploreUiStage } from "../../lib/discoverListTrace";
 import { logLoadedListingEventIds } from "../../lib/eventDiagnostics";
-import {
-  formatEventDateTime,
-  formatEventHostLine,
-  getEventCover,
-  getEventTitle,
-} from "../../lib/mapEventDetails";
 import {
   isMapEvent,
   isUpcomingEvent,
@@ -46,7 +40,6 @@ import {
 } from "../../lib/businessFavorites";
 import { ensureLoggedInForSave } from "../../lib/savedActions";
 import {
-  formatMapPreviewReviewText,
   getBusinessReviewSummary,
   type BusinessReviewSummary,
 } from "../../lib/businessReviews";
@@ -74,6 +67,11 @@ import {
   withTimeout,
 } from "../../lib/asyncGuards";
 import { CategoryIconBadge } from "../../components/category/CategoryIconBadge";
+import { ExploreBusinessCard } from "../../components/explore/ExploreBusinessCard";
+import { ExploreEventCard } from "../../components/explore/ExploreEventCard";
+import { ExploreFadeIn } from "../../components/explore/ExploreFadeIn";
+import { ExplorePopularRow } from "../../components/explore/ExplorePopularRow";
+import { explorePremium } from "../../components/explore/explorePremiumTokens";
 import { getCategoryChipVisual } from "../../lib/categoryChipTheme";
 import { QUICK_DISCOVERY_CATEGORY_CHIPS } from "../../lib/discoverySearch";
 import { useTranslation } from "../../lib/i18n";
@@ -99,27 +97,8 @@ type Listing = {
   reviews?: number;
 };
 
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1200";
-
 const HERO_IMAGE =
   "https://images.unsplash.com/photo-1518005020951-eccb494ad742?q=80&w=1200";
-
-const exploreCardShadow = {
-  shadowColor: "#000",
-  shadowOpacity: 0.05,
-  shadowRadius: 6,
-  shadowOffset: { width: 0, height: 2 },
-  elevation: 2,
-} as const;
-
-const exploreHeroShadow = {
-  shadowColor: "#000",
-  shadowOpacity: 0.08,
-  shadowRadius: 10,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 3,
-} as const;
 
 const categories = [...QUICK_DISCOVERY_CATEGORY_CHIPS];
 
@@ -140,17 +119,15 @@ const CATEGORY_CHIP_LABEL_KEYS: Record<string, string> = {
 
 const getId = (item: Listing) => String(item?.id || "");
 
-const getTitle = (item: Listing) =>
-  item?.business_name || item?.name || item?.title || "Local Business";
+const traceExploreSetListings = (source: string, items: Listing[]) => {
+  logDiscoverListStage(`5_setListings:${source}`, items, { source });
+  logExploreUiStage("setListings", items, {
+    source: `explore.tsx → setListings (${source})`,
+  });
+};
 
-const getCategory = (item: Listing) =>
-  item?.business_category || item?.category || "Local Business";
-
-const getImage = (item: Listing) =>
-  item?.cover_image || item?.image_url || item?.image || FALLBACK_IMAGE;
-
-const getAddress = (item: Listing) =>
-  item?.address || [item?.city, item?.state].filter(Boolean).join(", ");
+const listingIds = (items: Listing[]) =>
+  items.map((item) => getId(item)).filter(Boolean);
 
 const isFeatured = (item: Listing) =>
   Boolean(item?.is_featured || item?.business_name || item?.cover_image);
@@ -164,135 +141,6 @@ const goProfile = (item: Listing) => {
   });
 };
 
-const FEATURED_CARD_WIDTH = 168;
-const FEATURED_IMAGE_HEIGHT = 116;
-const CARD_WIDTH = 154;
-const CARD_IMAGE_HEIGHT = 100;
-const REVIEW_LINE_MIN_HEIGHT = 18;
-
-type ExploreBusinessCardProps = {
-  item: Listing;
-  large?: boolean;
-  saved: boolean;
-  reviewLine: string;
-  onPress: (item: Listing) => void;
-  onToggleFavorite: (item: Listing) => void;
-};
-
-const ExploreBusinessCard = React.memo(function ExploreBusinessCard({
-  item,
-  large = false,
-  saved,
-  reviewLine,
-  onPress,
-  onToggleFavorite,
-}: ExploreBusinessCardProps) {
-  const imageUri = getImage(item);
-  const cardWidth = large ? FEATURED_CARD_WIDTH : CARD_WIDTH;
-  const imageHeight = large ? FEATURED_IMAGE_HEIGHT : CARD_IMAGE_HEIGHT;
-
-  return (
-    <Pressable
-      onPress={() => onPress(item)}
-      style={{
-        width: cardWidth,
-        backgroundColor: theme.colors.card,
-        borderRadius: theme.radius.md,
-        marginRight: 12,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        ...exploreCardShadow,
-      }}
-    >
-      <Image
-        recyclingKey={`explore-card-${getId(item)}`}
-        source={{ uri: imageUri }}
-        style={{
-          width: cardWidth,
-          height: imageHeight,
-          backgroundColor: "#eee",
-        }}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-        transition={0}
-      />
-
-      <Pressable
-        onPress={() => onToggleFavorite(item)}
-        style={{
-          position: "absolute",
-          top: 8,
-          right: 8,
-          width: 34,
-          height: 34,
-          borderRadius: 17,
-          backgroundColor: "rgba(255,255,255,0.94)",
-          alignItems: "center",
-          justifyContent: "center",
-          borderWidth: 1,
-          borderColor: "rgba(229,231,235,0.9)",
-        }}
-      >
-        <Ionicons
-          name={saved ? "heart" : "heart-outline"}
-          size={19}
-          color={saved ? theme.colors.danger : theme.colors.charcoal}
-        />
-      </Pressable>
-
-      <View style={{ padding: 11, minHeight: large ? 88 : 82 }}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Text
-            numberOfLines={1}
-            style={{
-              flex: 1,
-              fontSize: large ? 15 : 14,
-              fontWeight: "800",
-              color: theme.colors.charcoal,
-            }}
-          >
-            {getTitle(item)}
-          </Text>
-
-          {item.is_verified ? (
-            <Ionicons
-              name="checkmark-circle"
-              size={15}
-              color={theme.colors.turquoise}
-            />
-          ) : null}
-        </View>
-
-        <Text
-          numberOfLines={1}
-          style={{
-            marginTop: 3,
-            color: theme.colors.muted,
-            fontSize: 12,
-            fontWeight: "600",
-          }}
-        >
-          {getCategory(item)}
-        </Text>
-
-        <Text
-          numberOfLines={1}
-          style={{
-            marginTop: 6,
-            minHeight: REVIEW_LINE_MIN_HEIGHT,
-            fontSize: 12,
-            fontWeight: "600",
-            color: reviewLine ? theme.colors.charcoal : "transparent",
-          }}
-        >
-          {reviewLine || " "}
-        </Text>
-      </View>
-    </Pressable>
-  );
-});
-
 export default function ExploreScreen() {
   const { t, isRTL } = useTranslation();
   const titleAlign = isRTL ? "right" : "left";
@@ -300,9 +148,13 @@ export default function ExploreScreen() {
   const hasDisplayedListingsRef = useRef(Boolean(cachedOnMount?.length));
   const lastListingsRefreshAtRef = useRef(0);
   const LISTINGS_STALE_MS = 30_000;
-  const [listings, setListings] = useState<Listing[]>(
-    () => (cachedOnMount as Listing[] | null) ?? []
-  );
+  const [listings, setListings] = useState<Listing[]>(() => {
+    const initial = (cachedOnMount as Listing[] | null) ?? [];
+    logExploreUiStage("setListings_initialState", initial, {
+      source: "explore.tsx:308 useState initializer (getCachedDiscoverListings)",
+    });
+    return initial;
+  });
   const [loading, setLoading] = useState(!hasDisplayedListingsRef.current);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -411,6 +263,14 @@ export default function ExploreScreen() {
 
       setListings((prev) => {
         const next = prev.filter((item) => allowedIds.has(getId(item)));
+        if (next.length !== prev.length) {
+          logExploreUiStage("setListings", next, {
+            source:
+              "explore.tsx:417 useEffect → sanitizeCachedDiscoverListings filter",
+            inputIds: listingIds(prev),
+            removedIds: listingIds(prev).filter((id) => !allowedIds.has(id)),
+          });
+        }
         return next.length === prev.length ? prev : next;
       });
     })();
@@ -440,6 +300,7 @@ export default function ExploreScreen() {
       logLoadedListingEventIds("explore", data);
       setCachedDiscoverListings(data);
       if (data.length) hasDisplayedListingsRef.current = true;
+      traceExploreSetListings("refreshListings", data);
       setListings(data);
       void syncReviewSummaries(data);
     } catch (e) {
@@ -507,12 +368,18 @@ export default function ExploreScreen() {
       logLoadedListingEventIds("explore", data);
       setCachedDiscoverListings(data);
       if (data.length) hasDisplayedListingsRef.current = true;
+      traceExploreSetListings("loadListings", data);
       setListings(data);
       void syncReviewSummaries(data);
       void loadFavorites();
     } catch (e) {
       console.log("[loader] explore.loadListings error:", e);
-      if (!hasDisplayedListingsRef.current) setListings([]);
+      if (!hasDisplayedListingsRef.current) {
+        logExploreUiStage("setListings", [], {
+          source: "explore.tsx:522 loadListings catch → setListings([])",
+        });
+        setListings([]);
+      }
     } finally {
       logLoaderDone("explore.loadListings");
       setLoading(false);
@@ -568,21 +435,45 @@ export default function ExploreScreen() {
     [openEvent]
   );
 
-  const locationListings = useMemo(
-    () =>
-      listings.filter((item) =>
-        listingMatchesActiveLocation(item, locationState)
-      ),
-    [listings, locationState]
-  );
+  const locationListings = useMemo(() => {
+    const result = listings.filter((item) =>
+      listingMatchesActiveLocation(item, locationState)
+    );
+    const resultIdSet = new Set(listingIds(result));
+    const removedIds = listingIds(listings).filter((id) => !resultIdSet.has(id));
+    logExploreUiStage("locationListings", result, {
+      source:
+        "explore.tsx:578-583 useMemo → listings.filter(listingMatchesActiveLocation)",
+      inputIds: listingIds(listings),
+      removedIds,
+      extra: {
+        filterFunction: "listingMatchesActiveLocation",
+        filterFile: "lib/activeLocationFilter.ts:129",
+        regionLabel: locationState.regionLabel,
+        radiusKm: locationState.radiusKm,
+        locationSource: locationState.source,
+      },
+    });
+    return result;
+  }, [listings, locationState]);
 
-  const browseListings = useMemo(
-    () =>
-      locationListings.filter((item) =>
-        matchesListingCategory(item, selectedCategory)
-      ),
-    [locationListings, selectedCategory]
-  );
+  const browseListings = useMemo(() => {
+    const result = locationListings.filter((item) =>
+      matchesListingCategory(item, selectedCategory)
+    );
+    const resultIdSet = new Set(listingIds(result));
+    const removedIds = listingIds(locationListings).filter(
+      (id) => !resultIdSet.has(id)
+    );
+    logExploreUiStage("browseListings", result, {
+      source:
+        "explore.tsx:586-591 useMemo → locationListings.filter(matchesListingCategory)",
+      inputIds: listingIds(locationListings),
+      removedIds,
+      extra: { selectedCategory },
+    });
+    return result;
+  }, [locationListings, selectedCategory]);
 
   const searchResults = useMemo(
     () =>
@@ -595,10 +486,20 @@ export default function ExploreScreen() {
     [listings, locationState, search]
   );
 
-  const browseBusinessListings = useMemo(
-    () => browseListings.filter((item) => !isMapEvent(item)),
-    [browseListings]
-  );
+  const browseBusinessListings = useMemo(() => {
+    const result = browseListings.filter((item) => !isMapEvent(item));
+    const resultIdSet = new Set(listingIds(result));
+    const removedIds = listingIds(browseListings).filter(
+      (id) => !resultIdSet.has(id)
+    );
+    logExploreUiStage("browseBusinessListings", result, {
+      source:
+        "explore.tsx:605-607 useMemo → browseListings.filter(!isMapEvent)",
+      inputIds: listingIds(browseListings),
+      removedIds,
+    });
+    return result;
+  }, [browseListings]);
 
   const upcomingEventListings = useMemo(
     () =>
@@ -614,14 +515,24 @@ export default function ExploreScreen() {
     return list.length ? list.slice(0, 6) : browseBusinessListings.slice(0, 6);
   }, [browseBusinessListings]);
 
-  const popular = useMemo(
-    () =>
-      browseBusinessListings.slice(0, 8).map((item) => ({
-        item,
-        type: "business" as const,
-      })),
-    [browseBusinessListings]
-  );
+  const popular = useMemo(() => {
+    const sliced = browseBusinessListings.slice(0, 8);
+    const removedIds = listingIds(browseBusinessListings).filter(
+      (id) => !new Set(listingIds(sliced)).has(id)
+    );
+    const result = sliced.map((item) => ({
+      item,
+      type: "business" as const,
+    }));
+    logExploreUiStage("popular", result.map((entry) => entry.item), {
+      source:
+        "explore.tsx:624-630 useMemo → browseBusinessListings.slice(0, 8)",
+      inputIds: listingIds(browseBusinessListings),
+      removedIds,
+      extra: { sliceLimit: 8 },
+    });
+    return result;
+  }, [browseBusinessListings]);
 
   const searchListEntries = useMemo(
     () =>
@@ -634,6 +545,47 @@ export default function ExploreScreen() {
 
   const listEntries = isSearchMode ? searchListEntries : popular;
 
+  useEffect(() => {
+    const flatListBusinessIds = listEntries
+      .filter((entry) => entry.type === "business")
+      .map((entry) => getId(entry.item))
+      .filter(Boolean);
+
+    logExploreUiStage(
+      "flatList_data",
+      listEntries.map((entry) => entry.item),
+      {
+        source: isSearchMode
+          ? "explore.tsx:642 listEntries = searchListEntries (search mode)"
+          : "explore.tsx:642 listEntries = popular (browse mode)",
+        inputIds: listingIds(listings),
+        extra: {
+          isSearchMode,
+          flatListBusinessIds,
+          listingsStateCount: listings.length,
+        },
+      }
+    );
+
+    logDiscoverIdStage("6_explore_flatlist_render", flatListBusinessIds, {
+      flatListEntryCount: listEntries.length,
+      listingsStateCount: listings.length,
+      locationListingsCount: locationListings.length,
+      browseBusinessListingsCount: browseBusinessListings.length,
+      popularCount: popular.length,
+      isSearchMode,
+      selectedCategory,
+    });
+  }, [
+    listEntries,
+    listings.length,
+    locationListings.length,
+    browseBusinessListings.length,
+    popular.length,
+    isSearchMode,
+    selectedCategory,
+  ]);
+
   const locationEvents = useMemo(
     () => sortEventsByDate(upcomingEventListings).slice(0, 6),
     [upcomingEventListings]
@@ -644,18 +596,18 @@ export default function ExploreScreen() {
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingHorizontal: theme.spacing.md,
-        marginTop: theme.spacing.lg,
-        marginBottom: theme.spacing.sm,
+        paddingHorizontal: explorePremium.horizontalPad,
+        marginTop: explorePremium.sectionTop,
+        marginBottom: explorePremium.sectionBottom,
       }}
     >
       <Text
         style={{
           flex: 1,
-          fontSize: 18,
+          fontSize: 22,
           fontWeight: "800",
           color: theme.colors.charcoal,
-          letterSpacing: -0.3,
+          letterSpacing: -0.5,
         }}
       >
         {title}
@@ -670,26 +622,29 @@ export default function ExploreScreen() {
     return (
       <Pressable
         onPress={() => setSelectedCategory(item.key)}
-        style={{
-          width: 84,
-          height: 88,
-          borderRadius: theme.radius.md,
-          backgroundColor: active ? "rgba(13,148,136,0.10)" : theme.colors.card,
-          borderWidth: 1.5,
-          borderColor: active ? theme.colors.turquoise : theme.colors.border,
-          alignItems: "center",
-          justifyContent: "center",
-          paddingHorizontal: 4,
-          marginRight: 10,
-          ...exploreCardShadow,
-        }}
+        style={({ pressed }) => [
+          {
+            width: 94,
+            height: 102,
+            borderRadius: explorePremium.cardRadius,
+            backgroundColor: active ? "#FFFFFF" : theme.colors.card,
+            borderWidth: active ? 2 : 1,
+            borderColor: active ? theme.colors.turquoise : "rgba(226,232,240,0.95)",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 6,
+            marginRight: 12,
+            ...(active ? explorePremium.shadow.card : explorePremium.shadow.cardSoft),
+            transform: [{ scale: pressed ? 0.97 : active ? 1.02 : 1 }],
+          },
+        ]}
       >
         <CategoryIconBadge visual={visual} size="regular" active={active} />
         <Text
           numberOfLines={1}
           style={{
-            marginTop: 8,
-            fontSize: 11,
+            marginTop: 10,
+            fontSize: 12,
             fontWeight: "700",
             color: active ? theme.colors.turquoise : theme.colors.charcoal,
           }}
@@ -698,123 +653,6 @@ export default function ExploreScreen() {
             ? t(CATEGORY_CHIP_LABEL_KEYS[item.key])
             : item.label}
         </Text>
-      </Pressable>
-    );
-  };
-
-  const PopularRow = ({
-    item,
-    type,
-  }: {
-    item: Listing;
-    type: ExploreItemType;
-  }) => {
-    const id = getId(item);
-    const isEvent = type === "event";
-    const saved = favorites[id];
-    const reviewLine = formatMapPreviewReviewText(reviewSummaries[id]);
-    const eventItem = item as EventMapItem;
-    const hostLine = isEvent ? formatEventHostLine(eventItem) : null;
-
-    return (
-      <Pressable
-        onPress={() => (isEvent ? openEvent(item) : goProfile(item))}
-        style={{
-          marginHorizontal: theme.spacing.md,
-          marginBottom: 10,
-          backgroundColor: theme.colors.card,
-          borderRadius: theme.radius.md,
-          padding: 10,
-          flexDirection: "row",
-          alignItems: "center",
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          ...exploreCardShadow,
-        }}
-      >
-        <Image
-          recyclingKey={`explore-popular-${type}-${id}`}
-          source={{
-            uri: isEvent ? getEventCover(eventItem) : getImage(item),
-          }}
-          style={{
-            width: 60,
-            height: 60,
-            borderRadius: theme.radius.sm,
-            backgroundColor: "#eee",
-          }}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          transition={0}
-        />
-
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text
-            numberOfLines={isEvent ? 2 : 1}
-            style={{
-              fontSize: 15,
-              fontWeight: "800",
-              color: theme.colors.charcoal,
-            }}
-          >
-            {isEvent ? getEventTitle(eventItem) : getTitle(item)}
-          </Text>
-
-          <Text
-            numberOfLines={1}
-            style={{
-              marginTop: 2,
-              color: isEvent ? theme.colors.eventPurple : theme.colors.muted,
-              fontSize: 12,
-              fontWeight: isEvent ? "700" : "600",
-            }}
-          >
-            {isEvent ? formatEventDateTime(eventItem) : getCategory(item)}
-          </Text>
-
-          {hostLine ? (
-            <Text
-              numberOfLines={1}
-              style={{
-                marginTop: 3,
-                fontSize: 12,
-                fontWeight: "600",
-                color: theme.colors.muted,
-              }}
-            >
-              {hostLine}
-            </Text>
-          ) : null}
-
-          {!isEvent && reviewLine ? (
-            <Text
-              style={{
-                marginTop: 4,
-                fontSize: 12,
-                fontWeight: "600",
-                color: theme.colors.charcoal,
-              }}
-            >
-              {reviewLine}
-            </Text>
-          ) : null}
-        </View>
-
-        {!isEvent ? (
-          <Pressable onPress={() => toggleFavorite(item)} hitSlop={8}>
-            <Ionicons
-              name={saved ? "heart" : "heart-outline"}
-              size={22}
-              color={saved ? theme.colors.danger : theme.colors.charcoal}
-            />
-          </Pressable>
-        ) : (
-          <Ionicons
-            name="calendar-outline"
-            size={22}
-            color={theme.colors.eventPurple}
-          />
-        )}
       </Pressable>
     );
   };
@@ -835,391 +673,403 @@ export default function ExploreScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F9FA" }}>
       <FlatList
         data={listEntries}
         keyExtractor={(entry) => `${entry.type}-${getId(entry.item)}`}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        decelerationRate="fast"
+        contentContainerStyle={{ paddingBottom: 108 }}
         ListHeaderComponent={
           <>
-            <View
-              style={{
-                paddingHorizontal: theme.spacing.md,
-                paddingTop: 12,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 28,
-                  fontWeight: "800",
-                  color: theme.colors.charcoal,
-                  letterSpacing: -0.5,
-                  textAlign: titleAlign,
-                }}
-              >
-                {t("explore.title")}
-              </Text>
-              <Text
-                style={{
-                  marginTop: 2,
-                  color: theme.colors.muted,
-                  fontSize: 13,
-                  fontWeight: "600",
-                  textAlign: titleAlign,
-                }}
-              >
-                {t("explore.subtitle")}
-              </Text>
-
+            <ExploreFadeIn>
               <View
                 style={{
-                  marginTop: theme.spacing.sm,
-                  height: 42,
-                  borderRadius: theme.radius.sm,
-                  backgroundColor: theme.colors.card,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingHorizontal: 6,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  ...exploreCardShadow,
+                  paddingHorizontal: explorePremium.horizontalPad,
+                  paddingTop: 16,
                 }}
               >
-                <Pressable
-                  onPress={() => void refreshCurrentLocation({ showFallbackPicker: true })}
-                  disabled={locating}
-                  hitSlop={6}
+                <Text
                   style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    opacity: locating ? 0.65 : 1,
-                  }}
-                >
-                  {locating ? (
-                    <ActivityIndicator
-                      size="small"
-                      color={theme.colors.turquoise}
-                    />
-                  ) : (
-                    <Ionicons
-                      name="location-outline"
-                      size={18}
-                      color={theme.colors.turquoise}
-                    />
-                  )}
-                </Pressable>
-                <Pressable
-                  onPress={() => setLocationPickerVisible(true)}
-                  style={{
-                    flex: 1,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    paddingRight: 8,
-                  }}
-                >
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      flex: 1,
-                      marginLeft: 2,
-                      fontSize: 14,
-                      fontWeight: "700",
-                      color: theme.colors.charcoal,
-                    }}
-                  >
-                    {locationBarLabel}
-                  </Text>
-                  <Ionicons
-                    name="chevron-down"
-                    size={18}
-                    color={theme.colors.muted}
-                  />
-                </Pressable>
-              </View>
-
-              <View
-                style={{
-                  marginTop: theme.spacing.sm,
-                  height: 46,
-                  borderRadius: theme.radius.sm,
-                  backgroundColor: theme.colors.card,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingHorizontal: 12,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  ...exploreCardShadow,
-                }}
-              >
-                <Ionicons
-                  name="search-outline"
-                  size={19}
-                  color={theme.colors.turquoise}
-                />
-                <TextInput
-                  value={search}
-                  onChangeText={setSearch}
-                  placeholder={t("explore.searchPlaceholder")}
-                  placeholderTextColor="#9CA3AF"
-                  style={{
-                    flex: 1,
-                    marginLeft: 8,
-                    fontSize: 14,
+                    fontSize: 34,
+                    fontWeight: "800",
                     color: theme.colors.charcoal,
+                    letterSpacing: -0.8,
+                    textAlign: titleAlign,
                   }}
-                />
-                {search.length > 0 ? (
-                  <Pressable onPress={() => setSearch("")}>
-                    <Ionicons name="close-circle" size={19} color="#999" />
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
+                >
+                  {t("explore.title")}
+                </Text>
+                <Text
+                  style={{
+                    marginTop: 6,
+                    color: theme.colors.muted,
+                    fontSize: 15,
+                    fontWeight: "600",
+                    lineHeight: 22,
+                    textAlign: titleAlign,
+                  }}
+                >
+                  {t("explore.subtitle")}
+                </Text>
 
-            <View
-              style={{
-                marginTop: theme.spacing.md,
-                paddingHorizontal: theme.spacing.md,
-              }}
-            >
-              <ImageBackground
-                source={{ uri: HERO_IMAGE }}
-                imageStyle={{ borderRadius: theme.radius.md }}
-                style={{
-                  height: 168,
-                  borderRadius: theme.radius.md,
-                  overflow: "hidden",
-                  ...exploreHeroShadow,
-                }}
-              >
                 <View
                   style={{
-                    flex: 1,
-                    backgroundColor: "rgba(6,31,36,0.52)",
-                    padding: 18,
-                    justifyContent: "flex-end",
+                    marginTop: 18,
+                    height: 50,
+                    borderRadius: 16,
+                    backgroundColor: "#FFFFFF",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: 8,
+                    borderWidth: 1,
+                    borderColor: "rgba(226,232,240,0.95)",
+                    ...explorePremium.shadow.cardSoft,
+                  }}
+                >
+                  <Pressable
+                    onPress={() => void refreshCurrentLocation({ showFallbackPicker: true })}
+                    disabled={locating}
+                    hitSlop={6}
+                    style={({ pressed }) => ({
+                      width: 38,
+                      height: 38,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: pressed
+                        ? "rgba(13,148,136,0.08)"
+                        : "rgba(13,148,136,0.06)",
+                      opacity: locating ? 0.65 : 1,
+                    })}
+                  >
+                    {locating ? (
+                      <ActivityIndicator
+                        size="small"
+                        color={theme.colors.turquoise}
+                      />
+                    ) : (
+                      <Ionicons
+                        name="location-outline"
+                        size={19}
+                        color={theme.colors.turquoise}
+                      />
+                    )}
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setLocationPickerVisible(true)}
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingRight: 8,
+                    }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        flex: 1,
+                        marginLeft: 4,
+                        fontSize: 15,
+                        fontWeight: "700",
+                        color: theme.colors.charcoal,
+                      }}
+                    >
+                      {locationBarLabel}
+                    </Text>
+                    <Ionicons
+                      name="chevron-down"
+                      size={18}
+                      color={theme.colors.muted}
+                    />
+                  </Pressable>
+                </View>
+
+                <View
+                  style={{
+                    marginTop: 12,
+                    height: 54,
+                    borderRadius: 16,
+                    backgroundColor: "#FFFFFF",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: 14,
+                    borderWidth: 1,
+                    borderColor: "rgba(226,232,240,0.95)",
+                    ...explorePremium.shadow.cardSoft,
+                  }}
+                >
+                  <Ionicons
+                    name="search-outline"
+                    size={20}
+                    color={theme.colors.turquoise}
+                  />
+                  <TextInput
+                    value={search}
+                    onChangeText={setSearch}
+                    placeholder={t("explore.searchPlaceholder")}
+                    placeholderTextColor="#9CA3AF"
+                    style={{
+                      flex: 1,
+                      marginLeft: 10,
+                      fontSize: 15,
+                      color: theme.colors.charcoal,
+                      fontWeight: "500",
+                    }}
+                  />
+                  {search.length > 0 ? (
+                    <Pressable onPress={() => setSearch("")} hitSlop={8}>
+                      <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            </ExploreFadeIn>
+
+            <ExploreFadeIn delay={60}>
+              <View
+                style={{
+                  marginTop: 20,
+                  paddingHorizontal: explorePremium.horizontalPad,
+                }}
+              >
+                <ImageBackground
+                  source={{ uri: HERO_IMAGE }}
+                  imageStyle={{ borderRadius: explorePremium.cardRadiusLg }}
+                  style={{
+                    height: explorePremium.heroHeight,
+                    borderRadius: explorePremium.cardRadiusLg,
+                    overflow: "hidden",
+                    ...explorePremium.shadow.hero,
                   }}
                 >
                   <View
                     style={{
-                      alignSelf: "flex-start",
-                      backgroundColor: "rgba(0,194,184,0.92)",
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: theme.radius.pill,
-                      marginBottom: 10,
+                      position: "absolute",
+                      top: 0,
+                      right: 0,
+                      bottom: 0,
+                      left: 0,
+                      backgroundColor: "rgba(6,31,36,0.22)",
+                    }}
+                  />
+                  <View
+                    style={{
+                      flex: 1,
+                      backgroundColor: "rgba(6,31,36,0.38)",
+                      paddingHorizontal: 22,
+                      paddingVertical: 22,
+                      justifyContent: "flex-end",
                     }}
                   >
+                    <View
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: "78%",
+                        backgroundColor: "rgba(4,24,30,0.55)",
+                      }}
+                    />
+
+                    <View
+                      style={{
+                        alignSelf: "flex-start",
+                        backgroundColor: "rgba(0,194,184,0.95)",
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: explorePremium.pillRadius,
+                        marginBottom: 14,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: "#fff",
+                          fontSize: 11,
+                          fontWeight: "800",
+                          letterSpacing: 0.8,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {t("explore.communityBadge")}
+                      </Text>
+                    </View>
+
                     <Text
                       style={{
                         color: "#fff",
-                        fontSize: 11,
+                        fontSize: 28,
+                        lineHeight: 34,
                         fontWeight: "800",
-                        letterSpacing: 0.4,
+                        letterSpacing: -0.6,
+                        width: "92%",
                       }}
                     >
-                      {t("explore.communityBadge")}
+                      {t("explore.heroTitle")}
                     </Text>
+
+                    <Text
+                      style={{
+                        marginTop: 8,
+                        color: "rgba(255,255,255,0.92)",
+                        fontSize: 15,
+                        lineHeight: 22,
+                        width: "94%",
+                        fontWeight: "500",
+                      }}
+                    >
+                      {t("explore.heroSubtitle")}
+                    </Text>
+
+                    <Pressable
+                      onPress={() => router.push("/(tabs)/map")}
+                      style={({ pressed }) => ({
+                        marginTop: 16,
+                        alignSelf: "flex-start",
+                        backgroundColor: theme.colors.turquoise,
+                        borderRadius: explorePremium.pillRadius,
+                        paddingHorizontal: 18,
+                        paddingVertical: 12,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        opacity: pressed ? 0.92 : 1,
+                        transform: [{ scale: pressed ? 0.98 : 1 }],
+                        ...explorePremium.shadow.cta,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: "#fff",
+                          fontWeight: "800",
+                          fontSize: 14,
+                          letterSpacing: 0.2,
+                        }}
+                      >
+                        {t("common.openMap")}
+                      </Text>
+                      <Ionicons name="arrow-forward" size={16} color="#fff" />
+                    </Pressable>
                   </View>
-
-                  <Text
-                    style={{
-                      color: "#fff",
-                      fontSize: 22,
-                      lineHeight: 28,
-                      fontWeight: "800",
-                      width: "90%",
-                    }}
-                  >
-                    {t("explore.heroTitle")}
-                  </Text>
-
-                  <Text
-                    style={{
-                      marginTop: 6,
-                      color: "rgba(255,255,255,0.9)",
-                      fontSize: 13,
-                      lineHeight: 19,
-                      width: "92%",
-                    }}
-                  >
-                    {t("explore.heroSubtitle")}
-                  </Text>
-
-                  <Pressable
-                    onPress={() => router.push("/(tabs)/map")}
-                    style={{
-                      marginTop: 12,
-                      alignSelf: "flex-start",
-                      backgroundColor: theme.colors.turquoise,
-                      borderRadius: theme.radius.sm,
-                      paddingHorizontal: 16,
-                      paddingVertical: 9,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
-                      {t("common.openMap")}
-                    </Text>
-                  </Pressable>
-                </View>
-              </ImageBackground>
-            </View>
+                </ImageBackground>
+              </View>
+            </ExploreFadeIn>
 
             {!isSearchMode ? (
-              <>
-            <SectionHeader title={t("explore.popularCategories")} />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{
-                paddingLeft: theme.spacing.md,
-                paddingRight: 8,
-              }}
-            >
-              {categories.map((item) => (
-                <CategoryPill key={item.key} item={item} />
-              ))}
-            </ScrollView>
-              </>
+              <ExploreFadeIn delay={120}>
+                <>
+                  <SectionHeader title={t("explore.popularCategories")} />
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{
+                      paddingLeft: explorePremium.horizontalPad,
+                      paddingRight: 10,
+                      paddingBottom: 4,
+                    }}
+                  >
+                    {categories.map((item) => (
+                      <CategoryPill key={item.key} item={item} />
+                    ))}
+                  </ScrollView>
+                </>
+              </ExploreFadeIn>
             ) : null}
 
             {!isSearchMode ? (
-              <>
-            <SectionHeader title={t("explore.featuredBusinesses")} />
-            {featured.length > 0 ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{
-                  paddingLeft: theme.spacing.md,
-                  paddingRight: 8,
-                }}
-              >
-                {featured.map((item) => {
-                  const id = getId(item);
-                  return (
-                    <ExploreBusinessCard
-                      key={`featured-${id}`}
-                      item={item}
-                      large
-                      saved={Boolean(favorites[id])}
-                      reviewLine={formatMapPreviewReviewText(
-                        reviewSummaries[id]
-                      )}
-                      onPress={handleBusinessCardPress}
-                      onToggleFavorite={toggleFavorite}
-                    />
-                  );
-                })}
-              </ScrollView>
-            ) : (
-              <Text
-                style={{
-                  marginHorizontal: theme.spacing.md,
-                  color: theme.colors.muted,
-                  fontSize: 13,
-                  lineHeight: 20,
-                }}
-              >
-                {t("explore.noFeatured", { location: selectedLocation })}
-              </Text>
-            )}
-
-            <SectionHeader title={t("explore.upcomingEvents")} />
-            {locationEvents.length > 0 ? (
-              <View style={{ paddingHorizontal: theme.spacing.md, gap: 10 }}>
-                {locationEvents.map((item) => (
-                  <Pressable
-                    key={`event-${getId(item)}`}
-                    onPress={() => openEvent(item)}
-                    style={{
-                      borderRadius: theme.radius.md,
-                      overflow: "hidden",
-                      backgroundColor: theme.colors.card,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      ...exploreCardShadow,
-                    }}
-                  >
-                    <ImageBackground
-                      source={{
-                        uri: getEventCover(item as EventMapItem),
+              <ExploreFadeIn delay={180}>
+                <>
+                  <SectionHeader title={t("explore.featuredBusinesses")} />
+                  {featured.length > 0 ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{
+                        paddingLeft: explorePremium.horizontalPad,
+                        paddingRight: 10,
+                        paddingBottom: 4,
                       }}
-                      style={{ height: 118 }}
-                      resizeMode="cover"
                     >
-                      <View
-                        style={{
-                          flex: 1,
-                          backgroundColor: "rgba(15,43,51,0.45)",
-                          padding: 14,
-                          justifyContent: "flex-end",
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: "#fff",
-                            fontSize: 17,
-                            fontWeight: "800",
-                          }}
-                          numberOfLines={2}
-                        >
-                          {getEventTitle(item as EventMapItem)}
-                        </Text>
-                        <Text
-                          style={{
-                            marginTop: 4,
-                            color: "rgba(255,255,255,0.9)",
-                            fontSize: 12,
-                            fontWeight: "700",
-                          }}
-                        >
-                          {formatEventDateTime(item as EventMapItem)}
-                        </Text>
-                        {formatEventHostLine(item as EventMapItem) ? (
-                          <Text
-                            numberOfLines={1}
-                            style={{
-                              marginTop: 3,
-                              color: "rgba(255,255,255,0.88)",
-                              fontSize: 11,
-                              fontWeight: "600",
-                            }}
-                          >
-                            {formatEventHostLine(item as EventMapItem)}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </ImageBackground>
-                  </Pressable>
-                ))}
-              </View>
-            ) : (
-              <Text
-                style={{
-                  marginHorizontal: theme.spacing.md,
-                  color: theme.colors.muted,
-                  fontSize: 13,
-                  lineHeight: 20,
-                }}
-              >
-                {t("explore.noEvents", { location: selectedLocation })}
-              </Text>
-            )}
-              </>
+                      {featured.map((item) => {
+                        const id = getId(item);
+                        return (
+                          <ExploreBusinessCard
+                            key={`featured-${id}`}
+                            item={item}
+                            large
+                            saved={Boolean(favorites[id])}
+                            reviewSummary={reviewSummaries[id]}
+                            onPress={handleBusinessCardPress}
+                            onToggleFavorite={toggleFavorite}
+                          />
+                        );
+                      })}
+                    </ScrollView>
+                  ) : (
+                    <Text
+                      style={{
+                        marginHorizontal: explorePremium.horizontalPad,
+                        color: theme.colors.muted,
+                        fontSize: 14,
+                        lineHeight: 22,
+                      }}
+                    >
+                      {t("explore.noFeatured", { location: selectedLocation })}
+                    </Text>
+                  )}
+
+                  <SectionHeader title={t("explore.upcomingEvents")} />
+                  {locationEvents.length > 0 ? (
+                    <View
+                      style={{
+                        paddingHorizontal: explorePremium.horizontalPad,
+                        gap: 14,
+                      }}
+                    >
+                      {locationEvents.map((item) => (
+                        <ExploreEventCard
+                          key={`event-${getId(item)}`}
+                          item={item}
+                          onPress={openEvent}
+                        />
+                      ))}
+                    </View>
+                  ) : (
+                    <Text
+                      style={{
+                        marginHorizontal: explorePremium.horizontalPad,
+                        color: theme.colors.muted,
+                        fontSize: 14,
+                        lineHeight: 22,
+                      }}
+                    >
+                      {t("explore.noEvents", { location: selectedLocation })}
+                    </Text>
+                  )}
+                </>
+              </ExploreFadeIn>
             ) : null}
 
             <SectionHeader
-              title={isSearchMode ? t("explore.searchResults") : t("explore.popularThisWeek")}
+              title={
+                isSearchMode
+                  ? t("explore.searchResults")
+                  : t("explore.popularThisWeek")
+              }
             />
           </>
         }
         renderItem={({ item: entry }) => (
-          <PopularRow item={entry.item} type={entry.type} />
+          <ExplorePopularRow
+            item={entry.item}
+            type={entry.type}
+            saved={Boolean(favorites[getId(entry.item)])}
+            reviewSummary={reviewSummaries[getId(entry.item)]}
+            onPress={goProfile}
+            onToggleFavorite={toggleFavorite}
+            onOpenEvent={openEvent}
+          />
         )}
         ListEmptyComponent={
           isSearchMode ? (

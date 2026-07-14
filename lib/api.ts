@@ -8,10 +8,31 @@ import {
   AUTH_PASSWORD_CHANGE_PATH,
   AUTH_PASSWORD_RESET_PATH,
 } from "./authApiContract";
-import { API_BASE_URL } from "./apiConfig";
+import { API_BASE_URL, getApiEnvironment } from "./apiConfig";
 import { resolveStoredAccessToken } from "./authSession";
 
 const BASE_URL = API_BASE_URL;
+
+const countListingsRows = (data: unknown): number => {
+  if (Array.isArray(data)) return data.length;
+  if (data && typeof data === "object") {
+    const results = (data as { results?: unknown }).results;
+    if (Array.isArray(results)) return results.length;
+  }
+  return 0;
+};
+
+const isPublicListingsListRequest = (config: { method?: string; url?: string }) => {
+  const method = (config.method || "get").toLowerCase();
+  const url = String(config.url || "").split("?")[0];
+  return method === "get" && /\/listings\/?$/.test(url);
+};
+
+console.log("[api-env] startup", {
+  API_BASE_URL,
+  environment: getApiEnvironment(),
+  listingsUrl: `${API_BASE_URL}/listings/`,
+});
 
 const client = axios.create({
   baseURL: BASE_URL,
@@ -49,6 +70,29 @@ client.interceptors.request.use(async (config) => {
   return config;
 });
 
+client.interceptors.response.use(
+  (response) => {
+    if (isPublicListingsListRequest(response.config)) {
+      console.log("[api-env] GET /listings/", {
+        url: axios.getUri(response.config),
+        status: response.status,
+        rowCount: countListingsRows(response.data),
+      });
+    }
+    return response;
+  },
+  (error) => {
+    if (error?.config && isPublicListingsListRequest(error.config)) {
+      console.log("[api-env] GET /listings/", {
+        url: axios.getUri(error.config),
+        status: error.response?.status ?? null,
+        rowCount: 0,
+        error: String(error.message || "request_failed"),
+      });
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const API = {
   async refreshAccessToken(refresh: string) {

@@ -12,6 +12,11 @@ import {
 import { removeBusinessFromDiscoverCache } from "./discoverListingsCache";
 import { requestDiscoverListingsRefresh } from "./discoverListingsRefresh";
 import { getMapLat } from "./mapCoordinates";
+import {
+  businessIdsFrom,
+  logDiscoverContextStage,
+  logDiscoverListStage,
+} from "./discoverListTrace";
 
 export type DisplayableListingContext = {
   deletedIds: Set<string>;
@@ -127,12 +132,14 @@ export const buildDisplayableListingContext =
       // Best-effort owned index.
     }
 
-    return {
+    const context = {
       deletedIds,
       ownedIds,
       profileStorageIds,
       userId,
     };
+    logDiscoverContextStage("4_buildDisplayableListingContext", context);
+    return context;
   };
 
 export const filterDisplayableDiscoverableListings = async (
@@ -164,7 +171,8 @@ export const filterDisplayableDiscoverableListings = async (
 export const filterLocalDiscoveryCandidates = (
   apiListings: DiscoverableListing[],
   candidates: DiscoverableListing[],
-  context: DisplayableListingContext
+  context: DisplayableListingContext,
+  traceSource = "unknown"
 ): DiscoverableListing[] => {
   const apiBusinessIds = new Set(
     apiListings
@@ -173,7 +181,7 @@ export const filterLocalDiscoveryCandidates = (
       .filter(Boolean)
   );
 
-  return candidates.filter((item) => {
+  const result = candidates.filter((item) => {
     if (isEventListing(item)) {
       return isDisplayableDiscoverableListing(item, context);
     }
@@ -197,6 +205,14 @@ export const filterLocalDiscoveryCandidates = (
 
     return false;
   });
+
+  logDiscoverListStage(`3_filterLocalDiscoveryCandidates:${traceSource}`, result, {
+    inputCandidateCount: candidates.length,
+    inputCandidateBusinessIds: businessIdsFrom(candidates),
+    apiBusinessIds: [...apiBusinessIds],
+  });
+
+  return result;
 };
 
 /**
