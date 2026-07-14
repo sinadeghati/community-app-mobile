@@ -1,8 +1,6 @@
 import { StyleSheet } from "react-native";
 import { theme } from "../../lib/theme";
 
-export const HOME_TAGLINE = "DISCOVER • CONNECT • GROW";
-
 export const homeLandingStyles = StyleSheet.create({
   root: {
     flex: 1,
@@ -25,31 +23,33 @@ export const homeLandingStyles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 200,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    height: 220,
+  },
+  topVignetteBand: {
+    flex: 1,
+    backgroundColor: "#000",
   },
   bottomVignette: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    height: 360,
+    height: 340,
   },
   bottomVignetteBand: {
     flex: 1,
     backgroundColor: "#000",
   },
-  brandOverlay: {
+  brandBlock: {
     position: "absolute",
-    left: 22,
-    zIndex: 4,
+    left: 24,
+    right: 24,
+    alignItems: "flex-start",
+    zIndex: 10,
   },
-  brandTagline: {
-    marginTop: 10,
-    color: "rgba(255,255,255,0.92)",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 2.4,
+  brandLogo: {
+    width: 200,
+    height: 262,
   },
   welcomeOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -97,23 +97,25 @@ export const homeLandingStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: 999,
-    backgroundColor: "rgba(0,0,0,0.22)",
+    backgroundColor: "rgba(0,0,0,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   dot: {
-    height: 7,
+    height: 5,
     borderRadius: 999,
   },
   dotActive: {
-    width: 24,
-    backgroundColor: "#FFFFFF",
+    width: 18,
+    backgroundColor: "rgba(255,255,255,0.96)",
   },
   dotIdle: {
-    width: 7,
-    backgroundColor: "rgba(255,255,255,0.38)",
+    width: 5,
+    backgroundColor: "rgba(255,255,255,0.34)",
   },
   promotionOverlay: {
     ...StyleSheet.absoluteFillObject,

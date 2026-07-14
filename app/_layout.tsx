@@ -1,12 +1,12 @@
 import React from "react";
 import { Stack } from "expo-router";
-import { KorookStartupGate } from "../components/brand/KorookStartupGate";
+import { HomeBrandSplashGate } from "../components/home/HomeBrandSplashGate";
 import { LanguageProvider } from "../lib/i18n/LanguageProvider";
 
 export default function RootLayout() {
   return (
     <LanguageProvider>
-      <KorookStartupGate>
+      <HomeBrandSplashGate>
         <Stack
           initialRouteName="(tabs)"
           screenOptions={{
@@ -21,7 +21,7 @@ export default function RootLayout() {
           <Stack.Screen name="legal" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         </Stack>
-      </KorookStartupGate>
+      </HomeBrandSplashGate>
     </LanguageProvider>
   );
 }

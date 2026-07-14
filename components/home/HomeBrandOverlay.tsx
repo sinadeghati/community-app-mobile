@@ -1,7 +1,6 @@
 import React from "react";
-import { Text, View } from "react-native";
-import { KorookHeroLogo } from "../brand/KorookHeroLogo";
-import { HOME_TAGLINE, homeLandingStyles } from "./homeLandingStyles";
+import { Image, View } from "react-native";
+import { homeLandingStyles } from "./homeLandingStyles";
 
 type HomeBrandOverlayProps = {
   topInset: number;
@@ -10,11 +9,16 @@ type HomeBrandOverlayProps = {
 export function HomeBrandOverlay({ topInset }: HomeBrandOverlayProps) {
   return (
     <View
-      style={[homeLandingStyles.brandOverlay, { paddingTop: topInset + 10 }]}
+      style={[homeLandingStyles.brandBlock, { top: topInset + 20 }]}
       pointerEvents="none"
     >
-      <KorookHeroLogo size={48} />
-      <Text style={homeLandingStyles.brandTagline}>{HOME_TAGLINE}</Text>
+      <Image
+        source={require("../../assets/brand/korook/Korook-master-logo.png")}
+        style={homeLandingStyles.brandLogo}
+        resizeMode="contain"
+        accessibilityLabel="Korook"
+        accessibilityIgnoresInvertColors
+      />
     </View>
   );
 }

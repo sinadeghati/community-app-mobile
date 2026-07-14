@@ -12,7 +12,7 @@ export function HomeBottomVignette() {
           key={`vignette-${index}`}
           style={[
             homeLandingStyles.bottomVignetteBand,
-            { opacity: (index + 1) / BAND_COUNT },
+            { opacity: ((index + 1) / BAND_COUNT) * 0.72 },
           ]}
         />
       ))}

@@ -38,6 +38,7 @@ import { HomeBrandOverlay } from "../../components/home/HomeBrandOverlay";
 import { HomeHeroCrossfade } from "../../components/home/HomeHeroCrossfade";
 import { HomePromotionView } from "../../components/home/HomePromotionView";
 import { HomeSlideIndicators } from "../../components/home/HomeSlideIndicators";
+import { HomeTopVignette } from "../../components/home/HomeTopVignette";
 import { HomeWelcomeOverlay } from "../../components/home/HomeWelcomeOverlay";
 import { homeLandingStyles } from "../../components/home/homeLandingStyles";
 import type { HomeCarouselSlide } from "../../components/home/homeLandingTypes";
@@ -49,7 +50,7 @@ import {
 import { getActiveHomePromotion } from "../../components/home/homePromotions";
 
 const SLIDE_INTERVAL_MS = 6000;
-const SLIDE_FADE_MS = 900;
+const SLIDE_FADE_MS = 1000;
 const LOGIN_FADE_MS = 260;
 const SWIPE_THRESHOLD = 48;
 
@@ -368,10 +369,8 @@ export default function HomeLoginV2() {
     );
   }
 
-  const topInset = Math.max(insets.top, Platform.OS === "ios" ? 12 : 8);
-  const indicatorsBottom = showLoginOverlay
-    ? Math.max(insets.bottom, 12) + 188
-    : Math.max(insets.bottom, 20) + 12;
+  const topInset = Math.max(insets.top, Platform.OS === "ios" ? 10 : 8);
+  const indicatorsBottom = showLoginOverlay ? 192 : 18;
 
   return (
     <View style={homeLandingStyles.root}>
@@ -388,7 +387,7 @@ export default function HomeLoginV2() {
       )}
 
       <HomeBottomVignette />
-      <View style={homeLandingStyles.topVignette} pointerEvents="none" />
+      <HomeTopVignette />
 
       <View style={homeLandingStyles.flex} {...panResponder.panHandlers}>
         <HomeBrandOverlay topInset={topInset} />
@@ -421,7 +420,7 @@ export default function HomeLoginV2() {
           style={[
             homeLandingStyles.loginDock,
             {
-              paddingBottom: Math.max(insets.bottom, 6),
+              paddingBottom: 10,
               transform: [{ translateY: loginLift }],
             },
           ]}
@@ -516,7 +515,7 @@ export default function HomeLoginV2() {
           </Animated.View>
         </Animated.View>
       ) : (
-        <View style={{ height: Math.max(insets.bottom, 12) }} />
+        <View style={{ height: 12 }} />
       )}
     </View>
   );
