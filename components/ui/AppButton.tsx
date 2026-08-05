@@ -33,7 +33,7 @@ export default function AppButton({
             {loading ? (
                 <ActivityIndicator />
             )  :  (
-                <Text style={[styles.text, variant === "outline" && StyleSheet.textOutline]}>
+                <Text style={[styles.text, variant === "outline" && styles.textOutline]}>
                     {title}
                  </Text>   
             )}
@@ -62,7 +62,7 @@ export default function AppButton({
                 fontWeight: "700",
             },
             textOutline: {
-                color: theme.colors.text,
+                color: theme.colors.charcoal,
             },
             disabled: {
                 opacity: 0.6,

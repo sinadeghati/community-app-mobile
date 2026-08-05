@@ -18,7 +18,7 @@ export default function TabsLayout() {
         headerShown: false,
         lazy: true,
         freezeOnBlur: false,
-        sceneContainerStyle: { backgroundColor: theme.colors.ivory },
+        sceneStyle: { backgroundColor: theme.colors.ivory },
         tabBarActiveTintColor: theme.colors.turquoise,
         tabBarInactiveTintColor: theme.colors.muted,
         tabBarStyle: {

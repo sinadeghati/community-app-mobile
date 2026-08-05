@@ -1021,7 +1021,15 @@ function CategoryInput({ value, onPress }: any) {
     );
 }
 
-function CategoryModal({ visible, onClose, onSelect }: any) {
+function CategoryModal({
+  visible,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (item: string) => void;
+}) {
     const insets = useSafeAreaInsets();
     const maxSheetHeight = Dimensions.get("window").height * 0.85;
 

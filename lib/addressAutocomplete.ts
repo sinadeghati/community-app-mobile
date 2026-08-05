@@ -33,6 +33,8 @@ type NominatimResult = {
   lat?: string;
   lon?: string;
   address?: NominatimAddress;
+  class?: string;
+  addresstype?: string;
 };
 
 const US_STATE_ABBREV: Record<string, string> = {

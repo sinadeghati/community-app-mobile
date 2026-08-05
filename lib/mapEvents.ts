@@ -18,6 +18,7 @@ export type EventMapItem = DiscoverableListing & {
   event_end_date?: string;
   ticket_url?: string;
   organizer?: string;
+  location?: string;
 };
 
 export type EventMarkerVisual = {

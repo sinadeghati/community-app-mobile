@@ -2308,354 +2308,6 @@ export default function BusinessProfileV2() {
   );
 
   const review = userReview;
-  const ReviewCard_REMOVED_START = false
-    ? (
-      <View
-        style={{
-          paddingVertical: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.border,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "800",
-              color: theme.colors.charcoal,
-              flex: 1,
-              marginRight: 8,
-            }}
-          >
-            {review.username}
-          </Text>
-          <Text
-            style={{
-              fontSize: 12,
-              color: theme.colors.muted,
-              fontWeight: "600",
-            }}
-          >
-            {formatReviewRelativeTime(reviewTimestamp)}
-          </Text>
-        </View>
-
-        {isAuthor ? (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 14,
-              marginTop: 8,
-            }}
-          >
-            <Pressable onPress={() => startEditReview(review)} hitSlop={8}>
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: "700",
-                  color: theme.colors.turquoise,
-                }}
-              >
-                Edit
-              </Text>
-            </Pressable>
-            <Pressable onPress={() => confirmDeleteReview(review)} hitSlop={8}>
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: "700",
-                  color: theme.colors.danger,
-                }}
-              >
-                Delete
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {isEditing ? (
-          <View style={{ marginTop: 10 }}>
-            <StarRatingPicker value={editRating} onChange={setEditRating} />
-            <TextInput
-              value={editText}
-              onChangeText={(value) => {
-                setEditText(value);
-              }}
-              placeholder="Update your review..."
-              placeholderTextColor={theme.colors.muted}
-              multiline
-              textAlignVertical="top"
-              style={{
-                minHeight: 100,
-                borderRadius: theme.radius.sm,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                backgroundColor: theme.colors.softCard,
-                padding: 12,
-                fontSize: 14,
-                color: theme.colors.charcoal,
-              }}
-            />
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-              <Pressable
-                onPress={cancelEditReview}
-                style={{
-                  flex: 1,
-                  height: 40,
-                  borderRadius: theme.radius.sm,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.charcoal,
-                    fontWeight: "700",
-                    fontSize: 13,
-                  }}
-                >
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => saveEditedReview(review.id)}
-                disabled={savingReviewEdit}
-                style={{
-                  flex: 1,
-                  height: 40,
-                  borderRadius: theme.radius.sm,
-                  backgroundColor: savingReviewEdit
-                    ? theme.colors.muted
-                    : theme.colors.turquoise,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
-                  {savingReviewEdit ? "Saving..." : "Save"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : (
-          <>
-            <View style={{ marginTop: 6 }}>
-              <ReviewStars rating={review.rating} />
-            </View>
-
-            <Text
-              style={{
-                marginTop: 6,
-                fontSize: 14,
-                lineHeight: 21,
-                color: theme.colors.charcoal,
-              }}
-            >
-              {review.text}
-            </Text>
-          </>
-        )}
-
-        {review.ownerReply && !isEditingReply ? (
-          <View
-            style={{
-              marginTop: 12,
-              padding: 12,
-              borderRadius: theme.radius.sm,
-              backgroundColor: theme.colors.softCard,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: "800",
-                  color: theme.colors.turquoise,
-                  letterSpacing: 0.3,
-                }}
-              >
-                Owner response
-              </Text>
-              {isBusinessOwner ? (
-                <Pressable
-                  onPress={() => startEditOwnerReply(review)}
-                  hitSlop={8}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: "700",
-                      color: theme.colors.turquoise,
-                    }}
-                  >
-                    Edit
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-            <Text
-              style={{
-                marginTop: 6,
-                fontSize: 14,
-                lineHeight: 21,
-                color: theme.colors.charcoal,
-              }}
-            >
-              {review.ownerReply.text}
-            </Text>
-          </View>
-        ) : null}
-
-        {isBusinessOwner && isEditingReply ? (
-          <View style={{ marginTop: 12 }}>
-            <Text
-              style={{
-                fontSize: 12,
-                fontWeight: "800",
-                color: theme.colors.muted,
-                marginBottom: 8,
-              }}
-            >
-              Edit owner response
-            </Text>
-            <TextInput
-              value={replyDrafts[review.id] || ""}
-              onChangeText={(value) => {
-                setReplyDrafts((prev) => ({ ...prev, [review.id]: value }));
-              }}
-              placeholder="Update your public response..."
-              placeholderTextColor={theme.colors.muted}
-              multiline
-              textAlignVertical="top"
-              style={{
-                minHeight: 72,
-                borderRadius: theme.radius.sm,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                backgroundColor: theme.colors.softCard,
-                padding: 12,
-                fontSize: 14,
-                color: theme.colors.charcoal,
-              }}
-            />
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-              <Pressable
-                onPress={() => cancelEditOwnerReply(review.id)}
-                style={{
-                  flex: 1,
-                  height: 40,
-                  borderRadius: theme.radius.sm,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.charcoal,
-                    fontWeight: "700",
-                    fontSize: 13,
-                  }}
-                >
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => submitOwnerReply(review.id)}
-                disabled={submittingReplyId === review.id}
-                style={{
-                  flex: 1,
-                  height: 40,
-                  borderRadius: theme.radius.sm,
-                  backgroundColor:
-                    submittingReplyId === review.id
-                      ? theme.colors.muted
-                      : theme.colors.turquoise,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
-                  {submittingReplyId === review.id ? "Saving..." : "Save"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : showOwnerReplyEditor ? (
-          <View style={{ marginTop: 12 }}>
-            <Text
-              style={{
-                fontSize: 12,
-                fontWeight: "800",
-                color: theme.colors.muted,
-                marginBottom: 8,
-              }}
-            >
-              Reply
-            </Text>
-            <TextInput
-              value={replyDrafts[review.id] || ""}
-              onChangeText={(value) => {
-                setReplyDrafts((prev) => ({ ...prev, [review.id]: value }));
-              }}
-              placeholder="Write a public response..."
-              placeholderTextColor={theme.colors.muted}
-              multiline
-              textAlignVertical="top"
-              style={{
-                minHeight: 72,
-                borderRadius: theme.radius.sm,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                backgroundColor: theme.colors.softCard,
-                padding: 12,
-                fontSize: 14,
-                color: theme.colors.charcoal,
-              }}
-            />
-            <Pressable
-              onPress={() => submitOwnerReply(review.id)}
-              disabled={submittingReplyId === review.id}
-              style={{
-                marginTop: 10,
-                height: 40,
-                borderRadius: theme.radius.sm,
-                backgroundColor:
-                  submittingReplyId === review.id
-                    ? theme.colors.muted
-                    : theme.colors.turquoise,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>
-                {submittingReplyId === review.id ? "Posting..." : "Post reply"}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
-      </View>
-    )
-    : null;
-
   const HighlightBox = ({
     icon,
     value,
@@ -2988,7 +2640,7 @@ export default function BusinessProfileV2() {
                       fontSize: 14,
                     }}
                   >
-                    {`⭐ ${reviewSummary.averageRating.toFixed(1)} · ${reviewSummary.count} review${reviewSummary.count === 1 ? "" : "s"}`}
+                    {`â­ ${reviewSummary.averageRating.toFixed(1)} Â· ${reviewSummary.count} review${reviewSummary.count === 1 ? "" : "s"}`}
                   </Text>
                 ) : (
                   <Text
@@ -3010,7 +2662,7 @@ export default function BusinessProfileV2() {
                     fontSize: 14,
                   }}
                 >
-                  {` · ${hoursDisplay.primary}`}
+                  {` Â· ${hoursDisplay.primary}`}
                 </Text>
 
                 {isBusinessOwner && isOwnerCheckReady ? (
@@ -3023,7 +2675,7 @@ export default function BusinessProfileV2() {
                         fontSize: 13,
                       }}
                     >
-                      · Edit details
+                      Â· Edit details
                     </Text>
                   </Pressable>
                 ) : null}
@@ -3296,7 +2948,7 @@ export default function BusinessProfileV2() {
                               }}
                             >
                               {row.label}
-                              {row.isToday ? " · Today" : ""}
+                              {row.isToday ? " Â· Today" : ""}
                             </Text>
                             <Text
                               style={{
@@ -3461,7 +3113,7 @@ export default function BusinessProfileV2() {
                   value={
                     reviewSummary.count > 0
                       ? reviewSummary.averageRating.toFixed(1)
-                      : "—"
+                      : "â€”"
                   }
                   label={
                     reviewSummary.count > 0
@@ -3471,7 +3123,7 @@ export default function BusinessProfileV2() {
                   icon="star"
                 />
                 <HighlightBox
-                  value={hoursDisplay.primary.split("·")[0]?.trim() || "—"}
+                  value={hoursDisplay.primary.split("Â·")[0]?.trim() || "â€”"}
                   label="Hours"
                   icon="time-outline"
                 />

@@ -16,7 +16,7 @@ export type FavoriteBusiness = {
   city?: string;
   state?: string;
   rating?: string | number;
-  reviews?: number;
+  reviews?: number | string;
 };
 
 export type FavoriteBusinessSource = {
@@ -33,7 +33,7 @@ export type FavoriteBusinessSource = {
   city?: string;
   state?: string;
   rating?: string | number;
-  reviews?: number;
+  reviews?: number | string;
 };
 
 const FLAG_PREFIX = "favorite-business-";

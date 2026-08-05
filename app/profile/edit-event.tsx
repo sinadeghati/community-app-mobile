@@ -202,7 +202,7 @@ export default function EditEventScreen() {
           eventDateIso: eventDateRef.current.eventDateIso,
           endDate: eventDateRef.current.endDateText,
           endTime: eventDateRef.current.endTimeText,
-          endDateIso: eventDateRef.current.endDateIso,
+          endDateIso: eventDateRef.current.endDateIso ?? undefined,
           ticketUrl: ticketUrl.trim() || undefined,
           image: flyerImage || undefined,
           cover_image: flyerImage || undefined,

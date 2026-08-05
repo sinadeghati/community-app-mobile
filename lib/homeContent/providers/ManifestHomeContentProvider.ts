@@ -45,7 +45,11 @@ const resolveManifest = async (
       }
     }
 
-    return { manifest: result.manifest, source: "cdn" };
+    if (result.status === "ok") {
+      return { manifest: result.manifest, source: "cdn" };
+    }
+
+    return { manifest: createEmptyHomeContentManifest(getHomeContentEnvironment()), source: "bundled" };
   } catch {
     const cached = await getCachedManifest();
     if (cached?.manifest) {

@@ -1107,7 +1107,7 @@ export const saveUserProfile = async (
   userId: string,
   profile: Record<string, unknown>
 ) => {
-  const payload = {
+  const payload: Record<string, unknown> = {
     ...profile,
     id: profile.id ?? userId,
     user_id: profile.user_id ?? userId,
@@ -1533,7 +1533,7 @@ export const deleteUserBusiness = async (
 
   if (!owned) {
     console.log("BUSINESS_DELETE_OWNERSHIP_DENIED", {
-      userId,
+      sessionUserId: userId,
       businessId: id,
       sessionUsername: resolvedIdentity?.username ?? null,
       sessionEmail: resolvedIdentity?.email ?? null,

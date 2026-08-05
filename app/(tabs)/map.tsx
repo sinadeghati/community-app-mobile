@@ -1814,7 +1814,7 @@ export default function MapScreenV25() {
     setPreviewCarouselData(point ? [{ item: selectedItem, point }] : []);
     // Freeze carousel rows at selection time — do not rebuild on map pan/region updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getId(selectedItem ?? ""), isDiscoveryActive, discoveryResults]);
+  }, [selectedItem ? getId(selectedItem) : "", isDiscoveryActive, discoveryResults]);
 
   const previewBusinessIds = useMemo(() => {
     const ids: string[] = [];
@@ -2681,7 +2681,6 @@ export default function MapScreenV25() {
 
       {!hasVisibleBusinesses &&
       !isDiscoveryActive &&
-      selectedCategory !== "Events" &&
       (!selectedItem || isMapEvent(selectedItem)) ? (
         <View
           pointerEvents="none"

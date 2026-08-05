@@ -327,7 +327,7 @@ export const logBusinessMapCoordinates = (
   item: DiscoverableListing,
   latitude: number | null,
   longitude: number | null,
-  source: "exact" | "legacy_exact" | "fallback" | "skipped" | "geocoded"
+  source: "exact" | "legacy_exact" | "fallback" | "skipped" | "geocoded" | "fallback_pending_geocode"
 ) => {
   const record = item as Record<string, unknown>;
   console.log("BUSINESS_MAP_COORDINATES", {
@@ -426,22 +426,20 @@ export const mergeBusinessProfileLocation = <
 >(item: T, profile: DiscoverableListing | null | undefined): T => {
   if (!profile) return item;
 
-  const profileRecord = profile as Record<string, unknown>;
-  const itemRecord = item as Record<string, unknown>;
   const merged = { ...item } as T & Record<string, unknown>;
 
   const profileLat = profile.latitude ?? profile.lat;
   const profileLng = profile.longitude ?? profile.lng;
 
   if (profile.address) merged.address = profile.address;
-  if (profileRecord.street_address) {
-    merged.street_address = profileRecord.street_address;
+  if (profile.street_address) {
+    merged.street_address = profile.street_address;
   }
   if (profile.city) merged.city = profile.city;
   if (profile.state) merged.state = profile.state;
-  if (profileRecord.zip_code || profileRecord.zip) {
-    merged.zip_code = profileRecord.zip_code ?? profileRecord.zip;
-    merged.zip = profileRecord.zip ?? profileRecord.zip_code;
+  if (profile.zip_code || profile.zip) {
+    merged.zip_code = profile.zip_code ?? profile.zip;
+    merged.zip = profile.zip ?? profile.zip_code;
   }
 
   if (

@@ -22,7 +22,7 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         paddingHorizontal: 14,
         paddingVertical: 12,
-        color: theme.colors.text,
+        color: theme.colors.charcoal,
         fontSize: 16,
         marginBottom: 12,
 

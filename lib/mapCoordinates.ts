@@ -384,7 +384,7 @@ export function resolveMapPoints(items: DiscoverableListing[]): ResolvedMapPoint
     }
   });
 
-  return items.flatMap((item, index) => {
+  return items.flatMap((item, index): ResolvedMapPoint[] => {
     const lat = getMapLat(item);
     const lng = getMapLng(item);
     const isBusiness = !isEventListing(item);

@@ -35,6 +35,10 @@ export type DiscoverableListing = {
   city?: string;
   state?: string;
   address?: string;
+  street_address?: string;
+  zip_code?: string;
+  zip?: string;
+  coordinates_exact?: boolean;
   description?: string;
   about?: string;
   keywords?: string | string[];
@@ -58,6 +62,11 @@ export type DiscoverableListing = {
   business_offerings?: unknown;
   businessOfferings?: unknown;
   services?: string;
+  owner_id?: string | number;
+  ownerId?: string | number;
+  is_public?: boolean;
+  created_at?: string;
+  updated_at?: string;
   business_type?: string;
 };
 

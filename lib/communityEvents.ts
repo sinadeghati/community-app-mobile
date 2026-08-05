@@ -261,11 +261,13 @@ export const getCommunityEventById = async (
 };
 
 export const isCommunityEventOwner = async (
-  event: CommunityEvent | null,
+  event: { owner_id?: string | number | null } | null,
   userId?: string | null
 ) => {
   if (!event || !userId) return false;
-  return String(event.owner_id) === String(userId);
+  const ownerId = event.owner_id;
+  if (ownerId == null || ownerId === "") return false;
+  return String(ownerId) === String(userId);
 };
 
 const trySyncEventToApi = async (
@@ -403,6 +405,7 @@ export const saveCommunityEvent = async (
   const nextEvent: CommunityEvent = {
     ...(existingIndex >= 0 ? events[existingIndex] : {}),
     ...syncEventScheduleFields(eventDate),
+    event_date: eventDate,
     id: eventId,
     title,
     name: title,

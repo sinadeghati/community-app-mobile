@@ -94,11 +94,9 @@ export default function BusinessProfileV2() {
 
       if (profileId) {
         try {
-          if (API.getListingDetail) {
-            data = await API.getListingDetail(profileId);
-          }
+          data = await API.getListing(profileId);
         } catch (e) {
-          console.log("getListingDetail failed:", e);
+          console.log("getListing failed:", e);
         }
       }
 
@@ -194,13 +192,13 @@ export default function BusinessProfileV2() {
     if (!business) return;
 
     router.push({
-      pathname: "/profile/edit",
+      pathname: "/profile/edit-business",
       params: { id: getId(business) },
     });
   };
 
   const photos = useMemo(() => {
-    const arr = [];
+    const arr: string[] = [];
 
     if (getCover(business)) arr.push(getCover(business));
 

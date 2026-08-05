@@ -149,7 +149,7 @@ export default function CreateEventScreen() {
           eventDateIso: eventDateRef.current.eventDateIso,
           endDate: eventDateRef.current.endDateText,
           endTime: eventDateRef.current.endTimeText,
-          endDateIso: eventDateRef.current.endDateIso,
+          endDateIso: eventDateRef.current.endDateIso ?? undefined,
           ticketUrl: ticketUrl.trim() || undefined,
           businessId,
           category: categoryParam,
