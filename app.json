@@ -44,7 +44,9 @@
         {
           "locationWhenInUsePermission": "Korook uses your location to show nearby businesses and events on the map."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
