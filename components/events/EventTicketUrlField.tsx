@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useRef } from "react";
 import { Text, TextInput, View } from "react-native";
 import { useTranslation } from "../../lib/i18n";
 
 type EventTicketUrlFieldProps = {
   value: string;
   onChangeText: (value: string) => void;
+  onFocused?: (fieldNode: View | null) => void;
 };
 
 const labelStyle = {
@@ -28,17 +29,20 @@ const inputStyle = {
 export function EventTicketUrlField({
   value,
   onChangeText,
+  onFocused,
 }: EventTicketUrlFieldProps) {
   const { t, isRTL } = useTranslation();
+  const fieldRef = useRef<View>(null);
 
   return (
-    <View>
+    <View ref={fieldRef}>
       <Text style={[labelStyle, { textAlign: isRTL ? "right" : "left" }]}>
         {t("event.ticketUrl")}
       </Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        onFocus={() => onFocused?.(fieldRef.current)}
         placeholder="https://eventbrite.com/... or lu.ma/..."
         placeholderTextColor="#999"
         autoCapitalize="none"
