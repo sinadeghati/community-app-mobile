@@ -4,6 +4,7 @@ import {
   isDeletedEventId,
   loadDeletedEventIds,
 } from "./deletedEventRegistry";
+import { mergeCommunityEventsForDiscover } from "./communityEventsDiscoverMerge";
 import { requestDiscoverListingsRefresh } from "./discoverListingsRefresh";
 import { purgeEventFromClientCaches } from "./eventListingVisibility";
 import { logDiscoverPipeline, logEventSaved } from "./eventDiagnostics";
@@ -543,17 +544,16 @@ const fetchCommunityEventsFromApi = async (): Promise<CommunityEvent[]> => {
   }
 };
 
+export { mergeCommunityEventsForDiscover } from "./communityEventsDiscoverMerge";
+
 export const loadCommunityEventsForDiscover = async (): Promise<
   DiscoverableListing[]
 > => {
   const deletedIds = await loadDeletedEventIds();
-  const apiEvents = await fetchCommunityEventsFromApi();
+  const [apiEvents, localEvents] = await Promise.all([
+    fetchCommunityEventsFromApi(),
+    listPublicCommunityEvents(),
+  ]);
 
-  if (apiEvents.length > 0) {
-    return apiEvents.filter(
-      (event) => !isDeletedEventId(String(event.id || ""), deletedIds)
-    );
-  }
-
-  return listPublicCommunityEvents();
+  return mergeCommunityEventsForDiscover(apiEvents, localEvents, deletedIds);
 };

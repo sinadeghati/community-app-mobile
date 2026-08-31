@@ -645,19 +645,17 @@ export const matchesListingSearch = (item: DiscoverableListing, query: string) =
   const trimmed = query.trim();
   if (!trimmed) return true;
 
-  if (discoveryQueryMatchesHaystack(trimmed, getSearchHaystack(item))) {
-    return true;
-  }
-
   const categoryIntent = findDiscoveryFilterKey(
     trimmed,
     [...DISCOVERY_CATEGORY_FILTERS]
   );
   if (categoryIntent && categoryIntent !== "All") {
+    if (categoryIntent === "Events") return isEventListing(item);
+    if (isEventListing(item)) return false;
     return matchesListingCategory(item, categoryIntent);
   }
 
-  return false;
+  return discoveryQueryMatchesHaystack(trimmed, getSearchHaystack(item));
 };
 
 /**
@@ -667,25 +665,7 @@ export const matchesListingSearch = (item: DiscoverableListing, query: string) =
 export const matchesDiscoverySearchFilter = (
   item: DiscoverableListing,
   query: string
-) => {
-  const trimmed = query.trim();
-  if (!trimmed) return true;
-
-  if (matchesListingSearch(item, trimmed)) {
-    return true;
-  }
-
-  const categoryIntent = findDiscoveryFilterKey(trimmed, [
-    ...DISCOVERY_CATEGORY_FILTERS,
-  ]);
-  if (categoryIntent && categoryIntent !== "All") {
-    if (categoryIntent === "Events") return isEventListing(item);
-    if (isEventListing(item)) return false;
-    return matchesListingCategory(item, categoryIntent);
-  }
-
-  return false;
-};
+) => matchesListingSearch(item, query);
 
 /** Search AND category — both must pass; empty search does not bypass category. */
 export const filterListingsBySearchAndCategory = (
@@ -861,7 +841,16 @@ export const loadDiscoverableListings = async (): Promise<DiscoverableListing[]>
     ...communityEvents,
   ]);
 
-  const filtered = await filterDisplayableDiscoverableListings(merged);
+  const apiBusinessIds = new Set(
+    apiListings
+      .filter((item) => !isEventListing(item))
+      .map(getListingId)
+      .filter(Boolean)
+  );
+
+  const filtered = await filterDisplayableDiscoverableListings(merged, {
+    apiBusinessIds,
+  });
   const eventFiltered = await filterDisplayableEventListings(filtered);
 
   const mergedEventIds = eventFiltered

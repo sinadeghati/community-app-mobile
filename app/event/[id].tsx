@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   ImageBackground,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   getCommunityEventById,
@@ -47,6 +49,7 @@ import { useTranslation } from "../../lib/i18n";
 
 export default function EventDetailsScreen() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const eventId = String(params?.id || "");
 
@@ -236,9 +239,28 @@ export default function EventDetailsScreen() {
   if (!event) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
-        <View style={{ padding: 22 }}>
-          <Pressable onPress={() => router.back()} hitSlop={8}>
-            <Ionicons name="arrow-back" size={24} color={theme.colors.turquoise} />
+        <View
+          style={{
+            paddingHorizontal: 22,
+            paddingTop: Platform.OS === "android" ? insets.top + 18 : 22,
+            paddingBottom: 22,
+          }}
+        >
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={8}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              backgroundColor: theme.colors.card,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+            }}
+          >
+            <Ionicons name="arrow-back" size={22} color={theme.colors.turquoise} />
           </Pressable>
           <Text
             style={{
@@ -267,7 +289,10 @@ export default function EventDetailsScreen() {
             style={{
               flex: 1,
               minHeight: 260,
-              padding: 16,
+              paddingHorizontal: 16,
+              paddingBottom: 16,
+              paddingTop:
+                Platform.OS === "android" ? insets.top + 16 : 16,
               justifyContent: "space-between",
               backgroundColor: "rgba(6,59,62,0.55)",
             }}

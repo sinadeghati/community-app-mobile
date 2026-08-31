@@ -27,6 +27,25 @@ export const markBusinessDeleted = async (businessId: string): Promise<void> => 
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...deleted]));
 };
 
+/** Remove one business id from the local tombstone registry only. */
+export const clearBusinessTombstone = async (
+  businessId: string
+): Promise<boolean> => {
+  const id = String(businessId || "").trim();
+  if (!id) return false;
+
+  const deleted = await loadDeletedBusinessIds();
+  if (!deleted.has(id)) return false;
+
+  deleted.delete(id);
+  if (deleted.size === 0) {
+    await AsyncStorage.removeItem(STORAGE_KEY);
+  } else {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...deleted]));
+  }
+  return true;
+};
+
 export const isDeletedBusinessId = (
   businessId: string,
   deletedIds?: Set<string> | null

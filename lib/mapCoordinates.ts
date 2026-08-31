@@ -500,10 +500,16 @@ export function resolveMapPoints(items: DiscoverableListing[]): ResolvedMapPoint
 /** Lightweight grid clustering when the map is zoomed out. */
 export function buildMapDisplay(
   points: ResolvedMapPoint[],
-  region: Pick<Region, "latitudeDelta" | "longitudeDelta">
+  region: Pick<Region, "latitudeDelta" | "longitudeDelta">,
+  options?: { gateTooWide?: boolean }
 ): MapMarkerDisplay[] {
   if (points.length === 0) return [];
-  if (isMapRegionTooWideForNearby(region)) return [];
+  if (
+    options?.gateTooWide !== false &&
+    isMapRegionTooWideForNearby(region)
+  ) {
+    return [];
+  }
 
   if (region.latitudeDelta <= MAP_CLUSTER_LAT_DELTA) {
     return points.map((point) => ({ type: "point", point }));

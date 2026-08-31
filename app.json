@@ -15,10 +15,14 @@
       "package": "com.korook.app",
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/brand/korook/app-icon-1024.png"
+        "foregroundImage": "./assets/brand/korook/android-adaptive-foreground-1024.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -51,6 +55,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c3593c5c-47a2-4c1d-874a-ad043fc55cfd"
+      }
     }
   }
 }

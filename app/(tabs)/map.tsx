@@ -19,6 +19,7 @@ import {
   Linking,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -29,7 +30,7 @@ import {
 } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker, Region } from "react-native-maps";
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import {
   buildMapDisplay,
   clampMapRegion,
@@ -45,7 +46,6 @@ import {
 import {
   APP_LOCATION_CHANGED_EVENT,
   DEFAULT_APP_LOCATION,
-  bootstrapAppLocation,
   detectCurrentAppLocation,
   loadAppLocationState,
   regionFromAppLocationState,
@@ -88,6 +88,7 @@ import {
 } from "../../lib/discoverListingsRefresh";
 import { getCachedDiscoverListings, sanitizeCachedDiscoverListings } from "../../lib/discoverListingsCache";
 import { runDevStagingDiscoverCleanup } from "../../lib/discoverCacheCleanup";
+import { isNonProductionApi } from "../../lib/apiConfig";
 import {
   ensureBusinessMapCoordinatesBatch,
   mergeBusinessProfileLocation,
@@ -1001,11 +1002,229 @@ function MarkerPulseRing({
   );
 }
 
+function useAndroidMarkerViewTracking(
+  visualSignature: string,
+  needsContinuousTracking: boolean
+) {
+  const [tracksViewChanges, setTracksViewChanges] = useState(
+    () => Platform.OS === "android"
+  );
+  const signatureRef = useRef(visualSignature);
+  const stabilizedRef = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+
+    if (needsContinuousTracking) {
+      stabilizedRef.current = false;
+      setTracksViewChanges(true);
+      return;
+    }
+
+    if (visualSignature !== signatureRef.current) {
+      signatureRef.current = visualSignature;
+      stabilizedRef.current = false;
+      setTracksViewChanges(true);
+    }
+  }, [needsContinuousTracking, visualSignature]);
+
+  const handleMarkerContentLayout = useCallback(() => {
+    if (Platform.OS !== "android") return;
+    if (needsContinuousTracking) return;
+    if (stabilizedRef.current) return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        stabilizedRef.current = true;
+        setTracksViewChanges(false);
+      });
+    });
+  }, [needsContinuousTracking]);
+
+  return { tracksViewChanges, handleMarkerContentLayout };
+}
+
+type MapClusterMarkerProps = {
+  cluster: Extract<MapMarkerDisplay, { type: "cluster" }>;
+  onPress: (cluster: Extract<MapMarkerDisplay, { type: "cluster" }>) => void;
+};
+
+const MapClusterMarker = memo(function MapClusterMarker({
+  cluster,
+  onPress,
+}: MapClusterMarkerProps) {
+  const visualSignature = `${cluster.id}:${cluster.count}`;
+  const { tracksViewChanges, handleMarkerContentLayout } =
+    useAndroidMarkerViewTracking(visualSignature, false);
+
+  return (
+    <Marker
+      coordinate={{
+        latitude: cluster.latitude,
+        longitude: cluster.longitude,
+      }}
+      onPress={(e) => {
+        e.stopPropagation?.();
+        onPress(cluster);
+      }}
+      tracksViewChanges={Platform.OS === "android" ? tracksViewChanges : false}
+    >
+      <View
+        pointerEvents="none"
+        onLayout={handleMarkerContentLayout}
+        style={{
+          minWidth: 30,
+          height: 30,
+          paddingHorizontal: 6,
+          borderRadius: 15,
+          backgroundColor: "#FFFFFF",
+          borderWidth: 1.5,
+          borderColor: theme.colors.turquoise,
+          alignItems: "center",
+          justifyContent: "center",
+          shadowColor: "#000",
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 3,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: "800",
+            color: theme.colors.turquoise,
+          }}
+        >
+          {cluster.count}
+        </Text>
+      </View>
+    </Marker>
+  );
+});
+
+type MapPointMarkerProps = {
+  point: ResolvedMapPoint;
+  isActive: boolean;
+  activeUpdate: BusinessUpdate | null;
+  onPress: (item: MapItem) => void;
+};
+
+const MapPointMarker = memo(function MapPointMarker({
+  point,
+  isActive,
+  activeUpdate,
+  onPress,
+}: MapPointMarkerProps) {
+  const item = point.item;
+  const kind = getListingMarkerKind(item);
+  const visual = isMapEvent(item)
+    ? getEventMarkerVisual(item as EventMapItem)
+    : MARKER_VISUALS[kind];
+  const pinSize = isActive ? 34 : 30;
+  const iconSize = isActive ? 15 : 13;
+  const visualSignature = `${getId(item)}:${isActive ? 1 : 0}:${
+    activeUpdate ? "update" : "plain"
+  }:${kind}`;
+  const { tracksViewChanges, handleMarkerContentLayout } =
+    useAndroidMarkerViewTracking(visualSignature, isActive);
+
+  return (
+    <Marker
+      coordinate={{
+        latitude: point.latitude,
+        longitude: point.longitude,
+      }}
+      onPress={(e) => {
+        e.stopPropagation?.();
+        onPress(item);
+      }}
+      tracksViewChanges={
+        Platform.OS === "android" ? tracksViewChanges : isActive
+      }
+    >
+      <View
+        pointerEvents="none"
+        onLayout={handleMarkerContentLayout}
+        style={{
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <MarkerPulseRing
+          active={isActive}
+          color={isActive ? theme.colors.turquoise : visual.accent}
+        />
+
+        {activeUpdate && !isActive ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              width: pinSize + 10,
+              height: pinSize + 10,
+              borderRadius: (pinSize + 10) / 2,
+              borderWidth: 1,
+              borderColor: "rgba(196, 154, 58, 0.35)",
+              backgroundColor: "rgba(196, 154, 58, 0.06)",
+            }}
+          />
+        ) : null}
+
+        <View
+          style={{
+            width: pinSize,
+            height: pinSize,
+            borderRadius: pinSize / 2,
+            backgroundColor: isActive ? theme.colors.turquoise : "#FFFFFF",
+            borderWidth: isActive ? 2 : 1.5,
+            borderColor: isActive
+              ? theme.colors.turquoise
+              : activeUpdate
+                ? "#C49A3A"
+                : visual.accent,
+            alignItems: "center",
+            justifyContent: "center",
+            shadowColor: "#000",
+            shadowOpacity: activeUpdate ? 0.14 : 0.1,
+            shadowRadius: activeUpdate ? 5 : 4,
+            shadowOffset: { width: 0, height: 2 },
+            elevation: 3,
+          }}
+        >
+          <Ionicons
+            name={visual.icon}
+            size={iconSize}
+            color={isActive ? "#FFFFFF" : visual.accent}
+          />
+        </View>
+
+        {activeUpdate ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              width: 7,
+              height: 7,
+              borderRadius: 3.5,
+              backgroundColor: "#C49A3A",
+              borderWidth: 1,
+              borderColor: "#FFFFFF",
+            }}
+          />
+        ) : null}
+      </View>
+    </Marker>
+  );
+});
+
 export default function MapScreenV25() {
   const { t } = useTranslation();
   const cachedOnMount = getCachedDiscoverListings();
   const hasDisplayedMapItemsRef = useRef(Boolean(cachedOnMount?.length));
-  const mapItemsLoadInFlightRef = useRef<Promise<void> | null>(null);
+  const mapItemsLoadGenerationRef = useRef(0);
   const [items, setItems] = useState<MapItem[]>(
     () => (cachedOnMount as MapItem[] | null) ?? []
   );
@@ -1386,95 +1605,88 @@ export default function MapScreenV25() {
   };
 
   const loadMapItems = useCallback(async (options?: { background?: boolean }) => {
+    const generation = ++mapItemsLoadGenerationRef.current;
+    const isStaleLoad = () => generation !== mapItemsLoadGenerationRef.current;
     const background = options?.background ?? hasDisplayedMapItemsRef.current;
 
-    if (mapItemsLoadInFlightRef.current) {
-      await mapItemsLoadInFlightRef.current;
-      return;
-    }
-
-    const run = async () => {
-      logLoaderStart("map.loadMapItems");
-      try {
-        if (!background) {
-          setLoading(true);
-        }
-
-        const cachedFallback =
-          (getCachedDiscoverListings() as MapItem[] | null) ?? itemsRef.current;
-
-        const data = await withTimeout(
-          loadDiscoverableListings(),
-          15000,
-          "map.loadDiscoverableListings",
-          background ? cachedFallback : []
-        );
-        const enriched = await withTimeout(
-          enrichMapItemsWithProfileUpdates(data),
-          5000,
-          "map.enrichMapItems",
-          background ? cachedFallback : data
-        );
-
-        if (background) {
-          if (enriched.length) {
-            hasDisplayedMapItemsRef.current = true;
-            setItems(enriched);
-          }
-          void withTimeout(
-            ensureBusinessMapCoordinatesBatch(enriched),
-            30000,
-            "map.ensureBusinessCoordinates",
-            enriched
-          ).then((geocoded) => {
-            if (geocoded.length) {
-              hasDisplayedMapItemsRef.current = true;
-              setItems(geocoded);
-            }
-          });
-        } else {
-          const merged = await withTimeout(
-            ensureBusinessMapCoordinatesBatch(enriched),
-            30000,
-            "map.ensureBusinessCoordinates",
-            enriched
-          );
-
-          logLoadedListingEventIds("map", merged);
-          console.log("[map/load]", {
-            totalLoaded: merged.length,
-            businessesLoaded: merged.filter((item) => !isMapEvent(item)).length,
-            eventsLoaded: merged.filter((item) => isMapEvent(item)).length,
-          });
-
-          if (merged.length) {
-            hasDisplayedMapItemsRef.current = true;
-          }
-          setItems(merged);
-        }
-
-        businessPreviewOpenRef.current = false;
-        setSelectedItem(null);
-
-        void loadFavoriteBusinessMap().then(setFavorites).catch(() => undefined);
-      } catch (e) {
-        console.log("[loader] map.loadMapItems error:", e);
-        if (!background) {
-          setItems([]);
-        }
-      } finally {
-        logLoaderDone("map.loadMapItems");
-        if (!background) {
-          setLoading(false);
-        }
-      }
-    };
-
-    mapItemsLoadInFlightRef.current = run();
+    logLoaderStart("map.loadMapItems");
     try {
-      await mapItemsLoadInFlightRef.current;
+      if (!background) {
+        setLoading(true);
+      }
+
+      const cachedFallback =
+        (getCachedDiscoverListings() as MapItem[] | null) ?? itemsRef.current;
+
+      const data = await withTimeout(
+        loadDiscoverableListings(),
+        15000,
+        "map.loadDiscoverableListings",
+        background ? cachedFallback : []
+      );
+      if (isStaleLoad()) return;
+
+      const enriched = await withTimeout(
+        enrichMapItemsWithProfileUpdates(data),
+        5000,
+        "map.enrichMapItems",
+        background ? cachedFallback : data
+      );
+      if (isStaleLoad()) return;
+
+      if (background) {
+        if (enriched.length) {
+          hasDisplayedMapItemsRef.current = true;
+          setItems(enriched);
+        }
+        void withTimeout(
+          ensureBusinessMapCoordinatesBatch(enriched),
+          30000,
+          "map.ensureBusinessCoordinates",
+          enriched
+        ).then((geocoded) => {
+          if (isStaleLoad() || !geocoded.length) return;
+          hasDisplayedMapItemsRef.current = true;
+          setItems(geocoded);
+        });
+      } else {
+        const merged = await withTimeout(
+          ensureBusinessMapCoordinatesBatch(enriched),
+          30000,
+          "map.ensureBusinessCoordinates",
+          enriched
+        );
+        if (isStaleLoad()) return;
+
+        logLoadedListingEventIds("map", merged);
+        console.log("[map/load]", {
+          totalLoaded: merged.length,
+          businessesLoaded: merged.filter((item) => !isMapEvent(item)).length,
+          eventsLoaded: merged.filter((item) => isMapEvent(item)).length,
+        });
+
+        if (merged.length) {
+          hasDisplayedMapItemsRef.current = true;
+        }
+        setItems(merged);
+      }
+
+      if (isStaleLoad()) return;
+
+      businessPreviewOpenRef.current = false;
+      setSelectedItem(null);
+
+      void loadFavoriteBusinessMap().then(setFavorites).catch(() => undefined);
+    } catch (e) {
+      console.log("[loader] map.loadMapItems error:", e);
+      if (!background && !hasDisplayedMapItemsRef.current && !isStaleLoad()) {
+        setItems([]);
+      }
     } finally {
-      mapItemsLoadInFlightRef.current = null;
+      logLoaderDone("map.loadMapItems");
+      if (!background && !isStaleLoad()) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -1484,15 +1696,13 @@ export default function MapScreenV25() {
       logLoaderStart("map.location");
       try {
         const state = await withTimeout(
-          bootstrapAppLocation(),
+          loadAppLocationState(),
           12000,
-          "map.bootstrapAppLocation",
+          "map.loadAppLocationState",
           DEFAULT_APP_LOCATION
         );
         applyMapLocationState(state, { immediate: true });
-        if (state.source !== "viewport") {
-          scheduleMapViewport(regionFromAppLocationState(state), false);
-        }
+        scheduleMapViewport(regionFromAppLocationState(state), false);
       } finally {
         logLoaderDone("map.location");
       }
@@ -1503,18 +1713,21 @@ export default function MapScreenV25() {
     useCallback(() => {
       void loadAppLocationState().then((state) => {
         applyMapLocationState(state, { immediate: true });
+        if (state.source === "viewport") {
+          scheduleMapViewport(regionFromAppLocationState(state), false);
+        }
       });
       if (hasDisplayedMapItemsRef.current) {
         void loadMapItems({ background: true });
       }
-    }, [applyMapLocationState, loadMapItems])
+    }, [applyMapLocationState, loadMapItems, scheduleMapViewport])
   );
 
   useEffect(() => {
     void (async () => {
       await runDevStagingDiscoverCleanup();
       const sanitized = await sanitizeCachedDiscoverListings();
-      if (!sanitized.length && !itemsRef.current.length) return;
+      if (!sanitized.length) return;
 
       const allowedIds = new Set(
         sanitized.map((item) => String((item as { id?: unknown }).id ?? ""))
@@ -1543,9 +1756,7 @@ export default function MapScreenV25() {
       () => {
         void loadAppLocationState().then((state) => {
           applyMapLocationState(state);
-          if (state.source !== "viewport") {
-            scheduleMapViewport(regionFromAppLocationState(state), true);
-          }
+          scheduleMapViewport(regionFromAppLocationState(state), true);
           setViewportDirty(false);
         });
       }
@@ -1606,6 +1817,8 @@ export default function MapScreenV25() {
     () => resolveMapPoints(filteredItems),
     [filteredItems]
   );
+  const mapPointsRef = useRef(mapPoints);
+  mapPointsRef.current = mapPoints;
 
   const mapInitialRegion = useMemo(
     () => clampMapRegion(regionFromAppLocationState(locationState)),
@@ -1634,11 +1847,6 @@ export default function MapScreenV25() {
       finalEventMarkerCount: eventMarkers.length,
     });
   }, [items, filteredItems, mapPoints, selectedCategory, search]);
-
-  const mapDisplay = useMemo(
-    () => buildMapDisplay(mapPoints, mapRegion),
-    [mapPoints, mapRegion]
-  );
 
   const nearbyBusinesses = useMemo(
     () =>
@@ -1753,6 +1961,37 @@ export default function MapScreenV25() {
         .filter(Boolean) as { item: MapItem; point: ResolvedMapPoint }[],
     [filteredItems, mapPoints]
   );
+
+  const markerPoints = useMemo(
+    () => mapResultEntries.map((entry) => entry.point),
+    [mapResultEntries]
+  );
+
+  const mapDisplay = useMemo(() => {
+    if (regionTooWideForNearby || markerPoints.length === 0) return [];
+    return buildMapDisplay(markerPoints, mapRegion, { gateTooWide: false });
+  }, [markerPoints, mapRegion, regionTooWideForNearby]);
+
+  useEffect(() => {
+    if (!isNonProductionApi()) return;
+
+    const clusterCount = mapDisplay.filter((entry) => entry.type === "cluster").length;
+    const pointCount = mapDisplay.filter((entry) => entry.type === "point").length;
+
+    console.log("[map-marker-trace] display", {
+      markerPointsCount: markerPoints.length,
+      markerPointIds: markerPoints.map((point) => getId(point.item)),
+      mapDisplayCount: mapDisplay.length,
+      clusterCount,
+      pointCount,
+      regionTooWideForNearby,
+      mapRegionDelta: {
+        latitudeDelta: mapRegion.latitudeDelta,
+        longitudeDelta: mapRegion.longitudeDelta,
+      },
+      androidTrackingMode: "per-marker-lifecycle",
+    });
+  }, [markerPoints, mapDisplay, mapRegion, regionTooWideForNearby]);
 
   const discoveryResults = useMemo(() => {
     if (!isDiscoveryActive) return [];
@@ -1912,11 +2151,6 @@ export default function MapScreenV25() {
     });
   };
 
-  const zoomToCluster = (cluster: Extract<MapMarkerDisplay, { type: "cluster" }>) => {
-    dismissKeyboard();
-    scheduleMapViewport(regionForCluster(cluster), true);
-  };
-
   const toggleFavorite = async (item: MapItem) => {
     dismissKeyboard();
     const id = getId(item);
@@ -1948,7 +2182,7 @@ export default function MapScreenV25() {
       const deletedIds = await loadDeletedBusinessIds();
 
       if (isDeletedBusinessId(id, deletedIds)) {
-        await purgeBusinessFromClientCaches(id);
+        await purgeBusinessFromClientCaches(id, "map_open_profile_already_tombstoned");
         setItems((prev) => prev.filter((row) => getId(row) !== id));
         return;
       }
@@ -2089,154 +2323,46 @@ export default function MapScreenV25() {
     );
   };
 
-  const ClusterBubble = ({
-    cluster,
-  }: {
-    cluster: Extract<MapMarkerDisplay, { type: "cluster" }>;
-  }) => (
-    <Marker
-      coordinate={{
-        latitude: cluster.latitude,
-        longitude: cluster.longitude,
-      }}
-      onPress={(e) => {
-        e.stopPropagation?.();
-        zoomToCluster(cluster);
-      }}
-      tracksViewChanges={false}
-    >
-      <View
-        pointerEvents="none"
-        style={{
-          minWidth: 30,
-          height: 30,
-          paddingHorizontal: 6,
-          borderRadius: 15,
-          backgroundColor: "#FFFFFF",
-          borderWidth: 1.5,
-          borderColor: theme.colors.turquoise,
-          alignItems: "center",
-          justifyContent: "center",
-          shadowColor: "#000",
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-          shadowOffset: { width: 0, height: 2 },
-          elevation: 3,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 12,
-            fontWeight: "800",
-            color: theme.colors.turquoise,
-          }}
-        >
-          {cluster.count}
-        </Text>
-      </View>
-    </Marker>
+  const handleClusterPress = useCallback(
+    (cluster: Extract<MapMarkerDisplay, { type: "cluster" }>) => {
+      dismissKeyboard();
+      scheduleMapViewport(regionForCluster(cluster), true);
+    },
+    [scheduleMapViewport]
   );
 
-  const MarkerBubble = ({ point }: { point: ResolvedMapPoint }) => {
-    const item = point.item;
-    const active = selectedItem && getId(selectedItem) === getId(item);
-    const kind = getListingMarkerKind(item);
-    const visual = isMapEvent(item)
-      ? getEventMarkerVisual(item as EventMapItem)
-      : MARKER_VISUALS[kind];
-    const pinSize = active ? 34 : 30;
-    const iconSize = active ? 15 : 13;
-    const activeUpdate = isMapEvent(item)
-      ? null
-      : activeUpdatesById[getId(item)];
+  const handleMapMarkerPress = useCallback(
+    (item: MapItem) => {
+      dismissKeyboard();
+      suppressMapDeselectRef.current = true;
+      businessPreviewOpenRef.current = !isMapEvent(item);
+      setSelectedItem(item);
 
-    return (
-      <Marker
-        coordinate={{
-          latitude: point.latitude,
-          longitude: point.longitude,
-        }}
-        onPress={(e) => {
-          e.stopPropagation?.();
-          selectMapItem(item, { focus: true, animate: true });
-        }}
-        tracksViewChanges={Boolean(active)}
-      >
-        <View
-          pointerEvents="none"
-          style={{
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <MarkerPulseRing
-            active={Boolean(active)}
-            color={active ? theme.colors.turquoise : visual.accent}
-          />
+      const point =
+        mapPointsRef.current.find((p) => getId(p.item) === getId(item)) ??
+        resolveMapPoints([item])[0];
 
-          {activeUpdate && !active ? (
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                width: pinSize + 10,
-                height: pinSize + 10,
-                borderRadius: (pinSize + 10) / 2,
-                borderWidth: 1,
-                borderColor: "rgba(196, 154, 58, 0.35)",
-                backgroundColor: "rgba(196, 154, 58, 0.06)",
-              }}
-            />
-          ) : null}
+      if (point) {
+        const latOffset = isMapEvent(item) ? 0.006 : 0.012;
+        scheduleMapViewport(
+          {
+            latitude: point.latitude - latOffset,
+            longitude: point.longitude,
+            latitudeDelta: 0.055,
+            longitudeDelta: 0.055,
+          },
+          true
+        );
+      }
 
-          <View
-            style={{
-              width: pinSize,
-              height: pinSize,
-              borderRadius: pinSize / 2,
-              backgroundColor: active ? theme.colors.turquoise : "#FFFFFF",
-              borderWidth: active ? 2 : 1.5,
-              borderColor: active
-                ? theme.colors.turquoise
-                : activeUpdate
-                  ? "#C49A3A"
-                  : visual.accent,
-              alignItems: "center",
-              justifyContent: "center",
-              shadowColor: "#000",
-              shadowOpacity: activeUpdate ? 0.14 : 0.1,
-              shadowRadius: activeUpdate ? 5 : 4,
-              shadowOffset: { width: 0, height: 2 },
-              elevation: 3,
-            }}
-          >
-            <Ionicons
-              name={visual.icon}
-              size={iconSize}
-              color={active ? "#FFFFFF" : visual.accent}
-            />
-          </View>
+      requestAnimationFrame(() => {
+        suppressMapDeselectRef.current = false;
+      });
+    },
+    [scheduleMapViewport]
+  );
 
-          {activeUpdate ? (
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: 0,
-                right: 0,
-                width: 7,
-                height: 7,
-                borderRadius: 3.5,
-                backgroundColor: "#C49A3A",
-                borderWidth: 1,
-                borderColor: "#FFFFFF",
-              }}
-            />
-          ) : null}
-        </View>
-      </Marker>
-    );
-  };
+  const selectedMarkerId = selectedItem ? getId(selectedItem) : "";
 
   const FilterPill = ({ item }: { item: any }) => {
     const active = !isSearchMode && selectedCategory === item.key;
@@ -2308,6 +2434,7 @@ export default function MapScreenV25() {
         <MapView
           key={MAP_SURFACE_KEY}
           ref={mapRef}
+          provider={PROVIDER_GOOGLE}
           style={{
             width: mapLayout.width,
             height: mapLayout.height,
@@ -2323,11 +2450,22 @@ export default function MapScreenV25() {
         >
           {mapDisplay.map((entry) =>
             entry.type === "cluster" ? (
-              <ClusterBubble key={`cluster-${entry.id}`} cluster={entry} />
+              <MapClusterMarker
+                key={`cluster-${entry.id}`}
+                cluster={entry}
+                onPress={handleClusterPress}
+              />
             ) : (
-              <MarkerBubble
-                key={`marker-${getId(entry.point.item)}-${entry.point.index}`}
+              <MapPointMarker
+                key={`marker-${getId(entry.point.item)}`}
                 point={entry.point}
+                isActive={selectedMarkerId === getId(entry.point.item)}
+                activeUpdate={
+                  isMapEvent(entry.point.item)
+                    ? null
+                    : activeUpdatesById[getId(entry.point.item)] ?? null
+                }
+                onPress={handleMapMarkerPress}
               />
             )
           )}
@@ -2350,7 +2488,7 @@ export default function MapScreenV25() {
           pointerEvents="box-none"
           style={{
             paddingHorizontal: 16,
-            paddingTop: 6,
+            paddingTop: Platform.OS === "android" ? insets.top + 6 : 6,
             paddingBottom: 8,
           }}
         >

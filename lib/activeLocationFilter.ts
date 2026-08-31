@@ -4,6 +4,10 @@ import {
   matchesDiscoverySearchFilter,
 } from "./discoverableListings";
 import {
+  DISCOVERY_CATEGORY_FILTERS,
+  findDiscoveryFilterKey,
+} from "./discoverySearch";
+import {
   getCityFallbackCoordinate,
   getMapLat,
   getMapLng,
@@ -119,6 +123,13 @@ export const matchesDiscoverySearchQuery = (
 ) => {
   const trimmed = query.trim();
   if (!trimmed) return true;
+
+  const categoryIntent = findDiscoveryFilterKey(trimmed, [
+    ...DISCOVERY_CATEGORY_FILTERS,
+  ]);
+  if (categoryIntent && categoryIntent !== "All") {
+    return matchesDiscoverySearchFilter(item, trimmed);
+  }
 
   return (
     matchesDiscoverySearchFilter(item, trimmed) ||

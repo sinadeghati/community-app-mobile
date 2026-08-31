@@ -39,7 +39,10 @@ import {
   getBusinessHoursFromRecord,
   getWeeklyHoursRows,
 } from "../../lib/businessHours";
-import { getBusinessGalleryUris, addBusinessGalleryPhoto } from "../../lib/businessGallery";
+import {
+  getBusinessGalleryUris,
+  addBusinessGalleryPhoto,
+} from "../../lib/businessGallery";
 import { BusinessGalleryGrid } from "../../components/business/BusinessGalleryGrid";
 import { getBusinessDirectionsQuery } from "../../lib/businessLocation";
 import {
@@ -63,6 +66,16 @@ import {
 } from "../../lib/businessFavorites";
 import { ensureLoggedInForSave } from "../../lib/savedActions";
 import { requestDiscoverListingsRefresh } from "../../lib/discoverListingsRefresh";
+import {
+  applyUploadedCoverImageToBusiness,
+  isLocalDeviceImageUri,
+  mergeOwnedBusinessCoverImage,
+  normalizeBusinessCoverForDisplay,
+  resolveBusinessCoverImageUrl,
+  stampBusinessCoverImageFields,
+  withCoverImageCacheBust,
+} from "../../lib/businessCoverImage";
+import { uploadBusinessCoverImageToListing } from "../../lib/businessListingSync";
 import { theme } from "../../lib/theme";
 
 
@@ -86,6 +99,10 @@ type Business = {
   image?: string;
   image_url?: string;
   cover_image?: string;
+  cover_image_updated_at?: string;
+  updated_at?: string;
+  server_listing_id?: string | number;
+  listing_id?: string | number;
   logo?: string;
   avatar?: string;
   profile_image?: string;
@@ -135,6 +152,12 @@ const getCategory = (item?: Business | null) =>
 const getCover = (item?: Business | null) =>
   item?.cover_image || item?.image_url || item?.image || DEFAULT_COVER;
 
+const getCoverDisplayUri = (item?: Business | null) =>
+  withCoverImageCacheBust(
+    resolveBusinessCoverImageUrl(getCover(item)),
+    item?.cover_image_updated_at ?? item?.updated_at
+  );
+
 const getAvatar = (item?: Business | null) =>
   item?.logo || item?.avatar || item?.profile_image || DEFAULT_AVATAR;
 
@@ -155,6 +178,30 @@ const isVerified = (item?: Business | null) =>
 
 const isFeatured = (item?: Business | null) =>
   Boolean(item?.is_featured || item?.featured || item?.is_sponsored);
+
+/** Reserve enough hero height for the absolute info card's optional rows. */
+const getHeroSectionHeight = (
+  business?: Business | null,
+  options?: { hasHoursSecondary?: boolean }
+) => {
+  let height = HERO_SECTION_HEIGHT;
+
+  if (!business) return height;
+
+  if (isVerified(business)) {
+    height += 30;
+  }
+
+  if (isFeatured(business)) {
+    height += 40;
+  }
+
+  if (options?.hasHoursSecondary) {
+    height += 20;
+  }
+
+  return height;
+};
 
 const getInstagram = (item?: Business | null) => String(item?.instagram || "").trim();
 
@@ -1147,6 +1194,7 @@ export default function BusinessProfileV2() {
   const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
   const editNavigatingRef = useRef(false);
   const [editNavigating, setEditNavigating] = useState(false);
+  const knownOwnerProfileRef = useRef<string | null>(null);
 
   const [business, setBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1216,19 +1264,30 @@ export default function BusinessProfileV2() {
         if (!cancelled) {
           setIsBusinessOwner(false);
           setIsOwnerCheckReady(true);
+          if (knownOwnerProfileRef.current === profileId) {
+            knownOwnerProfileRef.current = null;
+          }
         }
         return;
       }
 
-      if (!cancelled) {
-        setIsOwnerCheckReady(false);
-      }
-
       try {
         const owned = await verifyCurrentUserOwnsBusiness();
-        if (!cancelled) setIsBusinessOwner(owned);
+        if (!cancelled) {
+          setIsBusinessOwner(owned);
+          if (owned) {
+            knownOwnerProfileRef.current = profileId;
+          } else if (knownOwnerProfileRef.current === profileId) {
+            knownOwnerProfileRef.current = null;
+          }
+        }
       } catch {
-        if (!cancelled) setIsBusinessOwner(false);
+        if (!cancelled) {
+          setIsBusinessOwner(false);
+          if (knownOwnerProfileRef.current === profileId) {
+            knownOwnerProfileRef.current = null;
+          }
+        }
       } finally {
         if (!cancelled) setIsOwnerCheckReady(true);
       }
@@ -1259,10 +1318,14 @@ export default function BusinessProfileV2() {
         const { loadDeletedBusinessIds, isDeletedBusinessId } = await import(
           "../../lib/deletedBusinessRegistry"
         );
-        const { isDisplayableBusinessRecord, purgeBusinessFromClientCaches } =
+        const { isDisplayableBusinessRecord, logBusinessProfileLoadFailure } =
           await import("../../lib/businessListingVisibility");
         const deletedIds = await loadDeletedBusinessIds();
         if (isDeletedBusinessId(requestProfileId, deletedIds)) {
+          logBusinessProfileLoadFailure({
+            businessId: requestProfileId,
+            reason: "already_tombstoned",
+          });
           if (!isStaleRequest()) setBusiness(null);
           return;
         }
@@ -1274,6 +1337,7 @@ export default function BusinessProfileV2() {
         } = await import("../../lib/userSessionStorage");
 
         const userId = await requireAuthenticatedUser();
+        let hadOwnedMatch = false;
         if (userId) {
           const profile = await loadUserProfile(userId);
           const identity = {
@@ -1285,21 +1349,50 @@ export default function BusinessProfileV2() {
             (item) => String(item.id || "") === requestProfileId
           );
           if (owned && isDisplayableBusinessRecord(owned, deletedIds)) {
+            hadOwnedMatch = true;
+            let displayBusiness = owned as Business;
+            const localRaw = await AsyncStorage.getItem(
+              `profile_v2_${requestProfileId}`
+            );
+            if (localRaw) {
+              try {
+                const localBusiness = JSON.parse(localRaw) as Record<
+                  string,
+                  unknown
+                >;
+                displayBusiness = normalizeBusinessCoverForDisplay(
+                  mergeOwnedBusinessCoverImage(
+                    localBusiness,
+                    owned as Record<string, unknown>
+                  )
+                ) as Business;
+              } catch {
+                // Keep owned record when profile_v2 parse fails.
+              }
+            } else {
+              displayBusiness = normalizeBusinessCoverForDisplay(
+                owned as Record<string, unknown>
+              ) as Business;
+            }
             if (!isStaleRequest()) {
-              setBusiness(owned as Business);
-              setFavorite(await isBusinessFavorited(getId(owned)));
+              setBusiness(displayBusiness);
+              setFavorite(await isBusinessFavorited(getId(displayBusiness)));
             }
             return;
           }
         }
 
         const localRaw = await AsyncStorage.getItem(`profile_v2_${requestProfileId}`);
+        const hadLocalProfile = Boolean(localRaw);
 
         if (localRaw) {
           const localBusiness = JSON.parse(localRaw);
           if (isDisplayableBusinessRecord(localBusiness, deletedIds)) {
             if (!isStaleRequest()) {
-              setBusiness(localBusiness);
+              const localDisplay = normalizeBusinessCoverForDisplay(
+                localBusiness as Record<string, unknown>
+              ) as Business;
+              setBusiness(localDisplay);
               setFavorite(await isBusinessFavorited(getId(localBusiness)));
             }
             return;
@@ -1317,7 +1410,13 @@ export default function BusinessProfileV2() {
           const status = (error as { response?: { status?: number } })?.response
             ?.status;
           if (status === 404) {
-            await purgeBusinessFromClientCaches(requestProfileId);
+            logBusinessProfileLoadFailure({
+              businessId: requestProfileId,
+              reason: "listing_not_found",
+              status,
+              hadOwnedMatch,
+              hadLocalProfile,
+            });
             if (!isStaleRequest()) setBusiness(null);
             return;
           }
@@ -1343,7 +1442,13 @@ export default function BusinessProfileV2() {
           return;
         }
 
-        await purgeBusinessFromClientCaches(requestProfileId);
+        logBusinessProfileLoadFailure({
+          businessId: requestProfileId,
+          reason: "not_displayable",
+          hadOwnedMatch,
+          hadLocalProfile,
+          hadApiListing: Boolean(data),
+        });
         if (!isStaleRequest()) setBusiness(null);
       } catch (error) {
         console.log("Business profile load error:", error);
@@ -1368,6 +1473,7 @@ export default function BusinessProfileV2() {
     setLoading(true);
     setIsBusinessOwner(false);
     setIsOwnerCheckReady(false);
+    knownOwnerProfileRef.current = null;
     setGalleryReady(false);
     setSelectedGalleryImage(null);
     setReviews([]);
@@ -1395,7 +1501,7 @@ export default function BusinessProfileV2() {
       }
 
       void loadBusiness({ silent: true });
-    }, [loadBusiness])
+    }, [loadBusiness, profileId])
   );
 
   const reviewSummary = useMemo(
@@ -1474,9 +1580,7 @@ export default function BusinessProfileV2() {
 
     const prefetchGallery = async () => {
       await Promise.all(
-        galleryPhotos.map((uri) =>
-          Image.prefetch(uri).catch(() => false)
-        )
+        galleryPhotos.map((uri) => Image.prefetch(uri).catch(() => false))
       );
 
       if (cancelled) return;
@@ -1531,6 +1635,16 @@ export default function BusinessProfileV2() {
       : hoursDisplay.tone === "closed"
         ? theme.colors.muted
         : theme.colors.muted;
+
+  const heroSectionHeight = useMemo(
+    () =>
+      getHeroSectionHeight(business, {
+        hasHoursSecondary: Boolean(hoursDisplay.secondary),
+      }),
+    [business, hoursDisplay.secondary]
+  );
+
+  const heroCoverUri = useMemo(() => getCoverDisplayUri(business), [business]);
 
   const toggleFavorite = async () => {
     if (!business) return;
@@ -1604,6 +1718,27 @@ export default function BusinessProfileV2() {
     Linking.openURL(normalizeWebsiteUrl(website));
   };
 
+  const openMessage = async () => {
+    const phone = getPhone(business);
+
+    if (!phone) {
+      Alert.alert(
+        "No phone number",
+        "This business does not have a phone number yet."
+      );
+      return;
+    }
+
+    const cleanPhone = String(phone).replace(/[^\d+]/g, "");
+    const smsUrl = `sms:${cleanPhone}`;
+
+    try {
+      await Linking.openURL(smsUrl);
+    } catch (error) {
+      Alert.alert("Could not open messages", "Please try again later.");
+    }
+  };
+
   const quickActions = useMemo(() => {
     const actions: Array<{
       key: string;
@@ -1662,6 +1797,7 @@ export default function BusinessProfileV2() {
     hasInstagram,
     hasPhone,
     hasWebsite,
+    openMessage,
   ]);
 
   const persistBusinessPhoto = async (field: "cover" | "logo", uri: string) => {
@@ -1683,7 +1819,26 @@ export default function BusinessProfileV2() {
         record.profile_image = uri;
       }
 
-      await AsyncStorage.setItem(storageKey, JSON.stringify(record));
+      let nextRecord = record;
+      if (field === "cover") {
+        const serverListingId = String(
+          business.server_listing_id ?? business.listing_id ?? profileId
+        );
+
+        if (isLocalDeviceImageUri(uri) && serverListingId) {
+          const upload = await uploadBusinessCoverImageToListing(
+            serverListingId,
+            uri
+          );
+          nextRecord = upload.ok
+            ? applyUploadedCoverImageToBusiness(record, upload.coverUrl)
+            : stampBusinessCoverImageFields(record, uri);
+        } else {
+          nextRecord = stampBusinessCoverImageFields(record, uri);
+        }
+      }
+
+      await AsyncStorage.setItem(storageKey, JSON.stringify(nextRecord));
 
       const { getActiveUserId, loadUserProfile, upsertUserBusiness } =
         await import("../../lib/userSessionStorage");
@@ -1691,10 +1846,10 @@ export default function BusinessProfileV2() {
       if (ownerId) {
         const ownerProfile = await loadUserProfile(ownerId);
         const ownerUsername = String(ownerProfile?.username || "").trim();
-        await upsertUserBusiness(ownerId, record, ownerUsername);
+        await upsertUserBusiness(ownerId, nextRecord, ownerUsername);
       }
 
-      setBusiness({ ...business, ...(record as Business) });
+      setBusiness({ ...business, ...(nextRecord as Business) });
       requestDiscoverListingsRefresh();
     } catch (error) {
       console.log("BUSINESS_PHOTO_UPDATE_ERROR:", error);
@@ -1732,67 +1887,60 @@ export default function BusinessProfileV2() {
     }
   };
 
-  const openMessage = async () => {
-    const phone =
-      business?.phone ||
-      business?.contact_info ||
-      "";
+  const showEditDetails =
+    isBusinessOwner && isOwnerCheckReady
+      ? true
+      : knownOwnerProfileRef.current === profileId;
 
-    if (!phone) {
-      Alert.alert(
-        "No phone number",
-        "This business does not have a phone number yet."
-      );
-      return;
-    }
+  const openEdit = () => {
+    if (editNavigatingRef.current || !business) return;
 
-    const cleanPhone = String(phone).replace(/\D/g, "");
-
-    const smsUrl = `sms:${cleanPhone}`;
-
-    try {
-      await Linking.openURL(smsUrl);
-    } catch (error) {
-      Alert.alert(
-        "Could not open messages",
-        "Please try again later."
-      );
-    }
-  };
-
-  const openEdit = async () => {
-    if (editNavigatingRef.current) return;
-    editNavigatingRef.current = true;
-    setEditNavigating(true);
-
-    try {
-      const { requireAuthenticatedUser } = await import(
-        "../../lib/userSessionStorage"
-      );
-      const userId = await requireAuthenticatedUser();
-      if (!userId) {
-        editNavigatingRef.current = false;
-        setEditNavigating(false);
-        router.replace("/(tabs)");
-        return;
-      }
-
-      const owned = await verifyCurrentUserOwnsBusiness();
-      if (!owned) {
-        editNavigatingRef.current = false;
-        setEditNavigating(false);
-        Alert.alert("Owner only", "Only the business owner can edit this profile.");
-        return;
-      }
-
+    const navigateToEdit = () => {
+      editNavigatingRef.current = true;
       router.push({
         pathname: "/profile/edit-business",
         params: { id: getId(business) },
       });
-    } catch {
-      editNavigatingRef.current = false;
-      setEditNavigating(false);
+    };
+
+    if (showEditDetails) {
+      navigateToEdit();
+      return;
     }
+
+    void (async () => {
+      editNavigatingRef.current = true;
+      setEditNavigating(true);
+
+      try {
+        const { requireAuthenticatedUser } = await import(
+          "../../lib/userSessionStorage"
+        );
+        const userId = await requireAuthenticatedUser();
+        if (!userId) {
+          editNavigatingRef.current = false;
+          setEditNavigating(false);
+          router.replace("/(tabs)");
+          return;
+        }
+
+        const owned = await verifyCurrentUserOwnsBusiness();
+        if (!owned) {
+          editNavigatingRef.current = false;
+          setEditNavigating(false);
+          Alert.alert(
+            "Owner only",
+            "Only the business owner can edit this profile."
+          );
+          return;
+        }
+
+        navigateToEdit();
+      } catch {
+        editNavigatingRef.current = false;
+        setEditNavigating(false);
+      }
+    })();
   };
 
   const openGallery = () => {
@@ -2095,25 +2243,33 @@ export default function BusinessProfileV2() {
     });
   };
 
+  const useCompactQuickActions =
+    Platform.OS === "android" && quickActions.length >= 3;
+
   const ActionButton = ({
     icon,
     label,
     onPress,
     accent,
     disabled,
+    compact,
   }: {
     icon: keyof typeof Ionicons.glyphMap;
     label: string;
     onPress: () => void;
     accent?: boolean;
     disabled?: boolean;
+    compact?: boolean;
   }) => (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       style={{
-        flex: 1,
-        height: 64,
+        flexGrow: 1,
+        flexShrink: 1,
+        flexBasis: 0,
+        minWidth: 0,
+        height: compact ? 58 : 64,
         borderRadius: theme.radius.sm,
         backgroundColor: accent
           ? theme.colors.turquoise
@@ -2122,13 +2278,14 @@ export default function BusinessProfileV2() {
         justifyContent: "center",
         borderWidth: accent ? 0 : 1,
         borderColor: "rgba(229,231,235,0.95)",
-        paddingHorizontal: 4,
+        paddingHorizontal: 2,
+        overflow: "hidden",
         opacity: disabled ? 0.45 : 1,
       }}
     >
       <Ionicons
         name={icon}
-        size={20}
+        size={compact ? 18 : 20}
         color={
           disabled
             ? theme.colors.muted
@@ -2139,15 +2296,21 @@ export default function BusinessProfileV2() {
       />
 
       <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit={Platform.OS === "android"}
+        minimumFontScale={0.82}
         style={{
-          marginTop: 6,
-          fontSize: 12,
+          marginTop: compact ? 4 : 6,
+          fontSize: compact ? 11 : 12,
           fontWeight: "700",
           color: disabled
             ? theme.colors.muted
             : accent
               ? "#fff"
               : theme.colors.charcoal,
+          textAlign: "center",
+          alignSelf: "stretch",
+          paddingHorizontal: 2,
         }}
       >
         {label}
@@ -2308,57 +2471,6 @@ export default function BusinessProfileV2() {
   );
 
   const review = userReview;
-  const HighlightBox = ({
-    icon,
-    value,
-    label,
-  }: {
-    icon: keyof typeof Ionicons.glyphMap;
-    value: string;
-    label: string;
-  }) => (
-    <View
-      style={{
-        flex: 1,
-        minHeight: 84,
-        borderRadius: theme.radius.sm,
-        backgroundColor: "rgba(13,148,136,0.08)",
-        borderWidth: 1,
-        borderColor: "rgba(13,148,136,0.14)",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 8,
-      }}
-    >
-      <Ionicons name={icon} size={20} color={theme.colors.turquoise} />
-
-      <Text
-        numberOfLines={1}
-        style={{
-          marginTop: 6,
-          fontSize: 15,
-          fontWeight: "800",
-          color: theme.colors.charcoal,
-        }}
-      >
-        {value}
-      </Text>
-
-      <Text
-        numberOfLines={2}
-        style={{
-          marginTop: 3,
-          fontSize: 11,
-          lineHeight: 15,
-          textAlign: "center",
-          fontWeight: "600",
-          color: theme.colors.muted,
-        }}
-      >
-        {label}
-      </Text>
-    </View>
-  );
 
   const tabs: Array<"Overview" | "Photos" | "Services" | "Reviews"> = [
     "Overview",
@@ -2425,18 +2537,17 @@ export default function BusinessProfileV2() {
         <ScrollView
           ref={profileScrollRef}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps={
-            activeTab === "Reviews" ? "handled" : "never"
-          }
+          keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={activeTab === "Reviews"}
           contentContainerStyle={{
             paddingBottom:
               activeTab === "Reviews" ? 320 : theme.spacing.xl,
           }}
         >
-        <View style={{ height: HERO_SECTION_HEIGHT }}>
+        <View style={{ height: heroSectionHeight }}>
           <ImageBackground
-            source={{ uri: getCover(business) }}
+            key={heroCoverUri}
+            source={{ uri: heroCoverUri }}
             resizeMode="cover"
             style={{
               height: COVER_HEIGHT,
@@ -2640,7 +2751,7 @@ export default function BusinessProfileV2() {
                       fontSize: 14,
                     }}
                   >
-                    {`â­ ${reviewSummary.averageRating.toFixed(1)} Â· ${reviewSummary.count} review${reviewSummary.count === 1 ? "" : "s"}`}
+                    {`\u2B50 ${reviewSummary.averageRating.toFixed(1)} \u00B7 ${reviewSummary.count} review${reviewSummary.count === 1 ? "" : "s"}`}
                   </Text>
                 ) : (
                   <Text
@@ -2662,11 +2773,16 @@ export default function BusinessProfileV2() {
                     fontSize: 14,
                   }}
                 >
-                  {` Â· ${hoursDisplay.primary}`}
+                  {` \u00B7 ${hoursDisplay.primary}`}
                 </Text>
 
-                {isBusinessOwner && isOwnerCheckReady ? (
-                  <Pressable onPress={openEdit} disabled={editNavigating}>
+                {showEditDetails ? (
+                  <Pressable
+                    onPress={openEdit}
+                    hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit details"
+                  >
                     <Text
                       style={{
                         marginLeft: 6,
@@ -2675,7 +2791,7 @@ export default function BusinessProfileV2() {
                         fontSize: 13,
                       }}
                     >
-                      Â· Edit details
+                      {"\u00B7 Edit details"}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -2725,21 +2841,74 @@ export default function BusinessProfileV2() {
         {quickActions.length > 0 ? (
           <View
             style={{
-              flexDirection: "row",
-              gap: 8,
               paddingHorizontal: theme.spacing.md,
               marginTop: theme.spacing.md,
+              gap:
+                Platform.OS === "android" && quickActions.length > 3 ? 8 : 0,
             }}
           >
-            {quickActions.map((action) => (
-              <ActionButton
-                key={action.key}
-                icon={action.icon}
-                label={action.label}
-                onPress={action.onPress}
-                accent={action.accent}
-              />
-            ))}
+            {Platform.OS === "android" && quickActions.length > 3 ? (
+              <>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "stretch",
+                    gap: 8,
+                    width: "100%",
+                  }}
+                >
+                  {quickActions.slice(0, 3).map((action) => (
+                    <ActionButton
+                      key={action.key}
+                      icon={action.icon}
+                      label={action.label}
+                      onPress={action.onPress}
+                      accent={action.accent}
+                      compact={useCompactQuickActions}
+                    />
+                  ))}
+                </View>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "stretch",
+                    gap: 8,
+                    width: "100%",
+                  }}
+                >
+                  {quickActions.slice(3).map((action) => (
+                    <ActionButton
+                      key={action.key}
+                      icon={action.icon}
+                      label={action.label}
+                      onPress={action.onPress}
+                      accent={action.accent}
+                      compact={useCompactQuickActions}
+                    />
+                  ))}
+                </View>
+              </>
+            ) : (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "stretch",
+                  gap: 8,
+                  width: "100%",
+                }}
+              >
+                {quickActions.map((action) => (
+                  <ActionButton
+                    key={action.key}
+                    icon={action.icon}
+                    label={action.label}
+                    onPress={action.onPress}
+                    accent={action.accent}
+                    compact={useCompactQuickActions}
+                  />
+                ))}
+              </View>
+            )}
           </View>
         ) : null}
 
@@ -2948,7 +3117,7 @@ export default function BusinessProfileV2() {
                               }}
                             >
                               {row.label}
-                              {row.isToday ? " Â· Today" : ""}
+                              {row.isToday ? " \u00B7 Today" : ""}
                             </Text>
                             <Text
                               style={{
@@ -3100,39 +3269,6 @@ export default function BusinessProfileV2() {
                   No announcements or promotions yet.
                 </Text>
               )}
-            </Section>
-
-            <Section title="Highlights">
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <HighlightBox
-                  value={String(galleryPhotos.length)}
-                  label="Photos"
-                  icon="images-outline"
-                />
-                <HighlightBox
-                  value={
-                    reviewSummary.count > 0
-                      ? reviewSummary.averageRating.toFixed(1)
-                      : "â€”"
-                  }
-                  label={
-                    reviewSummary.count > 0
-                      ? `${reviewSummary.count} review${reviewSummary.count === 1 ? "" : "s"}`
-                      : "Rating"
-                  }
-                  icon="star"
-                />
-                <HighlightBox
-                  value={hoursDisplay.primary.split("Â·")[0]?.trim() || "â€”"}
-                  label="Hours"
-                  icon="time-outline"
-                />
-                <HighlightBox
-                  value={isVerified(business) ? "Verified" : "Public"}
-                  label="Profile"
-                  icon="shield-checkmark"
-                />
-              </View>
             </Section>
           </>
         ) : null}

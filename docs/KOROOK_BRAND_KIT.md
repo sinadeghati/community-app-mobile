@@ -63,6 +63,8 @@ All files live in `assets/brand/korook/`.
 | `korook-logo-primary.png` | Mobile app lockup (880px) |
 | `app-icon-1024.png` | App Store / Play Store |
 | `app-icon-512.png` | Medium app icon |
+| `android-adaptive-foreground.svg` | Android adaptive launcher foreground (transparent pin) |
+| `android-adaptive-foreground-1024.png` | Android adaptive launcher foreground export |
 | `favicon-16.png` | 16x16 favicon |
 | `favicon-32.png` | 32x32 favicon |
 | `favicon-64.png` | 64x64 favicon |

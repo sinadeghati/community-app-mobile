@@ -60,10 +60,7 @@ export const isMyBusinessForUser = (
       return true;
     }
 
-    if (username || email) {
-      return false;
-    }
-
+    // owner_id matches and the record has no conflicting owner identity fields.
     return true;
   }
 

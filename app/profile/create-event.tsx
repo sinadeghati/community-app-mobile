@@ -1,6 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  SafeAreaView,
   View,
   Text,
   TextInput,
@@ -13,7 +12,10 @@ import {
   Keyboard,
   ActivityIndicator,
   Image,
+  Dimensions,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import { EventAddressFields } from "../../components/events/EventAddressFields";
@@ -28,6 +30,7 @@ import { useTranslation } from "../../lib/i18n";
 
 export default function CreateEventScreen() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const businessId = String(params?.businessId || "").trim() || undefined;
   const categoryParam = String(params?.category || "").trim() || undefined;
@@ -45,6 +48,66 @@ export default function CreateEventScreen() {
   const [flyerImage, setFlyerImage] = useState<string | null>(null);
   const [ticketUrl, setTicketUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
+  const focusedFieldRef = useRef<View | null>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+
+  const scrollFocusedFieldIntoView = useCallback(
+    (fieldNode: View | null, inset = keyboardInset) => {
+      if (Platform.OS !== "android" || !fieldNode || !scrollRef.current) {
+        return;
+      }
+
+      fieldNode.measureInWindow((_x, y, _width, height) => {
+        const windowHeight = Dimensions.get("window").height;
+        const visibleBottom = windowHeight - inset - 24;
+        const fieldBottom = y + height;
+
+        if (fieldBottom > visibleBottom) {
+          scrollRef.current?.scrollTo({
+            y: scrollOffsetRef.current + (fieldBottom - visibleBottom),
+            animated: true,
+          });
+        }
+      });
+    },
+    [keyboardInset]
+  );
+
+  const scrollInputIntoView = useCallback(
+    (fieldNode: View | null) => {
+      focusedFieldRef.current = fieldNode;
+      scrollFocusedFieldIntoView(fieldNode);
+    },
+    [scrollFocusedFieldIntoView]
+  );
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      const nextInset = event.endCoordinates?.height ?? 0;
+      setKeyboardInset(nextInset);
+      if (Platform.OS === "android" && focusedFieldRef.current) {
+        requestAnimationFrame(() => {
+          scrollFocusedFieldIntoView(focusedFieldRef.current, nextInset);
+        });
+      }
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+      focusedFieldRef.current = null;
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scrollFocusedFieldIntoView]);
   useEffect(() => {
     let cancelled = false;
 
@@ -195,33 +258,45 @@ export default function CreateEventScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <SafeAreaView
+        <View
           style={{
             flex: 1,
             backgroundColor: "#F6F5F2",
           }}
         >
           <ScrollView
+            ref={scrollRef}
+            automaticallyAdjustKeyboardInsets
+            onScroll={(event) => {
+              scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
             contentContainerStyle={{
-              padding: 20,
-              paddingBottom: 120,
+              paddingHorizontal: 20,
+              paddingTop: insets.top + 18,
+              paddingBottom:
+                Math.max(insets.bottom, 24) +
+                120 +
+                (Platform.OS === "android" ? keyboardInset : 0),
             }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
             <Pressable
               onPress={() => router.back()}
-              style={{ marginBottom: 20 }}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                backgroundColor: "#FFF",
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "#ECE7DF",
+                marginBottom: 20,
+              }}
             >
-              <Text
-                style={{
-                  color: "#14B8A6",
-                  fontSize: 18,
-                  fontWeight: "700",
-                }}
-              >
-                {t("common.back")}
-              </Text>
+              <Ionicons name="arrow-back" size={22} color="#14B8A6" />
             </Pressable>
 
             <Text
@@ -255,33 +330,30 @@ export default function CreateEventScreen() {
                 borderColor: "#ECE7DF",
               }}
             >
-              <Text style={labelStyle}>{t("event.title")}</Text>
-              <TextInput
+              <FormField
+                label={t("event.title")}
                 value={title}
                 onChangeText={setTitle}
                 placeholder={t("event.titlePlaceholder")}
-                placeholderTextColor="#999"
-                style={inputStyle}
+                onFocused={scrollInputIntoView}
               />
 
-              <Text style={labelStyle}>{t("event.organizer")}</Text>
-              <TextInput
+              <FormField
+                label={t("event.organizer")}
                 value={organizerName}
                 onChangeText={setOrganizerName}
                 placeholder={t("event.organizerPlaceholder")}
-                placeholderTextColor="#999"
-                style={inputStyle}
                 autoCapitalize="words"
+                onFocused={scrollInputIntoView}
               />
 
-              <Text style={labelStyle}>{t("event.description")}</Text>
-              <TextInput
+              <FormField
+                label={t("event.description")}
                 value={description}
                 onChangeText={setDescription}
                 placeholder={t("event.descriptionPlaceholder")}
-                placeholderTextColor="#999"
                 multiline
-                style={[inputStyle, { height: 120 }]}
+                onFocused={scrollInputIntoView}
               />
 
               <EventAddressFields
@@ -305,7 +377,11 @@ export default function CreateEventScreen() {
                 }}
               />
 
-              <EventTicketUrlField value={ticketUrl} onChangeText={setTicketUrl} />
+              <EventTicketUrlField
+                value={ticketUrl}
+                onChangeText={setTicketUrl}
+                onFocused={scrollInputIntoView}
+              />
 
               <Text style={labelStyle}>{t("event.flyer")}</Text>
               <Pressable
@@ -358,7 +434,7 @@ export default function CreateEventScreen() {
               </Pressable>
             </View>
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
@@ -381,3 +457,40 @@ const inputStyle = {
   borderWidth: 1,
   borderColor: "#E5E5E5",
 };
+
+function FormField({
+  label,
+  value,
+  onChangeText,
+  multiline,
+  placeholder,
+  autoCapitalize,
+  onFocused,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  multiline?: boolean;
+  placeholder?: string;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  onFocused?: (fieldNode: View | null) => void;
+}) {
+  const fieldRef = useRef<View>(null);
+
+  return (
+    <View ref={fieldRef}>
+      <Text style={labelStyle}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        onFocus={() => onFocused?.(fieldRef.current)}
+        placeholder={placeholder || label}
+        placeholderTextColor="#999"
+        autoCapitalize={autoCapitalize}
+        multiline={multiline}
+        textAlignVertical={multiline ? "top" : "center"}
+        style={[inputStyle, multiline ? { height: 120 } : null]}
+      />
+    </View>
+  );
+}

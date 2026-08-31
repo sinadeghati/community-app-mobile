@@ -2,7 +2,6 @@ import React, { useCallback, useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  SafeAreaView,
   ScrollView,
   Text,
   View,
@@ -10,6 +9,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { DeviceEventEmitter } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "../../lib/theme";
 import { DISCOVER_LISTINGS_REFRESH_EVENT } from "../../lib/discoverListingsRefresh";
 import {
@@ -22,6 +22,7 @@ const titleFrom = (record: Record<string, unknown>) =>
   String(record.business_name || record.name || record.title || "Business");
 
 export default function MyBusinessesScreen() {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [businesses, setBusinesses] = useState<Record<string, unknown>[]>([]);
 
@@ -77,11 +78,11 @@ export default function MyBusinessesScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
+    <View style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: 20,
-          paddingTop: 18,
+          paddingTop: insets.top + 18,
           paddingBottom: 100,
         }}
         showsVerticalScrollIndicator={false}
@@ -298,6 +299,6 @@ export default function MyBusinessesScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }

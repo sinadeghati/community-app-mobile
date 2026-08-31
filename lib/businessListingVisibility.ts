@@ -17,48 +17,42 @@ import {
   logDiscoverContextStage,
   logDiscoverListStage,
 } from "./discoverListTrace";
+import {
+  type DisplayableListingContext,
+  getListingTitle,
+  isDisplayableBusinessRecord as isDisplayableBusinessRecordRule,
+  isOwnedLegacyDeletedBusiness,
+} from "./businessListingVisibilityRules";
 
-export type DisplayableListingContext = {
-  deletedIds: Set<string>;
-  ownedIds: Set<string>;
-  profileStorageIds: Set<string>;
-  userId?: string | null;
+export type { DisplayableListingContext } from "./businessListingVisibilityRules";
+
+export type BusinessProfileLoadFailureReason =
+  | "listing_not_found"
+  | "not_displayable"
+  | "already_tombstoned";
+
+/** Dev/staging diagnostics when a business profile view fails to resolve. */
+export const logBusinessProfileLoadFailure = (details: {
+  businessId: string;
+  reason: BusinessProfileLoadFailureReason;
+  status?: number;
+  hadOwnedMatch?: boolean;
+  hadLocalProfile?: boolean;
+  hadApiListing?: boolean;
+}) => {
+  console.log("[business-profile-load]", {
+    ...details,
+    note: "view-only load; local caches are not mutated",
+  });
 };
 
 export const getDiscoverableListingTitle = (item: DiscoverableListing) =>
-  String(item.business_name || item.name || item.title || "").trim();
+  getListingTitle(item);
 
 const isDeletedBusinessRecord = (item: Record<string, unknown>) =>
   Boolean(item.deleted || item._deleted || item.is_deleted);
 
-const isRecordOwnedByCurrentUser = (
-  record: Record<string, unknown>,
-  userId: string
-) => {
-  const ownerId = String(record.owner_id ?? record.user_id ?? "").trim();
-  if (ownerId && ownerId === userId) return true;
-  if (record.is_owner === true || record.owner_is_current_user === true) {
-    return true;
-  }
-  return false;
-};
-
-export const isOwnedLegacyDeletedBusiness = (
-  item: DiscoverableListing,
-  context: DisplayableListingContext
-): boolean => {
-  if (isEventListing(item) || !context.userId) return false;
-
-  const id = getListingId(item);
-  if (!id) return false;
-
-  const record = item as Record<string, unknown>;
-  if (!isRecordOwnedByCurrentUser(record, context.userId)) return false;
-
-  return (
-    !context.profileStorageIds.has(id) && !context.ownedIds.has(id)
-  );
-};
+export { isOwnedLegacyDeletedBusiness } from "./businessListingVisibilityRules";
 
 export const isDisplayableDiscoverableListing = (
   item: DiscoverableListing,
@@ -143,9 +137,13 @@ export const buildDisplayableListingContext =
   };
 
 export const filterDisplayableDiscoverableListings = async (
-  items: DiscoverableListing[]
+  items: DiscoverableListing[],
+  options?: { apiBusinessIds?: Set<string> }
 ): Promise<DiscoverableListing[]> => {
-  const context = await buildDisplayableListingContext();
+  const context = {
+    ...(await buildDisplayableListingContext()),
+    apiBusinessIds: options?.apiBusinessIds,
+  };
   const legacyDeletedIds: string[] = [];
 
   const filtered = items.filter((item) => {
@@ -237,13 +235,13 @@ export const pruneOrphanedLocalBusinessProfiles = async (
 
   for (const id of context.profileStorageIds) {
     if (isDeletedBusinessId(id, context.deletedIds)) {
-      await purgeBusinessFromClientCaches(id);
+      await purgeBusinessFromClientCaches(id, "prune_orphaned_already_tombstoned");
       pruned += 1;
       continue;
     }
 
     if (!apiBusinessIds.has(id) && !context.ownedIds.has(id)) {
-      await purgeBusinessFromClientCaches(id);
+      await purgeBusinessFromClientCaches(id, "prune_orphaned_not_on_api");
       pruned += 1;
     }
   }
@@ -254,26 +252,21 @@ export const pruneOrphanedLocalBusinessProfiles = async (
 export const isDisplayableBusinessRecord = (
   business: Record<string, unknown> | null | undefined,
   deletedIds?: Set<string>
-): boolean => {
-  if (!business) return false;
-
-  const id = String(business.id || "").trim();
-  if (!id) return false;
-  if (deletedIds && isDeletedBusinessId(id, deletedIds)) return false;
-  if (isDeletedBusinessRecord(business)) return false;
-
-  const title = String(
-    business.business_name || business.name || business.title || ""
-  ).trim();
-
-  return Boolean(title);
-};
+): boolean =>
+  isDisplayableBusinessRecordRule(business, deletedIds, isDeletedBusinessId);
 
 export const purgeBusinessFromClientCaches = async (
-  businessId: string
+  businessId: string,
+  reason = "unspecified"
 ): Promise<void> => {
   const id = String(businessId || "").trim();
   if (!id) return;
+
+  console.log("[business-purge]", {
+    businessId: id,
+    reason,
+    note: "explicit purge — removes local profile, scoped list, and tombstone",
+  });
 
   await markBusinessDeleted(id);
   removeBusinessFromDiscoverCache(id);

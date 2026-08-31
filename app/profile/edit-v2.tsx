@@ -1,17 +1,18 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     Alert,
+    Dimensions,
     Keyboard,
     KeyboardAvoidingView,
     Platform,
     Pressable,
-    SafeAreaView,
     ScrollView,
     Text,
     TextInput,
     TouchableWithoutFeedback,
     View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
     getActiveUserId,
@@ -43,6 +44,11 @@ type UserProfile = {
 };
 
 export default function EditProfileV2() {
+    const insets = useSafeAreaInsets();
+    const scrollRef = useRef<ScrollView>(null);
+    const scrollOffsetRef = useRef(0);
+    const focusedFieldRef = useRef<View | null>(null);
+    const [keyboardInset, setKeyboardInset] = useState(0);
     const [displayName, setDisplayName] = useState("");
     const [username, setUsername] = useState("");
     const [email, setEmail] = useState("");
@@ -58,6 +64,65 @@ export default function EditProfileV2() {
             loadSavedProfile();
         }, [])
     );
+
+    const scrollFocusedFieldIntoView = useCallback(
+        (fieldNode: View | null, inset = keyboardInset) => {
+            if (Platform.OS !== "android" || !fieldNode || !scrollRef.current) {
+                return;
+            }
+
+            fieldNode.measureInWindow((_x, y, _width, height) => {
+                const windowHeight = Dimensions.get("window").height;
+                const visibleBottom = windowHeight - inset - 24;
+                const fieldBottom = y + height;
+
+                if (fieldBottom > visibleBottom) {
+                    scrollRef.current?.scrollTo({
+                        y: scrollOffsetRef.current + (fieldBottom - visibleBottom),
+                        animated: true,
+                    });
+                }
+            });
+        },
+        [keyboardInset]
+    );
+
+    const scrollInputIntoView = useCallback(
+        (fieldNode: View | null) => {
+            focusedFieldRef.current = fieldNode;
+            scrollFocusedFieldIntoView(fieldNode);
+        },
+        [scrollFocusedFieldIntoView]
+    );
+
+    useEffect(() => {
+        const showEvent =
+            Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+        const hideEvent =
+            Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+        const showSub = Keyboard.addListener(showEvent, (event) => {
+            const nextInset = event.endCoordinates?.height ?? 0;
+            setKeyboardInset(nextInset);
+            if (Platform.OS === "android" && focusedFieldRef.current) {
+                requestAnimationFrame(() => {
+                    scrollFocusedFieldIntoView(
+                        focusedFieldRef.current,
+                        nextInset
+                    );
+                });
+            }
+        });
+        const hideSub = Keyboard.addListener(hideEvent, () => {
+            setKeyboardInset(0);
+            focusedFieldRef.current = null;
+        });
+
+        return () => {
+            showSub.remove();
+            hideSub.remove();
+        };
+    }, [scrollFocusedFieldIntoView]);
 
     const loadSavedProfile = async () => {
         try {
@@ -145,19 +210,29 @@ export default function EditProfileV2() {
     };
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
+        <View style={{ flex: 1, backgroundColor: BG }}>
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === "ios" ? "padding" : undefined}
             >
                 <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                     <ScrollView
+                        ref={scrollRef}
                         showsVerticalScrollIndicator={false}
                         keyboardShouldPersistTaps="handled"
+                        automaticallyAdjustKeyboardInsets
+                        onScroll={(event) => {
+                            scrollOffsetRef.current =
+                                event.nativeEvent.contentOffset.y;
+                        }}
+                        scrollEventThrottle={16}
                         contentContainerStyle={{
                             paddingHorizontal: 22,
-                            paddingTop: 18,
-                            paddingBottom: 90,
+                            paddingTop: insets.top + 18,
+                            paddingBottom:
+                                Math.max(insets.bottom, 24) +
+                                90 +
+                                (Platform.OS === "android" ? keyboardInset : 0),
                         }}
                     >
                         <Pressable
@@ -215,6 +290,7 @@ export default function EditProfileV2() {
                                 value={displayName}
                                 onChangeText={setDisplayName}
                                 placeholder="Your name"
+                                onFocused={scrollInputIntoView}
                             />
 
                             <Field
@@ -223,6 +299,7 @@ export default function EditProfileV2() {
                                 onChangeText={setUsername}
                                 placeholder="username"
                                 autoCapitalize="none"
+                                onFocused={scrollInputIntoView}
                             />
 
                             <Field
@@ -232,6 +309,7 @@ export default function EditProfileV2() {
                                 placeholder="email@example.com"
                                 keyboardType="email-address"
                                 autoCapitalize="none"
+                                onFocused={scrollInputIntoView}
                             />
 
                             <Field
@@ -240,6 +318,7 @@ export default function EditProfileV2() {
                                 onChangeText={setBio}
                                 multiline
                                 placeholder="Tell the community a little about yourself"
+                                onFocused={scrollInputIntoView}
                             />
 
                             <Field
@@ -247,6 +326,7 @@ export default function EditProfileV2() {
                                 value={city}
                                 onChangeText={setCity}
                                 placeholder="San Diego"
+                                onFocused={scrollInputIntoView}
                             />
 
                             <Field
@@ -255,6 +335,7 @@ export default function EditProfileV2() {
                                 onChangeText={setPhone}
                                 placeholder="+1 (619) 000-0000"
                                 keyboardType="phone-pad"
+                                onFocused={scrollInputIntoView}
                             />
 
                             <Field
@@ -263,6 +344,7 @@ export default function EditProfileV2() {
                                 onChangeText={setInstagram}
                                 placeholder="@username"
                                 autoCapitalize="none"
+                                onFocused={scrollInputIntoView}
                             />
 
                             <Pressable
@@ -291,7 +373,7 @@ export default function EditProfileV2() {
                     </ScrollView>
                 </TouchableWithoutFeedback>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
     );
 }
 
@@ -303,6 +385,7 @@ function Field({
     placeholder,
     keyboardType,
     autoCapitalize,
+    onFocused,
 }: {
     label: string;
     value: string;
@@ -311,9 +394,12 @@ function Field({
     placeholder?: string;
     keyboardType?: any;
     autoCapitalize?: "none" | "sentences" | "words" | "characters";
+    onFocused?: (fieldNode: View | null) => void;
 }) {
+    const fieldRef = useRef<View>(null);
+
     return (
-        <View style={{ marginBottom: 16 }}>
+        <View ref={fieldRef} style={{ marginBottom: 16 }}>
             <Text
                 style={{
                     fontSize: 15,
@@ -328,6 +414,7 @@ function Field({
             <TextInput
                 value={value}
                 onChangeText={onChangeText}
+                onFocus={() => onFocused?.(fieldRef.current)}
                 placeholder={placeholder || label}
                 placeholderTextColor="#9CA3AF"
                 keyboardType={keyboardType}

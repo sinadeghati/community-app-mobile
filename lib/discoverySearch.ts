@@ -174,8 +174,8 @@ export const CATEGORY_SEARCH_PROFILES: CategorySearchProfile[] = [
   {
     categoryLabels: ["Real Estate", "Realtor"],
     filterKey: "Real Estate",
-    persian: ["املاک", "مشاور املاک", "خانه", "ملک"],
-    finglish: ["amlak", "moshaver amlak", "khaneh", "melk"],
+    persian: ["املاک", "مشاور املاک", "خانه", "خونه", "ملک"],
+    finglish: ["amlak", "moshaver amlak", "khaneh", "khone", "khooneh", "khoone", "melk"],
     english: ["realtor", "real estate", "agent", "home", "house", "property"],
   },
   {
@@ -613,6 +613,14 @@ export const findDiscoveryFilterKey = (
         foldDiscoveryText(filter.label) === foldedQuery)
   );
   if (direct) return direct.key;
+
+  for (const profile of CATEGORY_SEARCH_PROFILES) {
+    if (!profile.filterKey) continue;
+    const exactMatch = profileTerms(profile).some(
+      (term) => foldDiscoveryText(term) === foldedQuery
+    );
+    if (exactMatch) return profile.filterKey;
+  }
 
   for (const profile of CATEGORY_SEARCH_PROFILES) {
     if (!profile.filterKey) continue;

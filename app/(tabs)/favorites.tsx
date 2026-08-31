@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import { Image } from "expo-image";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   formatMapPreviewReviewText,
   getBusinessReviewSummary,
@@ -64,6 +64,7 @@ const cardStyle = {
 
 export default function FavoritesScreen() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const [businesses, setBusinesses] = useState<FavoriteBusiness[]>([]);
   const [events, setEvents] = useState<EventMapItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -249,15 +250,16 @@ export default function FavoritesScreen() {
   const showSkeleton = loading && !showContent;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
+    <View style={{ flex: 1, backgroundColor: theme.colors.ivory }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingHorizontal: theme.spacing.md,
+          paddingTop: insets.top + 12,
           paddingBottom: 100,
         }}
       >
-        <View style={{ paddingTop: 12, paddingBottom: theme.spacing.sm }}>
+        <View style={{ paddingBottom: theme.spacing.sm }}>
           <Text
             style={{
               fontSize: 28,
@@ -580,7 +582,7 @@ export default function FavoritesScreen() {
           <PremiumEmptyState />
         ) : null}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -6,6 +6,7 @@ import {
   FlatList,
   ImageBackground,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -13,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import {
@@ -143,6 +145,7 @@ const goProfile = (item: Listing) => {
 
 export default function ExploreScreen() {
   const { t, isRTL } = useTranslation();
+  const insets = useSafeAreaInsets();
   const titleAlign = isRTL ? "right" : "left";
   const cachedOnMount = getCachedDiscoverListings();
   const hasDisplayedListingsRef = useRef(Boolean(cachedOnMount?.length));
@@ -171,6 +174,12 @@ export default function ExploreScreen() {
   const selectedLocation = locationState.regionLabel;
   const isSearchMode = search.trim().length > 0;
   const locationBarLabel = getLocationBarLabel(locationState);
+  const heroCardHeight =
+    Platform.OS === "android"
+      ? explorePremium.heroHeight + 28
+      : explorePremium.heroHeight;
+  const androidHeroTextMetrics =
+    Platform.OS === "android" ? ({ includeFontPadding: false } as const) : {};
 
   const syncReviewSummaries = useCallback(async (items: Listing[]) => {
     const ids = [...new Set(items.map(getId).filter(Boolean))];
@@ -686,7 +695,7 @@ export default function ExploreScreen() {
               <View
                 style={{
                   paddingHorizontal: explorePremium.horizontalPad,
-                  paddingTop: 16,
+                  paddingTop: Platform.OS === "android" ? insets.top + 16 : 16,
                 }}
               >
                 <Text
@@ -837,7 +846,7 @@ export default function ExploreScreen() {
                   source={{ uri: HERO_IMAGE }}
                   imageStyle={{ borderRadius: explorePremium.cardRadiusLg }}
                   style={{
-                    height: explorePremium.heroHeight,
+                    height: heroCardHeight,
                     borderRadius: explorePremium.cardRadiusLg,
                     overflow: "hidden",
                     ...explorePremium.shadow.hero,
@@ -890,6 +899,7 @@ export default function ExploreScreen() {
                           fontWeight: "800",
                           letterSpacing: 0.8,
                           textTransform: "uppercase",
+                          ...androidHeroTextMetrics,
                         }}
                       >
                         {t("explore.communityBadge")}
@@ -904,6 +914,7 @@ export default function ExploreScreen() {
                         fontWeight: "800",
                         letterSpacing: -0.6,
                         width: "92%",
+                        ...androidHeroTextMetrics,
                       }}
                     >
                       {t("explore.heroTitle")}
@@ -917,6 +928,7 @@ export default function ExploreScreen() {
                         lineHeight: 22,
                         width: "94%",
                         fontWeight: "500",
+                        ...androidHeroTextMetrics,
                       }}
                     >
                       {t("explore.heroSubtitle")}
@@ -945,6 +957,7 @@ export default function ExploreScreen() {
                           fontWeight: "800",
                           fontSize: 14,
                           letterSpacing: 0.2,
+                          ...androidHeroTextMetrics,
                         }}
                       >
                         {t("common.openMap")}

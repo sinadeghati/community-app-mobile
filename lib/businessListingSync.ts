@@ -21,7 +21,7 @@ const isLikelyClientGeneratedBusinessId = (id: string) => {
   return Number.isFinite(numeric) && numeric >= 1_000_000_000_000;
 };
 
-const normalizeMyListings = (response: unknown) => {
+export const normalizeMyListings = (response: unknown) => {
   if (Array.isArray(response)) {
     return response as Array<Record<string, unknown>>;
   }
@@ -167,7 +167,11 @@ export async function patchOrCreateMyListing(
 export async function uploadGalleryImagesToListing(
   listingId: string,
   uris: string[]
-): Promise<{ uploaded: number; failed: number; messages: string[] }> {
+): Promise<{
+  uploaded: number;
+  failed: number;
+  messages: string[];
+}> {
   const localUris = uris.filter(
     (uri) => uri.startsWith("file:") || uri.startsWith("content:")
   );
@@ -203,4 +207,38 @@ export async function uploadGalleryImagesToListing(
   }
 
   return { uploaded, failed, messages };
+}
+
+export type UploadBusinessCoverImageResult =
+  | { ok: true; coverUrl: string }
+  | { ok: false; message: string };
+
+export async function uploadBusinessCoverImageToListing(
+  listingId: string,
+  imageUri: string
+): Promise<UploadBusinessCoverImageResult> {
+  const { extractListingCoverImageUrl } = await import("./businessCoverImage");
+  const id = String(listingId || "").trim();
+  const uri = String(imageUri || "").trim();
+
+  if (!id || !uri) {
+    return { ok: false, message: "Missing listing or image." };
+  }
+
+  try {
+    await API.uploadListingImage(id, uri);
+    const listing = (await API.getListing(id)) as Record<string, unknown>;
+    const coverUrl = extractListingCoverImageUrl(listing);
+
+    if (!coverUrl) {
+      return {
+        ok: false,
+        message: "Upload succeeded but cover URL was not returned.",
+      };
+    }
+
+    return { ok: true, coverUrl };
+  } catch (error) {
+    return { ok: false, message: String(error) };
+  }
 }

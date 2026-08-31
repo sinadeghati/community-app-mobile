@@ -30,6 +30,13 @@ async function main() {
     { svg: "korook-pin-symbol.svg", png: "korook-pin-symbol.png", width: 400 },
     { svg: "app-icon.svg", png: "app-icon-1024.png", width: 1024, height: 1024 },
     { svg: "app-icon.svg", png: "app-icon-512.png", width: 512, height: 512 },
+    {
+      svg: "android-adaptive-foreground.svg",
+      png: "android-adaptive-foreground-1024.png",
+      width: 1024,
+      height: 1024,
+      transparent: true,
+    },
     { svg: "favicon.svg", png: "favicon-16.png", width: 16, height: 16 },
     { svg: "favicon.svg", png: "favicon-32.png", width: 32, height: 32 },
     { svg: "favicon.svg", png: "favicon-64.png", width: 64, height: 64 },

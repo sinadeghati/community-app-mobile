@@ -26,11 +26,7 @@ import {
 } from "../../lib/authSession";
 import {
   clearUserSession,
-  cleanupPollutedTestBusinessStorage,
-  diagnoseBusinessStorageDuplication,
   explainMyBusinessOwnershipMatch,
-  inspectPollutedTestBusinessStorage,
-  TEST_BUSINESS_NAME_NEEDLES,
   gatherRawMyBusinessCandidatesWithProvenance,
   getMyBusinessesStorageKey,
   getActiveUserId,
@@ -45,6 +41,7 @@ import {
   toMyBusinessLogRow,
 } from "../../lib/userSessionStorage";
 import * as ImagePicker from "expo-image-picker";
+import { countCommunityEventsForOwner } from "../../lib/communityEvents";
 import { countSavedFavorites } from "../../lib/favoritesCount";
 import { FAVORITES_CHANGED_EVENT } from "../../lib/favoritesRefresh";
 import { resolveProfileDisplayName } from "../../lib/profileDisplay";
@@ -60,6 +57,8 @@ const USER_AVATAR =
 const PROFILE_HYDRATION_TIMEOUT_MS = 5000;
 
 type AuthHydrationState = "loading" | "authenticated" | "guest";
+type MyBusinessesLoadState = "idle" | "loading" | "loaded" | "error";
+type MyEventsLoadState = "idle" | "loading" | "loaded" | "error";
 
 export default function ProfileV2Clean() {
   const { t } = useTranslation();
@@ -69,9 +68,14 @@ export default function ProfileV2Clean() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [localBusinesses, setLocalBusinesses] = useState<any[]>([]);
+  const [myBusinessesLoadState, setMyBusinessesLoadState] =
+    useState<MyBusinessesLoadState>("idle");
   const [myBusinessId, setMyBusinessId] = useState<string | null>(null);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [favoritesCount, setFavoritesCount] = useState(0);
+  const [myEventsCount, setMyEventsCount] = useState(0);
+  const [myEventsLoadState, setMyEventsLoadState] =
+    useState<MyEventsLoadState>("idle");
   const [profileIdentityLoading, setProfileIdentityLoading] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const activeAccountKeyRef = useRef<string | null>(null);
@@ -102,6 +106,8 @@ export default function ProfileV2Clean() {
     identity?: { username?: string; email?: string }
   ) => {
     if (!userId) {
+      setMyBusinessesLoadState("idle");
+      setLocalBusinesses([]);
       return;
     }
 
@@ -110,6 +116,7 @@ export default function ProfileV2Clean() {
       activeAccountKeyRef.current = accountKey;
       setLocalBusinesses([]);
     }
+    setMyBusinessesLoadState("loading");
 
     try {
       const currentUser = {
@@ -120,11 +127,6 @@ export default function ProfileV2Clean() {
       };
 
       console.log("CURRENT_USER_FOR_MY_BUSINESSES", currentUser);
-
-      await inspectPollutedTestBusinessStorage(TEST_BUSINESS_NAME_NEEDLES);
-      await cleanupPollutedTestBusinessStorage(TEST_BUSINESS_NAME_NEEDLES);
-
-      await diagnoseBusinessStorageDuplication(TEST_BUSINESS_NAME_NEEDLES);
 
       const rawWithSources =
         await gatherRawMyBusinessCandidatesWithProvenance(userId);
@@ -223,8 +225,10 @@ export default function ProfileV2Clean() {
       });
 
       setLocalBusinesses(filteredBusinesses);
+      setMyBusinessesLoadState("loaded");
     } catch (error) {
       console.log("LOCAL BUSINESSES LOAD ERROR:", error);
+      setMyBusinessesLoadState("error");
     }
   };
 
@@ -232,8 +236,11 @@ export default function ProfileV2Clean() {
     setProfile(null);
     setProfileImage(null);
     setLocalBusinesses([]);
+    setMyBusinessesLoadState("idle");
     setMyBusinessId(null);
     setFavoritesCount(0);
+    setMyEventsCount(0);
+    setMyEventsLoadState("idle");
     setProfileIdentityLoading(false);
     setProfileLoadError(null);
     setAuthHydration("guest");
@@ -256,7 +263,10 @@ export default function ProfileV2Clean() {
     setProfile(null);
     setProfileImage(null);
     setLocalBusinesses([]);
+    setMyBusinessesLoadState("idle");
     setMyBusinessId(null);
+    setMyEventsCount(0);
+    setMyEventsLoadState("idle");
     setProfileLoadError(null);
   };
 
@@ -277,11 +287,30 @@ export default function ProfileV2Clean() {
     }
   }, []);
 
+  const syncMyEventsCount = React.useCallback(async (userId?: string | null) => {
+    const resolvedUserId = userId ?? (await getActiveUserId());
+    if (!resolvedUserId) {
+      setMyEventsLoadState("idle");
+      setMyEventsCount(0);
+      return;
+    }
+
+    setMyEventsLoadState("loading");
+
+    try {
+      setMyEventsCount(await countCommunityEventsForOwner(resolvedUserId));
+      setMyEventsLoadState("loaded");
+    } catch {
+      setMyEventsLoadState("error");
+    }
+  }, []);
+
   React.useEffect(() => {
     const favoritesSubscription = DeviceEventEmitter.addListener(
       FAVORITES_CHANGED_EVENT,
       () => {
         void syncFavoritesCount();
+        void syncMyEventsCount();
       }
     );
     const sessionSubscription = DeviceEventEmitter.addListener(
@@ -500,6 +529,7 @@ export default function ProfileV2Clean() {
                 "Session expired. Sign in again to refresh your profile."
               );
               void loadLocalBusinesses(userId, identity);
+              void syncMyEventsCount(userId);
               return;
             }
 
@@ -510,6 +540,7 @@ export default function ProfileV2Clean() {
               "Could not reach profile service. Showing saved details."
             );
             void loadLocalBusinesses(userId, identity);
+            void syncMyEventsCount(userId);
             return;
           }
 
@@ -542,6 +573,7 @@ export default function ProfileV2Clean() {
             });
           }
           void loadLocalBusinesses(userId, resolvedIdentity);
+          void syncMyEventsCount(userId);
 
           if (data?.business_id) {
             setMyBusinessId(String(data.business_id));
@@ -559,6 +591,7 @@ export default function ProfileV2Clean() {
             "Profile load failed. Showing offline details."
           );
           void loadLocalBusinesses(userId, identity);
+          void syncMyEventsCount(userId);
         }
       };
 
@@ -617,6 +650,7 @@ export default function ProfileV2Clean() {
             );
             finishProfileHydration();
             void loadLocalBusinesses(userId, identity);
+            void syncMyEventsCount(userId);
             void syncFavoritesCount();
             void refreshProfileFromApi(session, userId, identity);
             return;
@@ -627,6 +661,7 @@ export default function ProfileV2Clean() {
             await refreshProfileFromApi(session, userId, identity);
             if (cancelled) return;
             void syncFavoritesCount();
+            void syncMyEventsCount();
           } finally {
             if (!cancelled) {
               finishProfileHydration();
@@ -676,6 +711,7 @@ export default function ProfileV2Clean() {
             );
             finishProfileHydration();
             void loadLocalBusinesses(userId, identity);
+            void syncMyEventsCount(userId);
             void syncFavoritesCount();
             void refreshProfileFromApi(session, userId, identity);
           } else {
@@ -684,6 +720,7 @@ export default function ProfileV2Clean() {
               await refreshProfileFromApi(session, userId, identity);
               if (cancelled) return;
               void syncFavoritesCount();
+            void syncMyEventsCount();
             } finally {
               if (!cancelled) {
                 finishProfileHydration();
@@ -745,60 +782,82 @@ export default function ProfileV2Clean() {
     router.push("/profile/my-businesses");
   };
 
+  const showMyBusinessesLoading =
+    myBusinessesLoadState === "loading" && localBusinesses.length === 0;
+  const myBusinessesStatValue =
+    myBusinessesLoadState === "error"
+      ? "—"
+      : String(localBusinesses.length);
+  const showMyEventsLoading =
+    myEventsLoadState === "loading" && myEventsCount === 0;
+  const myEventsStatValue =
+    myEventsLoadState === "error" ? "—" : String(myEventsCount);
+
   const StatBox = ({
     value,
     label,
     icon,
     showDivider,
+    loading,
   }: {
     value: string;
     label: string;
     icon: keyof typeof Ionicons.glyphMap;
     showDivider?: boolean;
+    loading?: boolean;
   }) => (
     <View
       style={{
         flex: 1,
         alignItems: "center",
         justifyContent: "center",
-        paddingVertical: 18,
-        paddingHorizontal: 6,
+        paddingVertical: 12,
+        paddingHorizontal: 4,
         borderRightWidth: showDivider ? 1 : 0,
         borderRightColor: theme.colors.border,
       }}
     >
       <View
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 12,
+          width: 32,
+          height: 32,
+          borderRadius: 10,
           backgroundColor: "rgba(13,148,136,0.10)",
           alignItems: "center",
           justifyContent: "center",
-          marginBottom: 8,
+          marginBottom: 6,
         }}
       >
-        <Ionicons name={icon} size={18} color={theme.colors.turquoise} />
+        <Ionicons name={icon} size={17} color={theme.colors.turquoise} />
       </View>
-      <Text
-        style={{
-          fontSize: 21,
-          fontWeight: "900",
-          color: theme.colors.charcoal,
-          letterSpacing: -0.5,
-        }}
-      >
-        {value}
-      </Text>
+      <View style={{ minHeight: 22, alignItems: "center", justifyContent: "center" }}>
+        {loading ? (
+          <ActivityIndicator size="small" color={theme.colors.turquoise} />
+        ) : (
+          <Text
+            style={{
+              fontSize: 19,
+              fontWeight: "900",
+              color: theme.colors.charcoal,
+              letterSpacing: -0.5,
+              textAlign: "center",
+            }}
+          >
+            {value}
+          </Text>
+        )}
+      </View>
 
       <Text
+        numberOfLines={2}
         style={{
-          marginTop: 3,
-          fontSize: 11,
+          marginTop: 2,
+          fontSize: 10,
           color: theme.colors.muted,
           fontWeight: "700",
-          letterSpacing: 0.2,
+          letterSpacing: 0.1,
           textAlign: "center",
+          lineHeight: 13,
         }}
       >
         {label}
@@ -1295,10 +1354,10 @@ export default function ProfileV2Clean() {
         <View
           style={{
             flexDirection: "row",
-            marginTop: 16,
+            marginTop: 14,
             marginHorizontal: 18,
             backgroundColor: theme.colors.card,
-            borderRadius: 22,
+            borderRadius: 20,
             borderWidth: 1,
             borderColor: theme.colors.border,
             overflow: "hidden",
@@ -1306,10 +1365,18 @@ export default function ProfileV2Clean() {
           }}
         >
           <StatBox
-            value={String(localBusinesses.length)}
+            value={myBusinessesStatValue}
             label={t("profile.myBusinesses")}
             icon="business-outline"
             showDivider
+            loading={showMyBusinessesLoading}
+          />
+          <StatBox
+            value={myEventsStatValue}
+            label={t("profile.myEvents")}
+            icon="calendar-outline"
+            showDivider
+            loading={showMyEventsLoading}
           />
           <StatBox
             value={String(favoritesCount)}
@@ -1348,7 +1415,9 @@ export default function ProfileV2Clean() {
             icon="briefcase-outline"
             title={t("profile.myBusinesses")}
             subtitle={
-              localBusinesses.length > 0
+              showMyBusinessesLoading
+                ? t("profile.myBusinessesSubtitle")
+                : localBusinesses.length > 0
                 ? t(
                     localBusinesses.length === 1
                       ? "profile.listingCount"

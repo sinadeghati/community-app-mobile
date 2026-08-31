@@ -15,6 +15,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "../../lib/i18n";
 import { API } from "@/lib/api";
@@ -66,8 +67,13 @@ import { fetchAccountProfile, ProfileApiError } from "@/lib/profileApi";
 import {
   patchOrCreateMyListing,
   resolveServerListingId,
+  uploadBusinessCoverImageToListing,
   uploadGalleryImagesToListing,
 } from "@/lib/businessListingSync";
+import {
+  applyUploadedCoverImageToBusiness,
+  isLocalDeviceImageUri,
+} from "@/lib/businessCoverImage";
 
 const TURQUOISE = "#11998E";
 const BG = "#F5F4F0";
@@ -85,6 +91,7 @@ const isValidZipCode = (zipCode: string) => /^\d{5}$/.test(zipCode.trim());
 
 export default function EditBusinessProfileScreen() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const businessId = String(params?.id || "");
 
@@ -296,6 +303,18 @@ export default function EditBusinessProfileScreen() {
           Alert.alert("Not found", "Could not find this business.");
           router.back();
           return;
+        }
+
+        const savedRaw = await AsyncStorage.getItem(businessStorageKey);
+        if (savedRaw) {
+          loaded = tagBusinessOwnership(
+            {
+              ...(loaded as Record<string, unknown>),
+              ...(JSON.parse(savedRaw) as Record<string, unknown>),
+            },
+            userId,
+            identity.username
+          );
         }
 
         const access = await verifyBusinessOwnerAccess(loaded, businessId);
@@ -762,6 +781,41 @@ export default function EditBusinessProfileScreen() {
           galleryNotice = `\n\n${galleryResult.failed} gallery photo(s) could not upload to the server. Your other changes were saved.`;
         }
 
+        await AsyncStorage.setItem(
+          `profile_v2_${serverListingId}`,
+          JSON.stringify(persistedBusiness)
+        );
+        await upsertUserBusiness(ownerId, persistedBusiness, ownerUsername);
+
+        if (
+          coverImage &&
+          isLocalDeviceImageUri(coverImage)
+        ) {
+          const coverUpload = await uploadBusinessCoverImageToListing(
+            serverListingId,
+            coverImage
+          );
+
+          if (coverUpload.ok) {
+            persistedBusiness = applyUploadedCoverImageToBusiness(
+              persistedBusiness,
+              coverUpload.coverUrl
+            );
+
+            await AsyncStorage.setItem(
+              `profile_v2_${serverListingId}`,
+              JSON.stringify(persistedBusiness)
+            );
+            await upsertUserBusiness(
+              ownerId,
+              persistedBusiness,
+              ownerUsername
+            );
+          } else {
+            console.log("EDIT BUSINESS COVER UPLOAD ERROR:", coverUpload.message);
+          }
+        }
+
         try {
           await fetchAccountProfile();
         } catch (profileError) {
@@ -853,9 +907,22 @@ export default function EditBusinessProfileScreen() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        <View style={{ paddingTop: 60, paddingHorizontal: 20, paddingBottom: 16 }}>
-          <Pressable onPress={() => router.back()} style={{ marginBottom: 20 }}>
-            <Text style={{ color: TURQUOISE, fontSize: 18 }}>← Back</Text>
+        <View style={{ paddingTop: insets.top + 18, paddingHorizontal: 20, paddingBottom: 16 }}>
+          <Pressable
+            onPress={() => router.back()}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              backgroundColor: "#FFF",
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: "#ECE7DF",
+              marginBottom: 20,
+            }}
+          >
+            <Ionicons name="arrow-back" size={22} color={TURQUOISE} />
           </Pressable>
 
           <Text style={{ fontSize: 32, fontWeight: "900", color: TEXT }}>

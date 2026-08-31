@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from "react";
 import {
-  SafeAreaView,
   Text,
   Pressable,
   View,
@@ -9,6 +8,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import {
   deleteCommunityEvent,
@@ -19,6 +19,7 @@ import { formatEventDateTime, formatEventHostLine } from "../../lib/mapEventDeta
 import { getActiveUserId } from "../../lib/userSessionStorage";
 
 export default function EventsScreen() {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<CommunityEvent[]>([]);
 
@@ -71,11 +72,11 @@ export default function EventsScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F6F5F2" }}>
+    <View style={{ flex: 1, backgroundColor: "#F6F5F2" }}>
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: 22,
-          paddingTop: 22,
+          paddingTop: insets.top + 18,
           paddingBottom: 80,
         }}
         showsVerticalScrollIndicator={false}
@@ -304,6 +305,6 @@ export default function EventsScreen() {
           ))
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }

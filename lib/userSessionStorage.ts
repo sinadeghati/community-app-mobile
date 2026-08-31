@@ -17,6 +17,7 @@ import {
   filterBusinessesForUser,
   isMyBusinessForUser,
 } from "./myBusinessOwnership";
+import { mergeOwnedBusinessCoverImage } from "./businessCoverImage";
 
 export {
   businessOwnerId,
@@ -240,7 +241,13 @@ export const explainMyBusinessOwnershipMatch = (
   const listingUserId = businessListingUserId(business);
 
   if (explicitOwnerId && explicitOwnerId === userId) {
-    return { owned: true, reason: "ownerId === currentUser.id" };
+    const owned = isMyBusinessForUser(business, userId, identity);
+    return {
+      owned,
+      reason: owned
+        ? "ownerId === currentUser.id (identity verified)"
+        : "ownerId matches but owner identity conflicts with current user",
+    };
   }
   if (explicitOwnerId && explicitOwnerId !== userId) {
     return {
@@ -404,6 +411,54 @@ const isParisaCanonicalOwner = (business: Record<string, unknown>) => {
   );
 };
 
+/** True only when a Parisa test-business row is present — not every name match. */
+export const shouldRunParisaTestBusinessCleanup = (
+  businesses: Record<string, unknown>[]
+) =>
+  businesses.some(
+    (business) =>
+      isParisaCanonicalOwner(business) &&
+      businessNameMatchesNeedles(business, TEST_BUSINESS_NAME_NEEDLES)
+  );
+
+const findParisaCanonicalBusinessAmongHits = async (
+  hits: PollutedBusinessStorageRecord[]
+): Promise<Record<string, unknown> | null> => {
+  for (const hit of hits) {
+    if (!hit.storageKey.startsWith("profile_v2_")) continue;
+    const raw = await AsyncStorage.getItem(hit.storageKey);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (isParisaCanonicalOwner(parsed)) {
+        return parsed;
+      }
+    } catch {
+      /* skip */
+    }
+  }
+
+  for (const hit of hits) {
+    if (!hit.storageKey.startsWith("my_local_businesses_2")) continue;
+    const raw = await AsyncStorage.getItem(hit.storageKey);
+    if (!raw) continue;
+    try {
+      const list = JSON.parse(raw);
+      if (!Array.isArray(list)) continue;
+      const match = list.find((item) =>
+        isParisaCanonicalOwner(item as Record<string, unknown>)
+      ) as Record<string, unknown> | undefined;
+      if (match) {
+        return match;
+      }
+    } catch {
+      /* skip */
+    }
+  }
+
+  return null;
+};
+
 const canonicalOwnerPatch = (source: Record<string, unknown>) => {
   const ownerId = businessOwnerId(source) ?? "2";
   const ownerUsername = businessOwnerUsername(source) ?? "parisa";
@@ -516,65 +571,12 @@ export const cleanupPollutedTestBusinessStorage = async (
   const canonicalBusinessById = new Map<string, Record<string, unknown>>();
 
   for (const [businessId, hits] of hitsById.entries()) {
-    let canonicalBusiness: Record<string, unknown> | null = null;
-
-    for (const hit of hits) {
-      if (!hit.storageKey.startsWith("profile_v2_")) continue;
-      const raw = await AsyncStorage.getItem(hit.storageKey);
-      if (!raw) continue;
-      try {
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
-        if (isParisaCanonicalOwner(parsed)) {
-          canonicalBusiness = parsed;
-          break;
-        }
-      } catch {
-        /* skip */
-      }
-    }
-
+    const canonicalBusiness = await findParisaCanonicalBusinessAmongHits(hits);
     if (!canonicalBusiness) {
-      for (const hit of hits) {
-        if (!hit.storageKey.startsWith("my_local_businesses_2")) continue;
-        const raw = await AsyncStorage.getItem(hit.storageKey);
-        if (!raw) continue;
-        try {
-          const list = JSON.parse(raw);
-          if (!Array.isArray(list)) continue;
-          const match = list.find(
-            (item) => String((item as Record<string, unknown>).id) === businessId
-          ) as Record<string, unknown> | undefined;
-          if (match && isParisaCanonicalOwner(match)) {
-            canonicalBusiness = match;
-            break;
-          }
-        } catch {
-          /* skip */
-        }
-      }
+      continue;
     }
 
-    if (!canonicalBusiness) {
-      for (const hit of hits) {
-        if (!hit.storageKey.startsWith("profile_v2_")) continue;
-        const raw = await AsyncStorage.getItem(hit.storageKey);
-        if (!raw) continue;
-        try {
-          canonicalBusiness = JSON.parse(raw) as Record<string, unknown>;
-          break;
-        } catch {
-          /* skip */
-        }
-      }
-    }
-
-    if (!canonicalBusiness) continue;
-
-    const ownerPatch = canonicalOwnerPatch(
-      isParisaCanonicalOwner(canonicalBusiness)
-        ? canonicalBusiness
-        : { ...canonicalBusiness, owner_id: "2", owner_username: "parisa" }
-    );
+    const ownerPatch = canonicalOwnerPatch(canonicalBusiness);
 
     canonicalByBusinessId[businessId] = {
       ownerId: String(ownerPatch.owner_id),
@@ -586,6 +588,14 @@ export const cleanupPollutedTestBusinessStorage = async (
       ...canonicalBusiness,
       ...ownerPatch,
     });
+  }
+
+  if (canonicalBusinessById.size === 0) {
+    return {
+      canonicalByBusinessId: {},
+      removedFromKeys: [],
+      repairedProfileKeys: [],
+    };
   }
 
   const removedFromKeys: PollutedBusinessCleanupReport["removedFromKeys"] = [];
@@ -613,16 +623,12 @@ export const cleanupPollutedTestBusinessStorage = async (
     const kept: Record<string, unknown>[] = [];
     for (const item of list) {
       const id = String(item.id || "");
-      const isTest =
-        testBusinessIds.has(id) ||
-        businessNameMatchesNeedles(item, nameNeedles);
+      const isPollutedParisaCopy =
+        Boolean(id) &&
+        testBusinessIds.has(id) &&
+        Boolean(canonicalByBusinessId[id]);
 
-      if (!isTest) {
-        kept.push(item);
-        continue;
-      }
-
-      if (!id || !canonicalByBusinessId[id]) {
+      if (!isPollutedParisaCopy) {
         kept.push(item);
         continue;
       }
@@ -1058,7 +1064,7 @@ export const adoptLegacyBusinessesIfMatching = async (
       await saveUserBusinesses(
         userId,
         dedupeBusinessesById([...current, ...claimed]),
-        identity.username
+        identity
       );
     }
   } catch {
@@ -1158,7 +1164,7 @@ const loadBusinessesFromProfileKeys = async (
 };
 
 /**
- * Profile → My Businesses: read all public profile_v2_* records, filter by owner.
+ * Profile → My Businesses: local profile_v2 + scoped cache + GET /my-listing/.
  * Optional scoped my_local_businesses_{userId} fallback when canonical profile_v2
  * has no explicit other owner (does not write storage).
  */
@@ -1226,6 +1232,16 @@ export const loadMyBusinessesForProfile = async (
           ownedById.set(id, { ...(catalog || {}), ...record });
         }
       }
+    }
+
+    const apiOwned = await loadMyBusinessesFromApi(userId, identity);
+    for (const business of apiOwned) {
+      const id = String(business.id || "").trim();
+      if (!id) continue;
+      ownedById.set(
+        id,
+        mergeOwnedBusinessCoverImage(ownedById.get(id) || {}, business)
+      );
     }
 
     const { loadDeletedBusinessIds, isDeletedBusinessId } = await import(
@@ -1344,7 +1360,12 @@ export const loadUserBusinesses = async (
       identity?.email ?? null
     );
     list = dedupeBusinessesById([...list, ...fromProfiles]);
-    const owned = filterBusinessesForUser(list, userId, username);
+    const owned = filterBusinessesForUser(
+      list,
+      userId,
+      username,
+      identity?.email ?? null
+    );
 
     const scopedCount = scopedRaw
       ? (JSON.parse(scopedRaw) as unknown[]).length
@@ -1355,11 +1376,15 @@ export const loadUserBusinesses = async (
         targetKey: businessesKey(userId),
         userId,
         ownerUsername: username,
+        ownerEmail: identity?.email ?? null,
         scopedCount,
         ownedCount: owned.length,
       });
 
-      await saveUserBusinesses(userId, owned, username);
+      await saveUserBusinesses(userId, owned, {
+        username,
+        email: identity?.email ?? null,
+      });
     }
 
     return owned;
@@ -1368,16 +1393,89 @@ export const loadUserBusinesses = async (
   }
 };
 
+export type BusinessOwnerIdentity = {
+  username?: string | null;
+  email?: string | null;
+};
+
+const resolveOwnerIdentityArg = (
+  arg?: string | null | BusinessOwnerIdentity
+): BusinessOwnerIdentity => {
+  if (arg == null) return {};
+  if (typeof arg === "string") {
+    return { username: arg.trim().toLowerCase() || null };
+  }
+  return {
+    username: arg.username?.trim().toLowerCase() || null,
+    email: arg.email?.trim().toLowerCase() || null,
+  };
+};
+
+const mapApiListingToOwnedBusiness = (
+  listing: Record<string, unknown>,
+  userId: string,
+  identity?: { username?: string; email?: string }
+): Record<string, unknown> => {
+  const id = String(listing.id || "").trim();
+  const title = String(listing.title || listing.name || "").trim();
+
+  return {
+    ...listing,
+    id,
+    business_name: title || listing.business_name,
+    name: title || listing.name,
+    title: title || listing.title,
+    owner_id: userId,
+    user_id: userId,
+    ...(identity?.username
+      ? {
+          owner_username: identity.username,
+          ownerUsername: identity.username,
+        }
+      : {}),
+    ...(identity?.email
+      ? { owner_email: identity.email, ownerEmail: identity.email }
+      : {}),
+    server_listing_id: id,
+    listing_id: id,
+    is_owner: true,
+    owner_is_current_user: true,
+    can_edit: true,
+  };
+};
+
+const loadMyBusinessesFromApi = async (
+  userId: string,
+  identity?: { username?: string; email?: string }
+): Promise<Record<string, unknown>[]> => {
+  try {
+    const { resolveStoredAccessToken } = await import("./authSession");
+    if (!(await resolveStoredAccessToken())) {
+      return [];
+    }
+
+    const { API } = await import("./api");
+    const { normalizeMyListings } = await import("./businessListingSync");
+    const response = await API.getMyListings();
+    return normalizeMyListings(response).map((listing) =>
+      mapApiListingToOwnedBusiness(listing, userId, identity)
+    );
+  } catch {
+    return [];
+  }
+};
+
 export const saveUserBusinesses = async (
   userId: string,
   list: unknown[],
-  ownerUsername?: string | null
+  ownerIdentity?: string | null | BusinessOwnerIdentity
 ) => {
-  const username = ownerUsername?.trim().toLowerCase() || null;
+  const { username, email } = resolveOwnerIdentityArg(ownerIdentity);
   const normalized = filterBusinessesForUser(
     Array.isArray(list) ? (list as Record<string, unknown>[]) : [],
     userId,
-    username
+    username,
+    email
   ).map((record) => ({
     ...record,
     owner_id: businessOwnerId(record) ?? userId,
@@ -1440,10 +1538,19 @@ export const upsertUserBusiness = async (
   const businessId = String(business.id || "");
   if (!businessId) return;
 
+  const resolvedIdentity = await resolveUserIdentity(userId);
   const username =
-    ownerUsername ?? businessOwnerUsername(business) ?? undefined;
+    ownerUsername ??
+    businessOwnerUsername(business) ??
+    resolvedIdentity.username ??
+    undefined;
+  const email =
+    String(business.owner_email ?? business.ownerEmail ?? "").trim() ||
+    resolvedIdentity.email ||
+    undefined;
   const list = (await loadUserBusinesses(userId, {
-    username: username ?? undefined,
+    username,
+    email,
   })) as Record<string, unknown>[];
   const tagged = {
     ...business,
@@ -1476,7 +1583,7 @@ export const upsertUserBusiness = async (
     likelyCalledFrom: "create-business.tsx | edit-business.tsx",
   });
 
-  await saveUserBusinesses(userId, next, username);
+  await saveUserBusinesses(userId, next, { username, email });
 };
 
 export type DeleteUserBusinessResult =
@@ -1549,11 +1656,11 @@ export const deleteUserBusiness = async (
     unknown
   >[];
   const nextList = ownedList.filter((item) => String(item.id || "") !== id);
-  await saveUserBusinesses(
-    userId,
-    nextList,
-    resolvedIdentity?.username ?? businessOwnerUsername(record) ?? undefined
-  );
+  await saveUserBusinesses(userId, nextList, {
+    username:
+      resolvedIdentity?.username ?? businessOwnerUsername(record) ?? undefined,
+    email: resolvedIdentity?.email ?? undefined,
+  });
 
   await AsyncStorage.removeItem(`business_reviews_${id}`);
 
@@ -1645,7 +1752,7 @@ export const reconcileSessionBusinessCache = async (
         before: list.length,
         after: filtered.length,
       });
-      await saveUserBusinesses(userId, filtered, identity.username);
+      await saveUserBusinesses(userId, filtered, identity);
     }
   } catch (error) {
     logAuthEvent("reconcile_session_business_cache_failed", {
