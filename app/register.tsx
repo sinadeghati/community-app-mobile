@@ -20,7 +20,6 @@ import {
   passwordsMatch,
 } from "../lib/authValidation";
 import { setPendingRegistration } from "../lib/pendingRegistration";
-import { KorookLogo } from "../components/brand/KorookLogo";
 import { korookBrand } from "../lib/korookBrand";
 import { theme } from "../lib/theme";
 
@@ -232,14 +231,15 @@ export default function RegisterScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: 36 }}
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={{ paddingBottom: 56 }}
         >
           <View
             style={{
               backgroundColor: colors.teal,
               paddingHorizontal: 22,
-              paddingTop: 22,
-              paddingBottom: 72,
+              paddingTop: 12,
+              paddingBottom: 50,
               borderBottomLeftRadius: 36,
               borderBottomRightRadius: 36,
             }}
@@ -258,13 +258,51 @@ export default function RegisterScreen() {
               <Ionicons name="arrow-back" size={24} color="#fff" />
             </Pressable>
 
-            <KorookLogo width={200} />
+            <View style={{ alignItems: "center", marginTop: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text
+                  style={{
+                    color: "#0B1F3A",
+                    fontSize: 22,
+                    fontWeight: "700",
+                    letterSpacing: 2.5,
+                  }}
+                >
+                  KORO
+                </Text>
+                <Text
+                  style={{
+                    color: "#27C9C3",
+                    fontSize: 22,
+                    fontWeight: "700",
+                    letterSpacing: 2.5,
+                    textShadowColor: "rgba(11, 31, 58, 0.35)",
+                    textShadowOffset: { width: 0, height: 1 },
+                    textShadowRadius: 2,
+                  }}
+                >
+                  O
+                </Text>
+                <Text
+                  style={{
+                    color: "#0B1F3A",
+                    fontSize: 22,
+                    fontWeight: "700",
+                    letterSpacing: 2.5,
+                  }}
+                >
+                  K
+                </Text>
+              </View>
+            </View>
+
             <Text
               style={{
-                marginTop: 20,
-                fontSize: 32,
+                marginTop: 14,
+                fontSize: 28,
                 fontWeight: "900",
                 color: "#fff",
+                textAlign: "center",
               }}
             >
               Create account
@@ -272,11 +310,13 @@ export default function RegisterScreen() {
 
             <Text
               style={{
-                marginTop: 10,
-                fontSize: 16,
-                lineHeight: 24,
+                marginTop: 8,
+                fontSize: 15,
+                lineHeight: 22,
                 color: "rgba(255,255,255,0.9)",
                 fontWeight: "600",
+                textAlign: "center",
+                paddingBottom: 6,
               }}
             >
               Join Korook — {korookBrand.mission}
@@ -286,7 +326,7 @@ export default function RegisterScreen() {
           <View
             style={{
               marginHorizontal: 18,
-              marginTop: -46,
+              marginTop: -26,
               backgroundColor: colors.card,
               borderRadius: 32,
               padding: 20,

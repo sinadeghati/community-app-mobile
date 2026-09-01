@@ -40,16 +40,24 @@ export const homeLandingStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000",
   },
-  brandBlock: {
+  wordmarkRow: {
+    flexDirection: "row",
+    alignItems: "center",
     position: "absolute",
-    left: 24,
-    right: 24,
-    alignItems: "flex-start",
-    zIndex: 10,
+    left: 36,
+    zIndex: 20,
   },
-  brandLogo: {
-    width: 200,
-    height: 262,
+  wordmarkDark: {
+    color: "#0B1F3A",
+    fontSize: 26,
+    fontWeight: "700",
+    letterSpacing: 3.5,
+  },
+  wordmarkAccent: {
+    color: "#27C9C3",
+    fontSize: 26,
+    fontWeight: "700",
+    letterSpacing: 3.5,
   },
   welcomeOverlay: {
     ...StyleSheet.absoluteFillObject,

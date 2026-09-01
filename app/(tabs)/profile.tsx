@@ -26,9 +26,6 @@ import {
 } from "../../lib/authSession";
 import {
   clearUserSession,
-  explainMyBusinessOwnershipMatch,
-  gatherRawMyBusinessCandidatesWithProvenance,
-  getMyBusinessesStorageKey,
   getActiveUserId,
   hydrateAuthSession,
   loadMyBusinessesForProfile,
@@ -38,7 +35,6 @@ import {
   prepareSessionForUser,
   reconcileSessionBusinessCache,
   saveUserProfile,
-  toMyBusinessLogRow,
 } from "../../lib/userSessionStorage";
 import * as ImagePicker from "expo-image-picker";
 import { countCommunityEventsForOwner } from "../../lib/communityEvents";
@@ -119,110 +115,10 @@ export default function ProfileV2Clean() {
     setMyBusinessesLoadState("loading");
 
     try {
-      const currentUser = {
-        id: userId,
-        username: identity?.username ?? null,
-        email: identity?.email ?? null,
-        storageKey: getMyBusinessesStorageKey(userId),
-      };
-
-      console.log("CURRENT_USER_FOR_MY_BUSINESSES", currentUser);
-
-      const rawWithSources =
-        await gatherRawMyBusinessCandidatesWithProvenance(userId);
-
-      console.log(
-        "RAW_BUSINESSES",
-        rawWithSources.map((entry) => ({
-          ...toMyBusinessLogRow(entry.business),
-          loadedFrom: entry.loadedFrom,
-          mergeOrder: entry.mergeOrder,
-        }))
-      );
-
-      rawWithSources.forEach((entry) => {
-        const check = explainMyBusinessOwnershipMatch(
-          entry.business,
-          userId,
-          identity
-        );
-        console.log("MY_BUSINESS_FILTER_CHECK", {
-          ...toMyBusinessLogRow(entry.business),
-          loadedFrom: entry.loadedFrom,
-          mergeOrder: entry.mergeOrder,
-          owned: check.owned,
-          reason: check.reason,
-        });
-      });
-
       const filteredBusinesses = await loadMyBusinessesForProfile(
         userId,
         identity
       );
-
-      const filteredWithSources = rawWithSources.filter((entry) =>
-        filteredBusinesses.some(
-          (b) => String(b.id) === String(entry.business.id)
-        )
-      );
-
-      console.log(
-        "FILTERED_MY_BUSINESSES",
-        filteredWithSources.map((entry) => ({
-          ...toMyBusinessLogRow(entry.business),
-          loadedFrom: entry.loadedFrom,
-          mergeOrder: entry.mergeOrder,
-        }))
-      );
-
-      filteredWithSources.forEach((entry) => {
-        const check = explainMyBusinessOwnershipMatch(
-          entry.business,
-          userId,
-          identity
-        );
-        console.log("MY_BUSINESS_SHOWN_REASON", {
-          ...toMyBusinessLogRow(entry.business),
-          loadedFrom: entry.loadedFrom,
-          mergeOrder: entry.mergeOrder,
-          owned: check.owned,
-          reason: check.reason,
-        });
-      });
-
-      console.log("FINAL_MY_BUSINESSES_AFTER_FIX", {
-        userId,
-        username: identity?.username ?? null,
-        email: identity?.email ?? null,
-        count: filteredBusinesses.length,
-        businesses: filteredBusinesses.map((b) => {
-          const row = toMyBusinessLogRow(b);
-          return {
-            id: row.id,
-            name: row.name,
-            ownerId: row.ownerId,
-            ownerUsername: row.ownerUsername,
-            ownerEmail: row.ownerEmail,
-          };
-        }),
-      });
-
-      console.log("FINAL_MY_BUSINESSES_AFTER_CLEANUP", {
-        userId,
-        username: identity?.username ?? null,
-        email: identity?.email ?? null,
-        count: filteredBusinesses.length,
-        businesses: filteredBusinesses.map((b) => {
-          const row = toMyBusinessLogRow(b);
-          return {
-            id: row.id,
-            name: row.name,
-            ownerId: row.ownerId,
-            ownerUsername: row.ownerUsername,
-            ownerEmail: row.ownerEmail,
-          };
-        }),
-      });
 
       setLocalBusinesses(filteredBusinesses);
       setMyBusinessesLoadState("loaded");

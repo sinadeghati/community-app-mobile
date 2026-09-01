@@ -1659,11 +1659,6 @@ export default function MapScreenV25() {
         if (isStaleLoad()) return;
 
         logLoadedListingEventIds("map", merged);
-        console.log("[map/load]", {
-          totalLoaded: merged.length,
-          businessesLoaded: merged.filter((item) => !isMapEvent(item)).length,
-          eventsLoaded: merged.filter((item) => isMapEvent(item)).length,
-        });
 
         if (merged.length) {
           hasDisplayedMapItemsRef.current = true;
@@ -1830,24 +1825,6 @@ export default function MapScreenV25() {
     commitMapRegion(mapInitialRegion);
   }, [mapSurfaceMounted, mapInitialRegion, commitMapRegion]);
 
-  useEffect(() => {
-    const businessesLoaded = items.filter((item) => !isMapEvent(item));
-    const eventsLoaded = items.filter((item) => isMapEvent(item));
-    const businessMarkers = mapPoints.filter((point) => !isMapEvent(point.item));
-    const eventMarkers = mapPoints.filter((point) => isMapEvent(point.item));
-
-    console.log("[map/markers]", {
-      totalBusinessesLoaded: businessesLoaded.length,
-      totalEventsLoaded: eventsLoaded.length,
-      activeFilter: selectedCategory,
-      searchQuery: search,
-      filteredItemCount: filteredItems.length,
-      finalMarkersCount: mapPoints.length,
-      finalBusinessMarkerCount: businessMarkers.length,
-      finalEventMarkerCount: eventMarkers.length,
-    });
-  }, [items, filteredItems, mapPoints, selectedCategory, search]);
-
   const nearbyBusinesses = useMemo(
     () =>
       mapPoints
@@ -1971,27 +1948,6 @@ export default function MapScreenV25() {
     if (regionTooWideForNearby || markerPoints.length === 0) return [];
     return buildMapDisplay(markerPoints, mapRegion, { gateTooWide: false });
   }, [markerPoints, mapRegion, regionTooWideForNearby]);
-
-  useEffect(() => {
-    if (!isNonProductionApi()) return;
-
-    const clusterCount = mapDisplay.filter((entry) => entry.type === "cluster").length;
-    const pointCount = mapDisplay.filter((entry) => entry.type === "point").length;
-
-    console.log("[map-marker-trace] display", {
-      markerPointsCount: markerPoints.length,
-      markerPointIds: markerPoints.map((point) => getId(point.item)),
-      mapDisplayCount: mapDisplay.length,
-      clusterCount,
-      pointCount,
-      regionTooWideForNearby,
-      mapRegionDelta: {
-        latitudeDelta: mapRegion.latitudeDelta,
-        longitudeDelta: mapRegion.longitudeDelta,
-      },
-      androidTrackingMode: "per-marker-lifecycle",
-    });
-  }, [markerPoints, mapDisplay, mapRegion, regionTooWideForNearby]);
 
   const discoveryResults = useMemo(() => {
     if (!isDiscoveryActive) return [];

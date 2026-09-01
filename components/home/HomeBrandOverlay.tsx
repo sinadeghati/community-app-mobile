@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, View } from "react-native";
+import { Text, View } from "react-native";
 import { homeLandingStyles } from "./homeLandingStyles";
 
 type HomeBrandOverlayProps = {
@@ -9,16 +9,14 @@ type HomeBrandOverlayProps = {
 export function HomeBrandOverlay({ topInset }: HomeBrandOverlayProps) {
   return (
     <View
-      style={[homeLandingStyles.brandBlock, { top: topInset + 20 }]}
+      style={[homeLandingStyles.wordmarkRow, { top: topInset + 36 }]}
       pointerEvents="none"
+      accessible
+      accessibilityLabel="Korook"
     >
-      <Image
-        source={require("../../assets/brand/korook/Korook-master-logo.png")}
-        style={homeLandingStyles.brandLogo}
-        resizeMode="contain"
-        accessibilityLabel="Korook"
-        accessibilityIgnoresInvertColors
-      />
+      <Text style={homeLandingStyles.wordmarkDark}>KORO</Text>
+      <Text style={homeLandingStyles.wordmarkAccent}>O</Text>
+      <Text style={homeLandingStyles.wordmarkDark}>K</Text>
     </View>
   );
 }
