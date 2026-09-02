@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -144,7 +146,13 @@ export function StreetAddressAutocomplete({
   };
 
   return (
-    <View style={{ marginBottom: variant === "create" ? 18 : 16 }}>
+    <View
+      style={{
+        marginBottom: variant === "create" ? 18 : 16,
+        position: "relative",
+        zIndex: showSuggestions ? 50 : 1,
+      }}
+    >
       <Text
         style={{
           fontSize: 15,
@@ -216,37 +224,58 @@ export function StreetAddressAutocomplete({
       {showSuggestions && suggestions.length > 0 ? (
         <View
           style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
             marginTop: 6,
             borderWidth: 1,
             borderColor: colors.border,
             borderRadius: variant === "create" ? 14 : 12,
             backgroundColor: colors.card,
             overflow: "hidden",
+            zIndex: 1000,
+            elevation: 12,
+            maxHeight: 240,
+            ...(Platform.OS === "ios"
+              ? {
+                  shadowColor: "#000",
+                  shadowOpacity: 0.12,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 4 },
+                }
+              : null),
           }}
         >
-          {suggestions.map((suggestion, index) => (
-            <Pressable
-              key={suggestion.id}
-              onPress={() => handleSelect(suggestion)}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 11,
-                borderTopWidth: index === 0 ? 0 : 1,
-                borderTopColor: colors.border,
-              }}
-            >
-              <Text
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={suggestions.length > 4}
+          >
+            {suggestions.map((suggestion, index) => (
+              <Pressable
+                key={suggestion.id}
+                onPress={() => handleSelect(suggestion)}
                 style={{
-                  fontSize: 14,
-                  fontWeight: "600",
-                  color: colors.text,
-                  lineHeight: 20,
+                  paddingHorizontal: 12,
+                  paddingVertical: 11,
+                  borderTopWidth: index === 0 ? 0 : 1,
+                  borderTopColor: colors.border,
                 }}
               >
-                {suggestion.label}
-              </Text>
-            </Pressable>
-          ))}
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: "600",
+                    color: colors.text,
+                    lineHeight: 20,
+                  }}
+                >
+                  {suggestion.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
       ) : null}
     </View>

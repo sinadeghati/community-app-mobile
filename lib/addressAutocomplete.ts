@@ -1,3 +1,5 @@
+import { apiUrl } from "./apiConfig";
+
 export type ParsedAddress = {
   streetAddress: string;
   city: string;
@@ -358,23 +360,27 @@ const appendViewboxParams = (
   params.set("bounded", "0");
 };
 
-const fetchNominatimResults = async (
+const fetchGeocodeResults = async (
   params: URLSearchParams
 ): Promise<NominatimResult[]> => {
   const response = await fetch(
-    `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+    `${apiUrl("/geocode/suggest/")}?${params.toString()}`,
     {
       headers: {
         Accept: "application/json",
-        "User-Agent": "PersianMapMobile/1.0",
       },
     }
   );
 
+  if (response.status === 429 || response.status === 502) {
+    return [];
+  }
+
   if (!response.ok) return [];
 
-  const results = (await response.json()) as NominatimResult[];
-  return Array.isArray(results) ? results : [];
+  const payload = (await response.json()) as NominatimResult[] | { detail?: string };
+  if (!Array.isArray(payload)) return [];
+  return payload;
 };
 
 const applyHouseNumberFromQuery = (
@@ -529,19 +535,7 @@ export const searchPlaceSuggestions = async (
   });
 
   try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?${params.toString()}`,
-      {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "PersianMapMobile/1.0",
-        },
-      }
-    );
-
-    if (!response.ok) return [];
-
-    const results = (await response.json()) as NominatimResult[];
+    const results = await fetchGeocodeResults(params);
     if (!Array.isArray(results)) return [];
 
     const suggestions: PlaceSearchSuggestion[] = [];
@@ -598,7 +592,7 @@ export const searchAddressSuggestions = async (
       (async () => {
         const params = new URLSearchParams({ ...baseParams, q: searchQuery });
         appendViewboxParams(params, bias);
-        return fetchNominatimResults(params);
+        return fetchGeocodeResults(params);
       })(),
     ];
 
@@ -607,7 +601,7 @@ export const searchAddressSuggestions = async (
         (async () => {
           const params = new URLSearchParams({ ...baseParams, q: trimmed });
           appendViewboxParams(params, bias);
-          return fetchNominatimResults(params);
+          return fetchGeocodeResults(params);
         })()
       );
     }
@@ -622,7 +616,7 @@ export const searchAddressSuggestions = async (
           if (city) params.set("city", city);
           if (state) params.set("state", state);
           appendViewboxParams(params, bias);
-          return fetchNominatimResults(params);
+          return fetchGeocodeResults(params);
         })()
       );
     }
@@ -636,7 +630,7 @@ export const searchAddressSuggestions = async (
         q: trimmed,
       });
       appendViewboxParams(fallbackParams, bias);
-      results = await fetchNominatimResults(fallbackParams);
+      results = await fetchGeocodeResults(fallbackParams);
     }
 
     if (results.length === 0) {
@@ -698,19 +692,7 @@ export const geocodeStructuredAddress = async (
   }
 
   try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?${params.toString()}`,
-      {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "PersianMapMobile/1.0",
-        },
-      }
-    );
-
-    if (!response.ok) return null;
-
-    const results = (await response.json()) as NominatimResult[];
+    const results = await fetchGeocodeResults(params);
     if (!Array.isArray(results) || !results.length) return null;
 
     const latitude = Number(results[0].lat);
@@ -740,19 +722,7 @@ export const geocodeAddress = async (
   });
 
   try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?${params.toString()}`,
-      {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "PersianMapMobile/1.0",
-        },
-      }
-    );
-
-    if (!response.ok) return null;
-
-    const results = (await response.json()) as NominatimResult[];
+    const results = await fetchGeocodeResults(params);
     if (!Array.isArray(results) || !results.length) return null;
 
     const latitude = Number(results[0].lat);
