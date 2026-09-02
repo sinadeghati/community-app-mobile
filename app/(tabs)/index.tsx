@@ -158,6 +158,12 @@ export default function HomeLoginV2() {
     resetAutoplay();
   }, [requestSlide, resetAutoplay]);
 
+  const dismissKeyboardOnAndroid = useCallback(() => {
+    if (Platform.OS === "android") {
+      Keyboard.dismiss();
+    }
+  }, []);
+
   const swipeActionsRef = useRef({
     goNext: goToNextSlide,
     goPrev: goToPrevSlide,
@@ -264,10 +270,11 @@ export default function HomeLoginV2() {
 
   useEffect(() => {
     if (activePromotion) return;
-    getPrefetchSlideUris(heroSlides, clampedVisibleIndex).forEach((uri) => {
+    const prefetchIndex = targetIndex ?? clampedVisibleIndex;
+    getPrefetchSlideUris(heroSlides, prefetchIndex).forEach((uri) => {
       void Image.prefetch(uri);
     });
-  }, [activePromotion, clampedVisibleIndex, heroSlides]);
+  }, [activePromotion, clampedVisibleIndex, targetIndex, heroSlides]);
 
   useEffect(() => {
     const showEvent =
@@ -400,7 +407,16 @@ export default function HomeLoginV2() {
           />
         ) : null}
 
-        <View style={homeLandingStyles.flex} />
+        {Platform.OS === "android" ? (
+          <Pressable
+            style={homeLandingStyles.flex}
+            onPress={dismissKeyboardOnAndroid}
+            accessibilityLabel="Dismiss keyboard"
+            accessibilityRole="button"
+          />
+        ) : (
+          <View style={homeLandingStyles.flex} />
+        )}
 
         {!activePromotion ? (
           <HomeSlideIndicators
