@@ -784,7 +784,9 @@ const loadCommunityEventsSafe = async (): Promise<DiscoverableListing[]> => {
   }
 };
 
-export const loadDiscoverableListings = async (): Promise<DiscoverableListing[]> => {
+let discoverableListingsInflight: Promise<DiscoverableListing[]> | null = null;
+
+const loadDiscoverableListingsInternal = async (): Promise<DiscoverableListing[]> => {
   logLoaderStart("loadDiscoverableListings");
   let apiListings: DiscoverableListing[] = [];
 
@@ -862,4 +864,13 @@ export const loadDiscoverableListings = async (): Promise<DiscoverableListing[]>
   logDiscoverListStage("2_loadDiscoverableListings", eventFiltered);
   logLoaderDone("loadDiscoverableListings");
   return eventFiltered;
+};
+
+export const loadDiscoverableListings = (): Promise<DiscoverableListing[]> => {
+  if (!discoverableListingsInflight) {
+    discoverableListingsInflight = loadDiscoverableListingsInternal().finally(() => {
+      discoverableListingsInflight = null;
+    });
+  }
+  return discoverableListingsInflight;
 };

@@ -1,3 +1,30 @@
+export type LateResultRace<T> =
+  | { timedOut: false; value: T }
+  | { timedOut: true; value: Promise<T> };
+
+/** Resolves early on timeout but keeps the original promise for late consumers. */
+export const raceWithLateResult = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string
+): Promise<LateResultRace<T>> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise.then((value) => ({ timedOut: false as const, value })),
+      new Promise<LateResultRace<T>>((resolve) => {
+        timeoutId = setTimeout(() => {
+          console.log(`[loader] timeout ${label} after ${timeoutMs}ms`);
+          resolve({ timedOut: true, value: promise });
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
 export const withTimeout = async <T>(
   promise: Promise<T>,
   timeoutMs: number,

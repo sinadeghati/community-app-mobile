@@ -88,7 +88,6 @@ import {
 } from "../../lib/discoverListingsRefresh";
 import { getCachedDiscoverListings, sanitizeCachedDiscoverListings } from "../../lib/discoverListingsCache";
 import { runDevStagingDiscoverCleanup } from "../../lib/discoverCacheCleanup";
-import { isNonProductionApi } from "../../lib/apiConfig";
 import {
   ensureBusinessMapCoordinatesBatch,
   mergeBusinessProfileLocation,
@@ -123,6 +122,7 @@ import { useTranslation } from "../../lib/i18n";
 import {
   logLoaderDone,
   logLoaderStart,
+  raceWithLateResult,
   withTimeout,
 } from "../../lib/asyncGuards";
 
@@ -1618,60 +1618,79 @@ export default function MapScreenV25() {
       const cachedFallback =
         (getCachedDiscoverListings() as MapItem[] | null) ?? itemsRef.current;
 
-      const data = await withTimeout(
-        loadDiscoverableListings(),
-        15000,
-        "map.loadDiscoverableListings",
-        background ? cachedFallback : []
-      );
-      if (isStaleLoad()) return;
+      const applyLoadedMapListings = async (data: MapItem[]) => {
+        if (isStaleLoad()) return;
 
-      const enriched = await withTimeout(
-        enrichMapItemsWithProfileUpdates(data),
-        5000,
-        "map.enrichMapItems",
-        background ? cachedFallback : data
-      );
-      if (isStaleLoad()) return;
-
-      if (background) {
-        if (enriched.length) {
-          hasDisplayedMapItemsRef.current = true;
-          setItems(enriched);
-        }
-        void withTimeout(
-          ensureBusinessMapCoordinatesBatch(enriched),
-          30000,
-          "map.ensureBusinessCoordinates",
-          enriched
-        ).then((geocoded) => {
-          if (isStaleLoad() || !geocoded.length) return;
-          hasDisplayedMapItemsRef.current = true;
-          setItems(geocoded);
-        });
-      } else {
-        const merged = await withTimeout(
-          ensureBusinessMapCoordinatesBatch(enriched),
-          30000,
-          "map.ensureBusinessCoordinates",
-          enriched
+        const enriched = await withTimeout(
+          enrichMapItemsWithProfileUpdates(data),
+          5000,
+          "map.enrichMapItems",
+          background ? cachedFallback : data
         );
         if (isStaleLoad()) return;
 
-        logLoadedListingEventIds("map", merged);
+        if (background) {
+          if (enriched.length) {
+            hasDisplayedMapItemsRef.current = true;
+            setItems(enriched);
+          }
+          void withTimeout(
+            ensureBusinessMapCoordinatesBatch(enriched),
+            30000,
+            "map.ensureBusinessCoordinates",
+            enriched
+          ).then((geocoded) => {
+            if (isStaleLoad() || !geocoded.length) return;
+            hasDisplayedMapItemsRef.current = true;
+            setItems(geocoded);
+          });
+        } else {
+          const merged = await withTimeout(
+            ensureBusinessMapCoordinatesBatch(enriched),
+            30000,
+            "map.ensureBusinessCoordinates",
+            enriched
+          );
+          if (isStaleLoad()) return;
 
-        if (merged.length) {
-          hasDisplayedMapItemsRef.current = true;
+          logLoadedListingEventIds("map", merged);
+
+          if (merged.length) {
+            hasDisplayedMapItemsRef.current = true;
+          }
+          setItems(merged);
         }
-        setItems(merged);
+
+        if (isStaleLoad()) return;
+
+        businessPreviewOpenRef.current = false;
+        setSelectedItem(null);
+
+        void loadFavoriteBusinessMap().then(setFavorites).catch(() => undefined);
+      };
+
+      const listingsRace = await raceWithLateResult(
+        loadDiscoverableListings(),
+        15000,
+        "map.loadDiscoverableListings"
+      );
+
+      if (listingsRace.timedOut) {
+        void listingsRace.value
+          .then((lateData) => applyLoadedMapListings(lateData as MapItem[]))
+          .catch((e) =>
+            console.log("[loader] map.loadDiscoverableListings late error:", e)
+          );
+
+        if (!background && !cachedFallback.length) {
+          return;
+        }
+
+        await applyLoadedMapListings(cachedFallback);
+        return;
       }
 
-      if (isStaleLoad()) return;
-
-      businessPreviewOpenRef.current = false;
-      setSelectedItem(null);
-
-      void loadFavoriteBusinessMap().then(setFavorites).catch(() => undefined);
+      await applyLoadedMapListings(listingsRace.value as MapItem[]);
     } catch (e) {
       console.log("[loader] map.loadMapItems error:", e);
       if (!background && !hasDisplayedMapItemsRef.current && !isStaleLoad()) {
