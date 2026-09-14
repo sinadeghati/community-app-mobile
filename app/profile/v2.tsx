@@ -44,6 +44,9 @@ import {
   addBusinessGalleryPhoto,
 } from "../../lib/businessGallery";
 import { BusinessGalleryGrid } from "../../components/business/BusinessGalleryGrid";
+import { BusinessProfileOverflowMenu } from "../../components/business/BusinessProfileOverflowMenu";
+import { BusinessReportModal } from "../../components/business/BusinessReportModal";
+import { resolveBusinessReportTargetId } from "../../lib/businessReports";
 import { getBusinessDirectionsQuery } from "../../lib/businessLocation";
 import {
   createReviewId,
@@ -65,6 +68,7 @@ import {
   toggleBusinessFavorite,
 } from "../../lib/businessFavorites";
 import { ensureLoggedInForSave } from "../../lib/savedActions";
+import { getActiveUserId } from "../../lib/userSessionStorage";
 import { requestDiscoverListingsRefresh } from "../../lib/discoverListingsRefresh";
 import {
   applyUploadedCoverImageToBusiness,
@@ -1199,6 +1203,8 @@ export default function BusinessProfileV2() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
   const [favorite, setFavorite] = useState(false);
+  const [overflowMenuVisible, setOverflowMenuVisible] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "Overview" | "Photos" | "Services" | "Reviews"
   >("Overview");
@@ -2243,6 +2249,43 @@ export default function BusinessProfileV2() {
     });
   };
 
+  const handleOverflowShare = () => {
+    setOverflowMenuVisible(false);
+    void shareBusiness();
+  };
+
+  const handleOverflowSave = () => {
+    setOverflowMenuVisible(false);
+    void toggleFavorite();
+  };
+
+  const handleOverflowReport = async () => {
+    setOverflowMenuVisible(false);
+
+    if (isBusinessOwner) {
+      Alert.alert(
+        "Cannot report",
+        "You cannot report your own business."
+      );
+      return;
+    }
+
+    const userId = await getActiveUserId();
+    if (!userId) {
+      Alert.alert("Login required", "Please log in to report this business.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Log in", onPress: () => router.push("/(tabs)") },
+      ]);
+      return;
+    }
+
+    setReportModalVisible(true);
+  };
+
+  const reportTargetId = business
+    ? resolveBusinessReportTargetId(business, profileId)
+    : "";
+
   const useCompactQuickActions =
     Platform.OS === "android" && quickActions.length >= 3;
 
@@ -2595,7 +2638,7 @@ export default function BusinessProfileV2() {
               <View style={{ flex: 1 }} />
 
               <Pressable
-                onPress={shareBusiness}
+                onPress={() => setOverflowMenuVisible(true)}
                 style={{
                   width: HERO_TOOLBAR_BUTTON_SIZE,
                   height: HERO_TOOLBAR_BUTTON_SIZE,
@@ -2603,35 +2646,14 @@ export default function BusinessProfileV2() {
                   backgroundColor: "rgba(255,255,255,0.97)",
                   alignItems: "center",
                   justifyContent: "center",
-                  marginRight: 8,
                   borderWidth: 1,
                   borderColor: "rgba(229,231,235,0.95)",
                 }}
               >
                 <Ionicons
-                  name="share-outline"
+                  name="ellipsis-vertical"
                   size={20}
                   color={theme.colors.charcoal}
-                />
-              </Pressable>
-
-              <Pressable
-                onPress={toggleFavorite}
-                style={{
-                  width: HERO_TOOLBAR_BUTTON_SIZE,
-                  height: HERO_TOOLBAR_BUTTON_SIZE,
-                  borderRadius: 14,
-                  backgroundColor: "rgba(255,255,255,0.97)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: "rgba(229,231,235,0.95)",
-                }}
-              >
-                <Ionicons
-                  name={favorite ? "heart" : "heart-outline"}
-                  size={22}
-                  color={favorite ? theme.colors.danger : theme.colors.charcoal}
                 />
               </Pressable>
             </View>
@@ -3657,6 +3679,23 @@ export default function BusinessProfileV2() {
         ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <BusinessProfileOverflowMenu
+        visible={overflowMenuVisible}
+        favorite={favorite}
+        canReport={!isBusinessOwner}
+        onClose={() => setOverflowMenuVisible(false)}
+        onShare={handleOverflowShare}
+        onSave={handleOverflowSave}
+        onReport={() => void handleOverflowReport()}
+      />
+
+      <BusinessReportModal
+        visible={reportModalVisible}
+        targetId={reportTargetId}
+        businessTitle={getTitle(business)}
+        onClose={() => setReportModalVisible(false)}
+      />
 
       <Modal visible={!!selectedGalleryImage} transparent animationType="fade">
         <View
