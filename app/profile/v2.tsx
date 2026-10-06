@@ -45,7 +45,12 @@ import {
 } from "../../lib/businessGallery";
 import { BusinessGalleryGrid } from "../../components/business/BusinessGalleryGrid";
 import { BusinessProfileOverflowMenu } from "../../components/business/BusinessProfileOverflowMenu";
+import { BusinessClaimModal } from "../../components/business/BusinessClaimModal";
 import { BusinessReportModal } from "../../components/business/BusinessReportModal";
+import {
+  fetchBusinessClaimStatus,
+  resolveBusinessClaimListingId,
+} from "../../lib/businessClaims";
 import { resolveBusinessReportTargetId } from "../../lib/businessReports";
 import { getBusinessDirectionsQuery } from "../../lib/businessLocation";
 import {
@@ -129,6 +134,7 @@ type Business = {
   is_sponsored?: boolean;
   is_owner?: boolean;
   owner_is_current_user?: boolean;
+  is_unclaimed?: boolean;
   can_edit?: boolean;
   mine?: boolean;
 };
@@ -1205,6 +1211,9 @@ export default function BusinessProfileV2() {
   const [favorite, setFavorite] = useState(false);
   const [overflowMenuVisible, setOverflowMenuVisible] = useState(false);
   const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [claimModalVisible, setClaimModalVisible] = useState(false);
+  const [claimListingUnclaimed, setClaimListingUnclaimed] = useState(false);
+  const [userClaimStatus, setUserClaimStatus] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
     "Overview" | "Photos" | "Services" | "Reviews"
   >("Overview");
@@ -1305,6 +1314,39 @@ export default function BusinessProfileV2() {
       cancelled = true;
     };
   }, [business, verifyCurrentUserOwnsBusiness]);
+
+  const claimListingId = business
+    ? resolveBusinessClaimListingId(business, profileId)
+    : "";
+
+  const refreshClaimEligibility = React.useCallback(async () => {
+    if (!business || !claimListingId) {
+      setClaimListingUnclaimed(false);
+      setUserClaimStatus(null);
+      return;
+    }
+    if (business.is_unclaimed === false) {
+      setClaimListingUnclaimed(false);
+      setUserClaimStatus(null);
+      return;
+    }
+    const statusResult = await fetchBusinessClaimStatus(claimListingId);
+    if (statusResult.ok) {
+      setClaimListingUnclaimed(statusResult.is_unclaimed);
+      setUserClaimStatus(statusResult.user_claim_status);
+    } else if (business.is_unclaimed === true) {
+      setClaimListingUnclaimed(true);
+    }
+  }, [business, claimListingId]);
+
+  useEffect(() => {
+    void refreshClaimEligibility();
+  }, [refreshClaimEligibility]);
+
+  const canShowClaimMenu =
+    isOwnerCheckReady &&
+    !isBusinessOwner &&
+    (claimListingUnclaimed || business?.is_unclaimed === true);
 
   const refreshReviews = async () => {
     const businessReviews = await loadBusinessReviews(profileId);
@@ -2258,6 +2300,48 @@ export default function BusinessProfileV2() {
     setOverflowMenuVisible(false);
     void toggleFavorite();
   };
+
+  const openClaimFlow = async () => {
+    if (!canShowClaimMenu || userClaimStatus === "pending") {
+      if (userClaimStatus === "pending") {
+        Alert.alert(
+          "Claim pending",
+          "You already have a claim request under review for this business."
+        );
+      }
+      return;
+    }
+
+    const userId = await getActiveUserId();
+    if (!userId) {
+      Alert.alert("Login required", "Please log in or register to claim this business.", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Log in",
+          onPress: () =>
+            router.push({
+              pathname: "/login",
+              params: { returnTo: "business-claim", profileId },
+            }),
+        },
+      ]);
+      return;
+    }
+
+    setClaimModalVisible(true);
+  };
+
+  const handleOverflowClaim = () => {
+    setOverflowMenuVisible(false);
+    void openClaimFlow();
+  };
+
+  useEffect(() => {
+    if (String(params?.openClaim || "") !== "1" || !business || !isOwnerCheckReady) {
+      return;
+    }
+    void openClaimFlow();
+  }, [params?.openClaim, business, isOwnerCheckReady]);
 
   const handleOverflowReport = async () => {
     setOverflowMenuVisible(false);
@@ -3684,10 +3768,24 @@ export default function BusinessProfileV2() {
         visible={overflowMenuVisible}
         favorite={favorite}
         canReport={!isBusinessOwner}
+        canClaim={canShowClaimMenu}
+        claimPending={userClaimStatus === "pending"}
         onClose={() => setOverflowMenuVisible(false)}
         onShare={handleOverflowShare}
         onSave={handleOverflowSave}
         onReport={() => void handleOverflowReport()}
+        onClaim={handleOverflowClaim}
+      />
+
+      <BusinessClaimModal
+        visible={claimModalVisible}
+        listingId={claimListingId}
+        businessTitle={getTitle(business)}
+        onClose={() => setClaimModalVisible(false)}
+        onSubmitted={() => {
+          setUserClaimStatus("pending");
+          void refreshClaimEligibility();
+        }}
       />
 
       <BusinessReportModal

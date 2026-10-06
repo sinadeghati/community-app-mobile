@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import authStorage from "./utils/authStorage";
 import { API } from "../lib/api";
 import { formatAuthError, isEmailVerificationRequired } from "../lib/authErrors";
@@ -21,6 +21,10 @@ import { KorookLogo } from "../components/brand/KorookLogo";
 import { theme } from "../lib/theme";
 
 export default function LoginScreen() {
+  const { returnTo, profileId } = useLocalSearchParams<{
+    returnTo?: string;
+    profileId?: string;
+  }>();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -58,7 +62,14 @@ export default function LoginScreen() {
         await prepareSessionForUser(userId, identity);
       }
 
-      router.replace("/(tabs)/explore");
+      if (returnTo === "business-claim" && profileId) {
+        router.replace({
+          pathname: "/profile/v2",
+          params: { id: String(profileId), openClaim: "1" },
+        });
+      } else {
+        router.replace("/(tabs)/explore");
+      }
     } catch (error) {
       if (isEmailVerificationRequired(error)) {
         Alert.alert(

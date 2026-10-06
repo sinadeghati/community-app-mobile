@@ -7,28 +7,35 @@ type BusinessProfileOverflowMenuProps = {
   visible: boolean;
   favorite: boolean;
   canReport: boolean;
+  canClaim?: boolean;
+  claimPending?: boolean;
   onClose: () => void;
   onShare: () => void;
   onSave: () => void;
   onReport: () => void;
+  onClaim?: () => void;
 };
 
 type MenuAction = {
-  key: "share" | "save" | "report";
+  key: "share" | "save" | "claim" | "report";
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
-  tone?: "danger";
+  tone?: "danger" | "muted";
+  disabled?: boolean;
 };
 
 export function BusinessProfileOverflowMenu({
   visible,
   favorite,
   canReport,
+  canClaim = false,
+  claimPending = false,
   onClose,
   onShare,
   onSave,
   onReport,
+  onClaim,
 }: BusinessProfileOverflowMenuProps) {
   const actions: MenuAction[] = [
     {
@@ -44,6 +51,17 @@ export function BusinessProfileOverflowMenu({
       onPress: onSave,
     },
   ];
+
+  if (canClaim) {
+    actions.push({
+      key: "claim",
+      label: claimPending ? "Claim pending" : "Claim this business",
+      icon: claimPending ? "time-outline" : "briefcase-outline",
+      onPress: claimPending ? () => {} : onClaim ?? (() => {}),
+      tone: claimPending ? "muted" : undefined,
+      disabled: claimPending,
+    });
+  }
 
   if (canReport) {
     actions.push({
@@ -95,10 +113,12 @@ export function BusinessProfileOverflowMenu({
 
               <Pressable
                 onPress={action.onPress}
+                disabled={action.disabled}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   paddingVertical: 14,
+                  opacity: action.disabled ? 0.55 : 1,
                 }}
               >
                 <View
@@ -118,7 +138,9 @@ export function BusinessProfileOverflowMenu({
                     color={
                       action.tone === "danger"
                         ? theme.colors.danger
-                        : theme.colors.turquoise
+                        : action.tone === "muted"
+                          ? theme.colors.muted
+                          : theme.colors.turquoise
                     }
                   />
                 </View>
@@ -131,7 +153,9 @@ export function BusinessProfileOverflowMenu({
                     color:
                       action.tone === "danger"
                         ? theme.colors.danger
-                        : theme.colors.charcoal,
+                        : action.tone === "muted"
+                          ? theme.colors.muted
+                          : theme.colors.charcoal,
                   }}
                 >
                   {action.label}
