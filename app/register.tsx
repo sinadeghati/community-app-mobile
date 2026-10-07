@@ -169,6 +169,7 @@ export default function RegisterScreen() {
         routeProfileId: String(profileId),
         serverListingId: String(serverListingId),
         openClaimModal: true,
+        awaitingAuth: true,
       });
     }
   }, [returnTo, profileId, serverListingId]);

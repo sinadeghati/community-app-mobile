@@ -55,6 +55,7 @@ import { fetchBusinessClaimStatus } from "../../lib/businessClaims";
 import {
   clearPendingBusinessClaimReturn,
   consumePendingBusinessClaimReturn,
+  peekPendingBusinessClaimReturn,
   savePendingBusinessClaimReturn,
 } from "../../lib/businessClaimReturnIntent";
 import { resolveBusinessReportTargetId } from "../../lib/businessReports";
@@ -1574,10 +1575,8 @@ export default function BusinessProfileV2() {
     setSubmittingReplyId(null);
     setAddingGalleryPhoto(false);
     setApiConfirmedListingId(null);
-    if (String(params?.openClaim || "") !== "1") {
-      consumedOpenClaimRef.current = false;
-      void clearPendingBusinessClaimReturn();
-    }
+    consumedOpenClaimRef.current = false;
+    void clearPendingBusinessClaimReturn();
     if (!focusUpdates) {
       setActiveTab("Overview");
     }
@@ -2379,6 +2378,7 @@ export default function BusinessProfileV2() {
         routeProfileId: profileId,
         serverListingId: resolution.listingId,
         openClaimModal: true,
+        awaitingAuth: true,
       });
       Alert.alert("Login required", "Please log in or register to claim this business.", [
         { text: "Cancel", style: "cancel" },
@@ -2429,16 +2429,29 @@ export default function BusinessProfileV2() {
     }
   }, [params?.serverListingId]);
 
-  useEffect(() => {
-    if (String(params?.openClaim || "") !== "1" || !business || !isOwnerCheckReady) {
-      return;
-    }
-    if (consumedOpenClaimRef.current) {
-      return;
-    }
-    consumedOpenClaimRef.current = true;
-    void openClaimFlow();
-  }, [params?.openClaim, business, isOwnerCheckReady]);
+  useFocusEffect(
+    React.useCallback(() => {
+      let active = true;
+      void (async () => {
+        if (!business || !isOwnerCheckReady || consumedOpenClaimRef.current) {
+          return;
+        }
+        const pending = await peekPendingBusinessClaimReturn();
+        if (!active || !pending?.authResumeReady) {
+          return;
+        }
+        if (pending.routeProfileId !== profileId) {
+          return;
+        }
+        consumedOpenClaimRef.current = true;
+        setApiConfirmedListingId(pending.serverListingId);
+        void openClaimFlow();
+      })();
+      return () => {
+        active = false;
+      };
+    }, [profileId, business, isOwnerCheckReady])
+  );
 
   const handleOverflowReport = async () => {
     setOverflowMenuVisible(false);

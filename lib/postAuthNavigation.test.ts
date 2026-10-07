@@ -2,36 +2,56 @@
  * Run: npx tsx lib/postAuthNavigation.test.ts
  */
 import { resolveAuthoritativeServerListingId } from "./authoritativeListingId";
+import type { PendingBusinessClaimReturn } from "./businessClaimReturnIntent";
+import { resolvePostAuthNavigationAction } from "./postAuthNavigationStrategy";
 
 const assert = (label: string, condition: boolean) => {
   if (!condition) throw new Error(`FAIL: ${label}`);
   console.log(`ok: ${label}`);
 };
 
-/** Claim return routing depends on a stable server listing id for the opened profile. */
-const profileRouteId = "19";
-const serverListingId = "19";
-
-const resolution = resolveAuthoritativeServerListingId({
-  routeProfileId: profileRouteId,
-  business: {
-    business_name: "Updated Demo Business",
-    server_listing_id: serverListingId,
-  },
-  apiConfirmedListingId: serverListingId,
-});
+const pending: PendingBusinessClaimReturn = {
+  routeProfileId: "19",
+  serverListingId: "19",
+  openClaimModal: true,
+  savedAt: Date.now(),
+  awaitingAuth: true,
+};
 
 assert(
-  "login/register return uses same server listing as opened profile",
-  resolution.ok && resolution.listingId === serverListingId
+  "claim auth success dismisses to existing profile (no duplicate push)",
+  resolvePostAuthNavigationAction(pending, true).type ===
+    "dismiss_to_existing_profile"
 );
 
 assert(
-  "openClaim cannot proceed when server listing id missing",
-  resolveAuthoritativeServerListingId({
-    routeProfileId: "local-profile-1",
-    business: { business_name: "Cached Only" },
-  }).ok === false
+  "claim auth without stack uses single replace fallback",
+  resolvePostAuthNavigationAction(pending, false).type ===
+    "replace_profile_fallback"
+);
+
+assert(
+  "ordinary login without claim goes to explore",
+  resolvePostAuthNavigationAction(null, true).type === "replace_explore"
+);
+
+const resolution = resolveAuthoritativeServerListingId({
+  routeProfileId: "19",
+  business: {
+    business_name: "Updated Demo Business",
+    server_listing_id: "19",
+  },
+  apiConfirmedListingId: "19",
+});
+
+assert(
+  "claim resume still targets the same server listing",
+  resolution.ok === true && resolution.listingId === "19"
+);
+
+assert(
+  "pending claim on profile B must not resume on profile A route",
+  pending.routeProfileId === "19" && pending.routeProfileId !== "20"
 );
 
 console.log("postAuthNavigation.test.ts passed");

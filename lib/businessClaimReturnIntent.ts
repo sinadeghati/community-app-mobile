@@ -7,6 +7,10 @@ export type PendingBusinessClaimReturn = {
   serverListingId: string;
   openClaimModal: boolean;
   savedAt: number;
+  /** Saved before navigating to login/register. */
+  awaitingAuth?: boolean;
+  /** Set after successful auth; profile resumes claim on focus. */
+  authResumeReady?: boolean;
 };
 
 export const savePendingBusinessClaimReturn = async (
@@ -18,6 +22,19 @@ export const savePendingBusinessClaimReturn = async (
   };
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 };
+
+export const markPendingBusinessClaimAuthResumeReady =
+  async (): Promise<void> => {
+    const pending = await peekPendingBusinessClaimReturn();
+    if (!pending) return;
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ...pending,
+        authResumeReady: true,
+      })
+    );
+  };
 
 export const peekPendingBusinessClaimReturn =
   async (): Promise<PendingBusinessClaimReturn | null> => {
