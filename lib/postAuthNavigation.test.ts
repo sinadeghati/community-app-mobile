@@ -1,9 +1,12 @@
 /**
  * Run: npx tsx lib/postAuthNavigation.test.ts
  */
-import { resolveAuthoritativeServerListingId } from "./authoritativeListingId";
 import type { PendingBusinessClaimReturn } from "./businessClaimReturnIntent";
-import { resolvePostAuthNavigationAction } from "./postAuthNavigationStrategy";
+import {
+  resolvePostAuthNavigationAction,
+  simulateLegacyReplaceProfileFallback,
+  simulateStackAfterClaimAuth,
+} from "./postAuthNavigationStrategy";
 
 const assert = (label: string, condition: boolean) => {
   if (!condition) throw new Error(`FAIL: ${label}`);
@@ -18,40 +21,61 @@ const pending: PendingBusinessClaimReturn = {
   awaitingAuth: true,
 };
 
+const exploreToProfileLogin: Array<"tabs" | "profile" | "login"> = [
+  "tabs",
+  "profile",
+  "login",
+];
+
+const dismissAction = resolvePostAuthNavigationAction(pending);
 assert(
-  "claim auth success dismisses to existing profile (no duplicate push)",
-  resolvePostAuthNavigationAction(pending, true).type ===
-    "dismiss_to_existing_profile"
+  "claim auth uses dismissTo profile (not replace)",
+  dismissAction.type === "dismiss_to_profile"
+);
+
+const afterDismiss = simulateStackAfterClaimAuth(exploreToProfileLogin, dismissAction);
+assert(
+  "Explore → Profile → Login becomes Explore → Profile only",
+  afterDismiss.join(">") === "tabs>profile"
+);
+
+const afterLegacyReplace = simulateLegacyReplaceProfileFallback(exploreToProfileLogin);
+assert(
+  "legacy replace fallback duplicated profile (5c00e55 failure mode)",
+  afterLegacyReplace.join(">") === "tabs>profile>profile"
 );
 
 assert(
-  "claim auth without stack uses single replace fallback",
-  resolvePostAuthNavigationAction(pending, false).type ===
-    "replace_profile_fallback"
+  "claim profile href matches Explore (id only, no extra params)",
+  dismissAction.type === "dismiss_to_profile" &&
+    dismissAction.href.params.id === "19" &&
+    !("serverListingId" in dismissAction.href.params)
+);
+
+const afterSingleBack = [...afterDismiss];
+afterSingleBack.pop();
+assert(
+  "one Back from single profile returns to Explore",
+  afterSingleBack.join(">") === "tabs"
+);
+
+const registerStack: Array<"tabs" | "profile" | "verify"> = [
+  "tabs",
+  "profile",
+  "verify",
+];
+const afterVerifyDismiss = simulateStackAfterClaimAuth(
+  registerStack,
+  dismissAction
+);
+assert(
+  "Register verify-email dismisses to existing profile",
+  afterVerifyDismiss.join(">") === "tabs>profile"
 );
 
 assert(
-  "ordinary login without claim goes to explore",
-  resolvePostAuthNavigationAction(null, true).type === "replace_explore"
-);
-
-const resolution = resolveAuthoritativeServerListingId({
-  routeProfileId: "19",
-  business: {
-    business_name: "Updated Demo Business",
-    server_listing_id: "19",
-  },
-  apiConfirmedListingId: "19",
-});
-
-assert(
-  "claim resume still targets the same server listing",
-  resolution.ok === true && resolution.listingId === "19"
-);
-
-assert(
-  "pending claim on profile B must not resume on profile A route",
-  pending.routeProfileId === "19" && pending.routeProfileId !== "20"
+  "ordinary login without claim still replaces explore",
+  resolvePostAuthNavigationAction(null).type === "replace_explore"
 );
 
 console.log("postAuthNavigation.test.ts passed");

@@ -1,9 +1,20 @@
 import { router } from "expo-router";
+import { logClaimNavigation } from "./claimNavigationDebug";
 import {
   markPendingBusinessClaimAuthResumeReady,
   peekPendingBusinessClaimReturn,
 } from "./businessClaimReturnIntent";
-import { resolvePostAuthNavigationAction } from "./postAuthNavigationStrategy";
+import {
+  resolvePostAuthNavigationAction,
+  type ClaimProfileHref,
+} from "./postAuthNavigationStrategy";
+
+const runResetExploreThenProfile = (href: ClaimProfileHref): void => {
+  router.replace("/(tabs)/explore");
+  queueMicrotask(() => {
+    router.push(href);
+  });
+};
 
 /** After login/register/verify, return to pending business claim or default home. */
 export const navigateAfterAuthentication = async (): Promise<void> => {
@@ -12,24 +23,34 @@ export const navigateAfterAuthentication = async (): Promise<void> => {
     await markPendingBusinessClaimAuthResumeReady();
   }
 
-  const action = resolvePostAuthNavigationAction(
-    pending,
-    router.canGoBack()
-  );
+  const action = resolvePostAuthNavigationAction(pending, {
+    profileAlreadyInStack: pending ? true : undefined,
+  });
 
-  if (action.type === "dismiss_to_existing_profile") {
-    router.back();
+  logClaimNavigation("post_auth", {
+    pending: pending
+      ? {
+          routeProfileId: pending.routeProfileId,
+          serverListingId: pending.serverListingId,
+        }
+      : null,
+    action: action.type,
+    canGoBack: router.canGoBack(),
+    canDismiss: router.canDismiss(),
+  });
+
+  if (action.type === "dismiss_to_profile") {
+    try {
+      router.dismissTo(action.href);
+    } catch (error) {
+      logClaimNavigation("dismiss_to_failed", { error: String(error) });
+      runResetExploreThenProfile(action.href);
+    }
     return;
   }
 
-  if (action.type === "replace_profile_fallback") {
-    router.replace({
-      pathname: "/profile/v2",
-      params: {
-        id: action.routeProfileId,
-        serverListingId: action.serverListingId,
-      },
-    });
+  if (action.type === "reset_explore_then_profile") {
+    runResetExploreThenProfile(action.href);
     return;
   }
 
