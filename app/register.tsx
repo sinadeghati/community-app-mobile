@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -12,7 +12,8 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { savePendingBusinessClaimReturn } from "../lib/businessClaimReturnIntent";
 import { API } from "../lib/api";
 import { formatAuthError } from "../lib/authErrors";
 import {
@@ -156,6 +157,21 @@ export default function RegisterScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const { returnTo, profileId, serverListingId } = useLocalSearchParams<{
+    returnTo?: string;
+    profileId?: string;
+    serverListingId?: string;
+  }>();
+
+  useEffect(() => {
+    if (returnTo === "business-claim" && profileId && serverListingId) {
+      void savePendingBusinessClaimReturn({
+        routeProfileId: String(profileId),
+        serverListingId: String(serverListingId),
+        openClaimModal: true,
+      });
+    }
+  }, [returnTo, profileId, serverListingId]);
 
   const strength = useMemo(
     () => evaluatePasswordStrength(password),

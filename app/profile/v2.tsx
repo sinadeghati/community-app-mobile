@@ -48,9 +48,15 @@ import { BusinessProfileOverflowMenu } from "../../components/business/BusinessP
 import { BusinessClaimModal } from "../../components/business/BusinessClaimModal";
 import { BusinessReportModal } from "../../components/business/BusinessReportModal";
 import {
-  fetchBusinessClaimStatus,
-  resolveBusinessClaimListingId,
-} from "../../lib/businessClaims";
+  mergePublicListingFromApi,
+  resolveAuthoritativeServerListingId,
+} from "../../lib/authoritativeListingId";
+import { fetchBusinessClaimStatus } from "../../lib/businessClaims";
+import {
+  clearPendingBusinessClaimReturn,
+  consumePendingBusinessClaimReturn,
+  savePendingBusinessClaimReturn,
+} from "../../lib/businessClaimReturnIntent";
 import { resolveBusinessReportTargetId } from "../../lib/businessReports";
 import { getBusinessDirectionsQuery } from "../../lib/businessLocation";
 import {
@@ -1214,6 +1220,13 @@ export default function BusinessProfileV2() {
   const [claimModalVisible, setClaimModalVisible] = useState(false);
   const [claimListingUnclaimed, setClaimListingUnclaimed] = useState(false);
   const [userClaimStatus, setUserClaimStatus] = useState<string | null>(null);
+  const [apiConfirmedListingId, setApiConfirmedListingId] = useState<string | null>(
+    () => {
+      const fromParams = String(params?.serverListingId || "").trim();
+      return fromParams || null;
+    }
+  );
+  const consumedOpenClaimRef = useRef(false);
   const [activeTab, setActiveTab] = useState<
     "Overview" | "Photos" | "Services" | "Reviews"
   >("Overview");
@@ -1315,9 +1328,15 @@ export default function BusinessProfileV2() {
     };
   }, [business, verifyCurrentUserOwnsBusiness]);
 
-  const claimListingId = business
-    ? resolveBusinessClaimListingId(business, profileId)
-    : "";
+  const claimListingResolution = business
+    ? resolveAuthoritativeServerListingId({
+        routeProfileId: profileId,
+        business,
+        apiConfirmedListingId,
+      })
+    : null;
+  const claimListingId =
+    claimListingResolution?.ok === true ? claimListingResolution.listingId : "";
 
   const refreshClaimEligibility = React.useCallback(async () => {
     if (!business || !claimListingId) {
@@ -1432,27 +1451,18 @@ export default function BusinessProfileV2() {
 
         const localRaw = await AsyncStorage.getItem(`profile_v2_${requestProfileId}`);
         const hadLocalProfile = Boolean(localRaw);
-
-        if (localRaw) {
-          const localBusiness = JSON.parse(localRaw);
-          if (isDisplayableBusinessRecord(localBusiness, deletedIds)) {
-            if (!isStaleRequest()) {
-              const localDisplay = normalizeBusinessCoverForDisplay(
-                localBusiness as Record<string, unknown>
-              ) as Business;
-              setBusiness(localDisplay);
-              setFavorite(await isBusinessFavorited(getId(localBusiness)));
-            }
-            return;
-          }
-        }
+        const routeLooksLikeServerId = /^\d+$/.test(String(requestProfileId || "").trim());
 
         let data: Business | null = null;
 
         try {
           const direct = await API.getListing(requestProfileId);
           if (direct && typeof direct === "object") {
-            data = direct as Business;
+            const localBusiness = localRaw ? JSON.parse(localRaw) : null;
+            data = mergePublicListingFromApi(
+              direct as Record<string, unknown>,
+              localBusiness as Record<string, unknown> | null
+            ) as Business;
           }
         } catch (error: unknown) {
           const status = (error as { response?: { status?: number } })?.response
@@ -1466,6 +1476,34 @@ export default function BusinessProfileV2() {
               hadLocalProfile,
             });
             if (!isStaleRequest()) setBusiness(null);
+            return;
+          }
+        }
+
+        if (data) {
+          const serverId = String(data.id ?? "").trim();
+          if (!isStaleRequest()) {
+            setApiConfirmedListingId(serverId || null);
+            await AsyncStorage.setItem(
+              `profile_v2_${requestProfileId}`,
+              JSON.stringify(data)
+            );
+          }
+        }
+
+        if (!data && localRaw) {
+          const localBusiness = JSON.parse(localRaw);
+          if (isDisplayableBusinessRecord(localBusiness, deletedIds)) {
+            if (!isStaleRequest()) {
+              const localDisplay = normalizeBusinessCoverForDisplay(
+                localBusiness as Record<string, unknown>
+              ) as Business;
+              setBusiness(localDisplay);
+              setFavorite(await isBusinessFavorited(getId(localBusiness)));
+              if (!routeLooksLikeServerId) {
+                setApiConfirmedListingId(null);
+              }
+            }
             return;
           }
         }
@@ -1486,6 +1524,7 @@ export default function BusinessProfileV2() {
           if (!isStaleRequest()) {
             setBusiness(data);
             setFavorite(await isBusinessFavorited(getId(data)));
+            setApiConfirmedListingId(String(data.id ?? "").trim() || null);
           }
           return;
         }
@@ -1534,6 +1573,11 @@ export default function BusinessProfileV2() {
     setSubmittingReview(false);
     setSubmittingReplyId(null);
     setAddingGalleryPhoto(false);
+    setApiConfirmedListingId(null);
+    if (String(params?.openClaim || "") !== "1") {
+      consumedOpenClaimRef.current = false;
+      void clearPendingBusinessClaimReturn();
+    }
     if (!focusUpdates) {
       setActiveTab("Overview");
     }
@@ -2312,22 +2356,64 @@ export default function BusinessProfileV2() {
       return;
     }
 
+    const resolution = business
+      ? resolveAuthoritativeServerListingId({
+          routeProfileId: profileId,
+          business,
+          apiConfirmedListingId,
+        })
+      : null;
+
+    if (!resolution?.ok) {
+      Alert.alert(
+        "Cannot claim yet",
+        resolution?.message ||
+          "This business is not linked to a server listing. Open it from Explore and try again."
+      );
+      return;
+    }
+
     const userId = await getActiveUserId();
     if (!userId) {
+      await savePendingBusinessClaimReturn({
+        routeProfileId: profileId,
+        serverListingId: resolution.listingId,
+        openClaimModal: true,
+      });
       Alert.alert("Login required", "Please log in or register to claim this business.", [
         { text: "Cancel", style: "cancel" },
+        {
+          text: "Register",
+          onPress: () =>
+            router.push({
+              pathname: "/register",
+              params: {
+                returnTo: "business-claim",
+                profileId,
+                serverListingId: resolution.listingId,
+              },
+            }),
+        },
         {
           text: "Log in",
           onPress: () =>
             router.push({
               pathname: "/login",
-              params: { returnTo: "business-claim", profileId },
+              params: {
+                returnTo: "business-claim",
+                profileId,
+                serverListingId: resolution.listingId,
+              },
             }),
         },
       ]);
       return;
     }
 
+    await consumePendingBusinessClaimReturn({
+      routeProfileId: profileId,
+      serverListingId: resolution.listingId,
+    });
     setClaimModalVisible(true);
   };
 
@@ -2337,9 +2423,20 @@ export default function BusinessProfileV2() {
   };
 
   useEffect(() => {
+    const serverFromParams = String(params?.serverListingId || "").trim();
+    if (serverFromParams) {
+      setApiConfirmedListingId(serverFromParams);
+    }
+  }, [params?.serverListingId]);
+
+  useEffect(() => {
     if (String(params?.openClaim || "") !== "1" || !business || !isOwnerCheckReady) {
       return;
     }
+    if (consumedOpenClaimRef.current) {
+      return;
+    }
+    consumedOpenClaimRef.current = true;
     void openClaimFlow();
   }, [params?.openClaim, business, isOwnerCheckReady]);
 

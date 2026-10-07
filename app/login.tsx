@@ -18,13 +18,16 @@ import authStorage from "./utils/authStorage";
 import { API } from "../lib/api";
 import { formatAuthError, isEmailVerificationRequired } from "../lib/authErrors";
 import { KorookLogo } from "../components/brand/KorookLogo";
+import { navigateAfterAuthentication } from "../lib/postAuthNavigation";
 import { theme } from "../lib/theme";
 
 export default function LoginScreen() {
-  const { returnTo, profileId } = useLocalSearchParams<{
+  const params = useLocalSearchParams<{
     returnTo?: string;
     profileId?: string;
+    serverListingId?: string;
   }>();
+  const { returnTo, profileId } = params;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -62,14 +65,7 @@ export default function LoginScreen() {
         await prepareSessionForUser(userId, identity);
       }
 
-      if (returnTo === "business-claim" && profileId) {
-        router.replace({
-          pathname: "/profile/v2",
-          params: { id: String(profileId), openClaim: "1" },
-        });
-      } else {
-        router.replace("/(tabs)/explore");
-      }
+      await navigateAfterAuthentication();
     } catch (error) {
       if (isEmailVerificationRequired(error)) {
         Alert.alert(
@@ -170,7 +166,18 @@ export default function LoginScreen() {
           </Pressable>
 
           <Pressable
-            onPress={() => router.push("/register")}
+            onPress={() =>
+              router.push({
+                pathname: "/register",
+                params: {
+                  returnTo: returnTo || "",
+                  profileId: profileId || "",
+                  serverListingId: String(
+                    (params as { serverListingId?: string }).serverListingId || ""
+                  ),
+                },
+              })
+            }
             style={styles.footerLink}
           >
             <Text style={styles.footerText}>Create account</Text>

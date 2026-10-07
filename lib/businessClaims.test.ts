@@ -5,6 +5,7 @@ import {
   classifyClaimSubmitError,
   resolveBusinessClaimListingId,
 } from "./businessClaimsRules";
+import { resolveAuthoritativeServerListingId } from "./authoritativeListingId";
 
 const assert = (label: string, condition: boolean) => {
   if (!condition) {
@@ -14,9 +15,21 @@ const assert = (label: string, condition: boolean) => {
 };
 
 assert(
-  "uses server listing id for claims",
-  resolveBusinessClaimListingId({ server_listing_id: 99, id: "local" }, "local") ===
+  "uses api-confirmed server listing id for claims",
+  resolveBusinessClaimListingId(
+    { server_listing_id: 99, id: "local" },
+    "local",
     "99"
+  ) === "99"
+);
+
+assert(
+  "claim from business A cannot use business B id",
+  resolveAuthoritativeServerListingId({
+    routeProfileId: "19",
+    business: { server_listing_id: 19, business_name: "A" },
+    apiConfirmedListingId: "20",
+  }).ok === false
 );
 
 assert(

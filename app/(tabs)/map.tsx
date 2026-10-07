@@ -30,7 +30,8 @@ import {
 } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
+import MapView, { Marker, Region } from "react-native-maps";
+import { getNativeMapProvider } from "../../lib/mapProvider";
 import {
   buildMapDisplay,
   clampMapRegion,
@@ -2400,6 +2401,8 @@ export default function MapScreenV25() {
     );
   }
 
+  const nativeMapProvider = getNativeMapProvider();
+
   return (
     <View
       style={{ flex: 1, backgroundColor: theme.colors.ivory }}
@@ -2409,7 +2412,7 @@ export default function MapScreenV25() {
         <MapView
           key={MAP_SURFACE_KEY}
           ref={mapRef}
-          provider={PROVIDER_GOOGLE}
+          {...(nativeMapProvider ? { provider: nativeMapProvider } : {})}
           style={{
             width: mapLayout.width,
             height: mapLayout.height,

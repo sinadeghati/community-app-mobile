@@ -1,6 +1,6 @@
-import { router } from "expo-router";
 import authStorage from "../app/utils/authStorage";
 import { API } from "./api";
+import { navigateAfterAuthentication } from "./postAuthNavigation";
 
 type CompleteSessionInput = {
   username: string;
@@ -59,5 +59,5 @@ export async function completeAuthSessionAndGoToProfile(
   if (!ok) {
     throw new Error("session_incomplete");
   }
-  router.replace("/(tabs)/profile");
+  await navigateAfterAuthentication();
 }

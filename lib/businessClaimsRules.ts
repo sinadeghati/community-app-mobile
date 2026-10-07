@@ -1,4 +1,7 @@
-import { resolveBusinessReportTargetId } from "./businessReportsRules";
+import {
+  resolveAuthoritativeServerListingId,
+  type ListingIdentityFields,
+} from "./authoritativeListingId";
 
 export type BusinessClaimSubmitPayload = {
   listingId: string;
@@ -36,13 +39,28 @@ export const BUSINESS_CLAIM_REVIEW_NOTICE =
   "Submitting a claim does not grant ownership immediately. Korook will review your request.";
 
 export const resolveBusinessClaimListingId = (
-  business: {
-    id?: string | number;
-    server_listing_id?: string | number;
-    listing_id?: string | number;
-  },
-  profileId?: string
-): string => resolveBusinessReportTargetId(business, profileId);
+  business: ListingIdentityFields,
+  profileId?: string,
+  apiConfirmedListingId?: string | null
+): string => {
+  const resolution = resolveAuthoritativeServerListingId({
+    routeProfileId: profileId,
+    business,
+    apiConfirmedListingId,
+  });
+  return resolution.ok ? resolution.listingId : "";
+};
+
+export const resolveBusinessClaimListingIdStrict = (
+  business: ListingIdentityFields,
+  profileId?: string,
+  apiConfirmedListingId?: string | null
+) =>
+  resolveAuthoritativeServerListingId({
+    routeProfileId: profileId,
+    business,
+    apiConfirmedListingId,
+  });
 
 const readDetail = (data: unknown): string => {
   if (!data || typeof data !== "object") return "";

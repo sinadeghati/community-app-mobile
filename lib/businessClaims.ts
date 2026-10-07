@@ -75,8 +75,13 @@ export const submitBusinessClaim = async (
   }
 
   const listingId = String(payload.listingId || "").trim();
-  if (!listingId) {
-    return { ok: false, kind: "validation", message: "Missing business id." };
+  if (!listingId || !/^\d+$/.test(listingId)) {
+    return {
+      ok: false,
+      kind: "validation",
+      message:
+        "This business is not linked to a valid server listing. Refresh the profile and try again.",
+    };
   }
 
   try {

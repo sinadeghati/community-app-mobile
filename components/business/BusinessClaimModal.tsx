@@ -13,7 +13,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BUSINESS_CLAIM_REVIEW_NOTICE,
