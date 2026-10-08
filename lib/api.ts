@@ -230,6 +230,16 @@ export const API = {
     return res.data;
   },
 
+  async getMyEvents() {
+    const res = await client.get("/events/mine/");
+    return res.data;
+  },
+
+  async getEvent(id: string | number) {
+    const res = await client.get(`/events/${id}/`);
+    return res.data;
+  },
+
   getMyListings: async () => {
     const res = await client.get("/my-listing/");
     return res.data;

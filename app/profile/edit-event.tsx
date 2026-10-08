@@ -284,10 +284,8 @@ export default function EditEventScreen() {
       }
 
       Alert.alert(
-        result.apiSynced ? "Event updated" : "Event saved",
-        result.apiSynced
-          ? "Your changes have been saved."
-          : "Your changes were saved on this device."
+        "Event updated",
+        "Your event has been updated successfully."
       );
 
       router.replace({

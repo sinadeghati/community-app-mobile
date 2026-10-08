@@ -231,10 +231,8 @@ export default function CreateEventScreen() {
       }
 
       Alert.alert(
-        result.apiSynced ? "Event created" : "Event saved",
-        result.apiSynced
-          ? "Your event has been created successfully."
-          : "Your event was saved on this device and will appear in Explore."
+        "Event created",
+        "Your event has been created successfully."
       );
 
       router.replace({

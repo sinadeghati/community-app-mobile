@@ -38,6 +38,7 @@ import {
 } from "../../lib/userSessionStorage";
 import * as ImagePicker from "expo-image-picker";
 import { countCommunityEventsForOwner } from "../../lib/communityEvents";
+import { MY_EVENTS_REFRESH_EVENT } from "../../lib/discoverListingsRefresh";
 import { countSavedFavorites } from "../../lib/favoritesCount";
 import { FAVORITES_CHANGED_EVENT } from "../../lib/favoritesRefresh";
 import { resolveProfileDisplayName } from "../../lib/profileDisplay";
@@ -219,11 +220,18 @@ export default function ProfileV2Clean() {
         ensureUserSwitchReset(userId);
       }
     );
+    const myEventsSubscription = DeviceEventEmitter.addListener(
+      MY_EVENTS_REFRESH_EVENT,
+      () => {
+        void syncMyEventsCount();
+      }
+    );
     return () => {
       favoritesSubscription.remove();
       sessionSubscription.remove();
+      myEventsSubscription.remove();
     };
-  }, [syncFavoritesCount]);
+  }, [syncFavoritesCount, syncMyEventsCount]);
 
   const identityFromProfile = (record: Record<string, unknown> | null) => ({
     username: String(record?.username || "").trim() || undefined,

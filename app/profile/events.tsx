@@ -17,6 +17,8 @@ import {
 } from "../../lib/communityEvents";
 import { formatEventDateTime, formatEventHostLine } from "../../lib/mapEventDetails";
 import { getActiveUserId } from "../../lib/userSessionStorage";
+import { MY_EVENTS_REFRESH_EVENT } from "../../lib/discoverListingsRefresh";
+import { DeviceEventEmitter } from "react-native";
 
 export default function EventsScreen() {
   const insets = useSafeAreaInsets();
@@ -43,6 +45,15 @@ export default function EventsScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadEvents();
+    }, [loadEvents])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = DeviceEventEmitter.addListener(MY_EVENTS_REFRESH_EVENT, () => {
+        void loadEvents();
+      });
+      return () => sub.remove();
     }, [loadEvents])
   );
 
