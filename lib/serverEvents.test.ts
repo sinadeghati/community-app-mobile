@@ -2,7 +2,8 @@
  * Run: npx tsx lib/serverEvents.test.ts
  */
 import { isServerEventId } from "./serverEventIds";
-import { mapApiEventToCommunityEvent, buildServerEventPayload } from "./serverEvents";
+import { mapApiEventToCommunityEvent } from "./serverEventMapping";
+import { buildServerEventPayload } from "./serverEventPayload";
 const assert = (label: string, condition: boolean) => {
   if (!condition) throw new Error(`FAIL: ${label}`);
   console.log(`ok: ${label}`);
