@@ -1,6 +1,7 @@
 import { Alert, Linking, Platform } from "react-native";
 import { openBrowserAsync, WebBrowserPresentationStyle } from "expo-web-browser";
 import type { EventMapItem } from "./mapEvents";
+import { normalizeTicketUrl } from "./eventTicketUrl";
 
 export type TicketProvider =
   | "eventbrite"

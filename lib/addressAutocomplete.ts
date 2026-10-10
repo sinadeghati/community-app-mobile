@@ -325,6 +325,10 @@ const buildAddressSearchQuery = (
     return trimmed;
   }
 
+  if (city || state) {
+    return trimmed;
+  }
+
   if (
     !/\b(ca|california)\b/i.test(trimmed) &&
     !/\b(san diego|la jolla|chula vista|escondido)\b/i.test(trimmed)
@@ -360,6 +364,16 @@ const appendViewboxParams = (
   params.set("bounded", "0");
 };
 
+export class GeocodeSuggestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "GeocodeSuggestError";
+    this.status = status;
+  }
+}
+
 const fetchGeocodeResults = async (
   params: URLSearchParams
 ): Promise<NominatimResult[]> => {
@@ -372,15 +386,48 @@ const fetchGeocodeResults = async (
     }
   );
 
-  if (response.status === 429 || response.status === 502) {
-    return [];
+  if (response.status === 429) {
+    throw new GeocodeSuggestError(
+      "Address search is temporarily busy. Try again in a moment.",
+      429
+    );
   }
 
-  if (!response.ok) return [];
+  if (response.status === 502) {
+    throw new GeocodeSuggestError(
+      "Address search is unavailable right now. You can still enter the address manually.",
+      502
+    );
+  }
+
+  if (!response.ok) {
+    throw new GeocodeSuggestError(
+      "Could not load address suggestions. Check your connection or enter the address manually.",
+      response.status
+    );
+  }
 
   const payload = (await response.json()) as NominatimResult[] | { detail?: string };
-  if (!Array.isArray(payload)) return [];
+  if (!Array.isArray(payload)) {
+    const detail =
+      typeof payload === "object" && payload && "detail" in payload
+        ? String((payload as { detail?: string }).detail || "")
+        : "";
+    throw new GeocodeSuggestError(
+      detail || "Address search returned an unexpected response.",
+      response.status
+    );
+  }
   return payload;
+};
+
+const isUnitedStatesResult = (result: NominatimResult) => {
+  const country = String(
+    (result.address as { country_code?: string })?.country_code || ""
+  ).toLowerCase();
+  if (country === "us") return true;
+  const display = String(result.display_name || "").toLowerCase();
+  return display.includes("united states");
 };
 
 const applyHouseNumberFromQuery = (
@@ -499,6 +546,7 @@ const resultsToAddressSuggestions = (
   const seenLabels = new Set<string>();
 
   for (const result of results) {
+    if (!isUnitedStatesResult(result)) continue;
     const baseParsed = parseNominatimResult(result);
     if (!baseParsed) continue;
 
@@ -654,8 +702,14 @@ export const searchAddressSuggestions = async (
     }
 
     return resultsToAddressSuggestions(ranked, houseCtx).slice(0, 6);
-  } catch {
-    return [];
+  } catch (error) {
+    if (error instanceof GeocodeSuggestError) {
+      throw error;
+    }
+    throw new GeocodeSuggestError(
+      "Could not load address suggestions. Check your connection or enter the address manually.",
+      0
+    );
   }
 };
 

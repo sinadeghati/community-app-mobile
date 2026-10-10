@@ -55,6 +55,8 @@ export function EventAddressFields({
         variant="create"
         label="Street Address"
         value={streetAddress}
+        city={city}
+        state={state}
         onChangeText={onStreetAddressChange}
         onAddressSelected={onAddressSelected}
         placeholder="Start typing your street address"

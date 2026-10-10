@@ -51,14 +51,12 @@ export const buildServerEventPayload = (
     Number.isFinite(input.latitude) &&
     Number.isFinite(input.longitude);
 
-  return {
+  const payload: Record<string, unknown> = {
     title,
     description: input.description?.trim() || "",
     category: defaultCategory,
     starts_at: eventDate,
     eventDateIso: eventDate,
-    ends_at: endDate || null,
-    endDateIso: endDate || null,
     location,
     address: formatEventAddress({
       streetAddress,
@@ -79,6 +77,13 @@ export const buildServerEventPayload = (
     business_id: Number.isFinite(businessId) ? businessId : null,
     is_public: input.isPublic !== false,
   };
+
+  if (endDate) {
+    payload.ends_at = endDate;
+    payload.endDateIso = endDate;
+  }
+
+  return payload;
 };
 
 export const validateCommunityEventInput = (

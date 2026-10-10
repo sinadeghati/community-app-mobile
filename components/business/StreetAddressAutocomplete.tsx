@@ -64,11 +64,13 @@ export function StreetAddressAutocomplete({
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [searchBias, setSearchBias] = useState<AddressSearchBias>(
     SAN_DIEGO_ADDRESS_BIAS
   );
   const skipNextSearchRef = useRef(false);
   const requestIdRef = useRef(0);
+  const selectionTokenRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,15 +102,17 @@ export function StreetAddressAutocomplete({
     }
 
     const query = value.trim();
-    if (query.length < 3) {
+    if (query.length < 4) {
       setSuggestions([]);
       setLoading(false);
       setShowSuggestions(false);
+      setSearchError("");
       return;
     }
 
     const requestId = ++requestIdRef.current;
     setLoading(true);
+    setSearchError("");
 
     const timer = setTimeout(() => {
       void searchAddressSuggestions(query, {
@@ -118,20 +122,31 @@ export function StreetAddressAutocomplete({
       })
         .then((results) => {
           if (requestId !== requestIdRef.current) return;
+          if (selectionTokenRef.current !== 0) return;
           setSuggestions(results);
           setShowSuggestions(results.length > 0);
+          if (!results.length) {
+            setSearchError(
+              "No matching U.S. addresses found. Try adding a house number or enter the address manually."
+            );
+          }
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           if (requestId !== requestIdRef.current) return;
           setSuggestions([]);
           setShowSuggestions(false);
+          setSearchError(
+            error instanceof Error
+              ? error.message
+              : "Could not load address suggestions."
+          );
         })
         .finally(() => {
           if (requestId === requestIdRef.current) {
             setLoading(false);
           }
         });
-    }, 350);
+    }, 400);
 
     return () => {
       clearTimeout(timer);
@@ -140,9 +155,16 @@ export function StreetAddressAutocomplete({
 
   const handleSelect = (suggestion: AddressSuggestion) => {
     skipNextSearchRef.current = true;
+    selectionTokenRef.current += 1;
+    requestIdRef.current += 1;
     setShowSuggestions(false);
     setSuggestions([]);
+    setSearchError("");
     onAddressSelected(suggestion.parsed);
+    onChangeText(suggestion.parsed.streetAddress || suggestion.parsed.formatted);
+    setTimeout(() => {
+      selectionTokenRef.current = 0;
+    }, 600);
   };
 
   return (
@@ -207,6 +229,19 @@ export function StreetAddressAutocomplete({
           <ActivityIndicator size="small" color={colors.accent} />
         ) : null}
       </View>
+
+      {searchError ? (
+        <Text
+          style={{
+            fontSize: 13,
+            color: "#B45309",
+            marginTop: 8,
+            lineHeight: 18,
+          }}
+        >
+          {searchError}
+        </Text>
+      ) : null}
 
       {helperText ? (
         <Text
