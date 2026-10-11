@@ -50,7 +50,9 @@ export default function EditEventScreen() {
   const [longitude, setLongitude] = useState<number | null>(null);
   const [initialEventIso, setInitialEventIso] = useState<string | undefined>();
   const [initialEndEventIso, setInitialEndEventIso] = useState<string | undefined>();
-  const [flyerImage, setFlyerImage] = useState<string | null>(null);
+  const [remoteFlyerUrl, setRemoteFlyerUrl] = useState<string | null>(null);
+  const [flyerLocalUri, setFlyerLocalUri] = useState<string | null>(null);
+  const flyerPreview = flyerLocalUri || remoteFlyerUrl;
   const [ticketUrl, setTicketUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -175,7 +177,8 @@ export default function EditEventScreen() {
         const existingFlyer = String(
           event.cover_image || event.image || event.image_url || ""
         ).trim();
-        setFlyerImage(existingFlyer || null);
+        setRemoteFlyerUrl(existingFlyer || null);
+        setFlyerLocalUri(null);
         eventDateRef.current = {
           eventDateIso: event.event_date,
           dateText: "",
@@ -230,7 +233,7 @@ export default function EditEventScreen() {
     });
 
     if (!result.canceled && result.assets[0]?.uri) {
-      setFlyerImage(result.assets[0].uri);
+      setFlyerLocalUri(result.assets[0].uri);
     }
   };
 
@@ -268,8 +271,8 @@ export default function EditEventScreen() {
           endTime: eventDateRef.current.endTimeText,
           endDateIso: eventDateRef.current.endDateIso ?? undefined,
           ticketUrl: ticketUrl.trim() || undefined,
-          image: flyerImage || undefined,
-          cover_image: flyerImage || undefined,
+          image: flyerLocalUri || undefined,
+          cover_image: flyerLocalUri || undefined,
         },
         {
           eventId,
@@ -447,13 +450,13 @@ export default function EditEventScreen() {
                 }}
               >
                 <Image
-                  source={{ uri: flyerImage || EVENT_FALLBACK_COVER }}
+                  source={{ uri: flyerPreview || EVENT_FALLBACK_COVER }}
                   style={{ width: "100%", height: 160 }}
                   resizeMode="cover"
                 />
                 <View style={{ padding: 12, alignItems: "center" }}>
                   <Text style={{ color: "#14B8A6", fontWeight: "800" }}>
-                    {flyerImage ? t("event.changeFlyer") : t("event.uploadFlyer")}
+                    {flyerPreview ? t("event.changeFlyer") : t("event.uploadFlyer")}
                   </Text>
                 </View>
               </Pressable>

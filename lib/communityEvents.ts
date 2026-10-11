@@ -222,14 +222,20 @@ export const saveCommunityEvent = async (
     organizer: options?.organizer,
   });
 
+  const { pickLocalEventCoverUri } = await import("./serverEventMultipart");
+  const coverImageUri = pickLocalEventCoverUri(
+    input.cover_image,
+    input.image
+  );
+
   const eventId = options?.eventId?.trim();
   const isUpdate = Boolean(eventId && isServerEventId(eventId));
 
   try {
     const { API } = await import("./api");
     const row = isUpdate
-      ? await API.updateEvent(eventId!, payload)
-      : await API.createEvent(payload);
+      ? await API.updateEvent(eventId!, payload, { coverImageUri })
+      : await API.createEvent(payload, { coverImageUri });
     const normalized = normalizeEventRecord(mapApiEventToCommunityEvent(row));
     logEventSaved(normalized);
     const { saveMapEventSnapshot } = await import("./mapEventDetails");

@@ -210,12 +210,49 @@ export const API = {
     return true;
   },
 
-  async createEvent(payload: Record<string, unknown>) {
+  async createEvent(
+    payload: Record<string, unknown>,
+    options?: { coverImageUri?: string | null }
+  ) {
+    const {
+      appendEventFieldsToFormData,
+      buildEventCoverFilePart,
+      isLocalEventMediaUri,
+    } = await import("./serverEventMultipart");
+    const coverUri = String(options?.coverImageUri || "").trim();
+    if (isLocalEventMediaUri(coverUri)) {
+      const formData = new FormData();
+      appendEventFieldsToFormData(formData, payload);
+      formData.append("cover_image", buildEventCoverFilePart(coverUri) as any);
+      const res = await client.post("/events/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return res.data;
+    }
     const res = await client.post("/events/", payload);
     return res.data;
   },
 
-  async updateEvent(id: string, payload: Record<string, unknown>) {
+  async updateEvent(
+    id: string,
+    payload: Record<string, unknown>,
+    options?: { coverImageUri?: string | null }
+  ) {
+    const {
+      appendEventFieldsToFormData,
+      buildEventCoverFilePart,
+      isLocalEventMediaUri,
+    } = await import("./serverEventMultipart");
+    const coverUri = String(options?.coverImageUri || "").trim();
+    if (isLocalEventMediaUri(coverUri)) {
+      const formData = new FormData();
+      appendEventFieldsToFormData(formData, payload);
+      formData.append("cover_image", buildEventCoverFilePart(coverUri) as any);
+      const res = await client.patch(`/events/${id}/`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return res.data;
+    }
     const res = await client.patch(`/events/${id}/`, payload);
     return res.data;
   },
