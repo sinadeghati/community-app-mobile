@@ -44,6 +44,8 @@ import {
   type MapMarkerDisplay,
   type ResolvedMapPoint,
 } from "../../lib/mapCoordinates";
+import { getClusterMarkerKey, getMapMarkerKey } from "../../lib/mapMarkers";
+import { syncMapRegionState } from "../../lib/mapRegionSync";
 import {
   APP_LOCATION_CHANGED_EVENT,
   DEFAULT_APP_LOCATION,
@@ -870,12 +872,6 @@ const snapKindFromHeight = (height: number): MapSheetSnap => {
   return "expanded";
 };
 
-const regionsAreSimilar = (a: Region, b: Region) =>
-  Math.abs(a.latitude - b.latitude) < 0.0001 &&
-  Math.abs(a.longitude - b.longitude) < 0.0001 &&
-  Math.abs(a.latitudeDelta - b.latitudeDelta) < 0.0001 &&
-  Math.abs(a.longitudeDelta - b.longitudeDelta) < 0.0001;
-
 function useMapBottomSheet(initialHeight: number) {
   const sheetHeight = useRef(new Animated.Value(initialHeight)).current;
   const dragStartHeight = useRef(initialHeight);
@@ -1052,14 +1048,16 @@ type MapClusterMarkerProps = {
 
 const MapClusterMarker = memo(function MapClusterMarker({
   cluster,
+  clusterKey,
   onPress,
-}: MapClusterMarkerProps) {
-  const visualSignature = `${cluster.id}:${cluster.count}`;
+}: MapClusterMarkerProps & { clusterKey: string }) {
+  const visualSignature = clusterKey;
   const { tracksViewChanges, handleMarkerContentLayout } =
     useAndroidMarkerViewTracking(visualSignature, false);
 
   return (
     <Marker
+      identifier={clusterKey}
       coordinate={{
         latitude: cluster.latitude,
         longitude: cluster.longitude,
@@ -1113,10 +1111,11 @@ type MapPointMarkerProps = {
 
 const MapPointMarker = memo(function MapPointMarker({
   point,
+  markerKey,
   isActive,
   activeUpdate,
   onPress,
-}: MapPointMarkerProps) {
+}: MapPointMarkerProps & { markerKey: string }) {
   const item = point.item;
   const kind = getListingMarkerKind(item);
   const visual = isMapEvent(item)
@@ -1124,7 +1123,7 @@ const MapPointMarker = memo(function MapPointMarker({
     : MARKER_VISUALS[kind];
   const pinSize = isActive ? 34 : 30;
   const iconSize = isActive ? 15 : 13;
-  const visualSignature = `${getId(item)}:${isActive ? 1 : 0}:${
+  const visualSignature = `${markerKey}:${isActive ? 1 : 0}:${
     activeUpdate ? "update" : "plain"
   }:${kind}`;
   const { tracksViewChanges, handleMarkerContentLayout } =
@@ -1132,6 +1131,7 @@ const MapPointMarker = memo(function MapPointMarker({
 
   return (
     <Marker
+      identifier={markerKey}
       coordinate={{
         latitude: point.latitude,
         longitude: point.longitude,
@@ -1301,7 +1301,7 @@ export default function MapScreenV25() {
     if (tooWide) {
       setViewportDirty(false);
     }
-    setMapRegion((prev) => (regionsAreSimilar(prev, clamped) ? prev : clamped));
+    setMapRegion((prev) => syncMapRegionState(prev, clamped));
   }, []);
 
   const resolveViewportRegion = useCallback(
@@ -1492,7 +1492,7 @@ export default function MapScreenV25() {
     const pending = pendingMapRegionRef.current;
     if (!pending) return;
     pendingMapRegionRef.current = null;
-    setMapRegion((prev) => (regionsAreSimilar(prev, pending) ? prev : pending));
+    setMapRegion((prev) => syncMapRegionState(prev, pending));
   }, []);
 
   const clearSelectedMapItem = useCallback(() => {
@@ -1896,10 +1896,9 @@ export default function MapScreenV25() {
 
     if (businessPreviewOpenRef.current) {
       pendingMapRegionRef.current = clamped;
-      return;
     }
 
-    setMapRegion((prev) => (regionsAreSimilar(prev, clamped) ? prev : clamped));
+    setMapRegion((prev) => syncMapRegionState(prev, clamped));
 
     if (tooWide) {
       setViewportDirty(false);
@@ -1909,6 +1908,17 @@ export default function MapScreenV25() {
     if (!suppressViewportDirtyRef.current) {
       setViewportDirty(true);
     }
+  }, []);
+
+  const handleMapRegionChange = useCallback((region: Region) => {
+    if (regionExceedsMapLimits(region)) return;
+
+    const clamped = clampMapRegion(region);
+    mapRegionRef.current = clamped;
+
+    const tooWide = isMapRegionTooWideForNearby(clamped);
+    setRegionTooWideForNearby((prev) => (prev === tooWide ? prev : tooWide));
+    setMapRegion((prev) => syncMapRegionState(prev, clamped));
   }, []);
 
   const handleMapRegionChangeComplete = useCallback(
@@ -2423,19 +2433,30 @@ export default function MapScreenV25() {
           showsUserLocation
           showsMyLocationButton={false}
           onMapReady={handleMapReady}
+          onRegionChange={handleMapRegionChange}
           onRegionChangeComplete={handleMapRegionChangeComplete}
           onPress={(e) => handleMapBackgroundPress(e.nativeEvent?.action)}
         >
           {mapDisplay.map((entry) =>
             entry.type === "cluster" ? (
               <MapClusterMarker
-                key={`cluster-${entry.id}`}
+                key={getClusterMarkerKey(
+                  entry.id,
+                  entry.count,
+                  mapRegion.latitudeDelta
+                )}
+                clusterKey={getClusterMarkerKey(
+                  entry.id,
+                  entry.count,
+                  mapRegion.latitudeDelta
+                )}
                 cluster={entry}
                 onPress={handleClusterPress}
               />
             ) : (
               <MapPointMarker
-                key={`marker-${getId(entry.point.item)}`}
+                key={getMapMarkerKey(entry.point.item)}
+                markerKey={getMapMarkerKey(entry.point.item)}
                 point={entry.point}
                 isActive={selectedMarkerId === getId(entry.point.item)}
                 activeUpdate={
