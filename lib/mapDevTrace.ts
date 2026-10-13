@@ -5,7 +5,11 @@ import {
   normalizeMapDisplayClusters,
 } from "./mapRegionGesture";
 import { buildMapDisplay, resolveMapPoints } from "./mapCoordinates";
-import { filterItemsForMapMarkers, buildResolvedMapPointIndex } from "./mapMarkerVisibility";
+import {
+  filterItemsForMapMarkers,
+  buildResolvedMapPointIndex,
+} from "./mapMarkerVisibility";
+import { findLostClusterLeafKeys } from "./mapClusterInvariant";
 import type { DiscoverableListing } from "./discoverableListings";
 import { getListingId, isEventListing } from "./discoverableListings";
 
@@ -18,6 +22,7 @@ export type MapPipelineTrace = {
   clusterInputIds: string[];
   renderedKeys: string[];
   missingFromRender: string[];
+  clusterInvariantMissing: string[];
 };
 
 let traceSeq = 0;
@@ -32,9 +37,12 @@ export const traceMapMarkerPipeline = (
   const pointIndex = buildResolvedMapPointIndex(items);
   const markerItems = filterItemsForMapMarkers(items, region, pointIndex);
   const markerEligibleIds = markerItems.map((item) => getListingId(item));
-  const points = resolveMapPoints(markerItems);
-  const clusterInputIds = points.map((point) => getMapMarkerKey(point.item));
-  const built = buildMapDisplay(points, region, { gateTooWide: false });
+  const clusterInputPoints = resolveMapPoints(items);
+  const clusterInputIds = clusterInputPoints.map((point) =>
+    getMapMarkerKey(point.item)
+  );
+  const viewportOnlyIds = markerEligibleIds;
+  const built = buildMapDisplay(clusterInputPoints, region, { gateTooWide: false });
   const normalized = normalizeMapDisplayClusters(built, (item) =>
     getMapMarkerKey(item as DiscoverableListing)
   );
@@ -44,12 +52,11 @@ export const traceMapMarkerPipeline = (
     )
   );
   const renderedIdSet = new Set(renderedKeys);
-  const missingFromRender = markerEligibleIds.filter((id) => {
-    const item = markerItems.find((row) => getListingId(row) === id);
-    if (!item) return true;
-    const key = getMapMarkerKey(item);
-    return !renderedIdSet.has(key);
-  });
+  const missingFromRender = clusterInputIds.filter((key) => !renderedIdSet.has(key));
+  const clusterInvariantMissing = findLostClusterLeafKeys(
+    clusterInputPoints,
+    normalized
+  );
 
   const trace: MapPipelineTrace = {
     seq,
@@ -61,13 +68,14 @@ export const traceMapMarkerPipeline = (
       longitudeDelta: region.longitudeDelta,
     },
     storedIds,
-    markerEligibleIds,
+    markerEligibleIds: viewportOnlyIds,
     clusterInputIds,
     renderedKeys,
     missingFromRender,
+    clusterInvariantMissing,
   };
 
-  if (__DEV__ && missingFromRender.length > 0) {
+  if (__DEV__ && (missingFromRender.length > 0 || clusterInvariantMissing.length > 0)) {
     console.log("[map-trace] marker pipeline loss", trace);
   }
 

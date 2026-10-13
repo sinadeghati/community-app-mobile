@@ -57,6 +57,10 @@ export const listingPointWithinMapRegion = (
   return isWithinBounds(point.latitude, point.longitude, bounds);
 };
 
+/**
+ * Viewport-only filter (diagnostics/tests). Do not use for map marker eligibility —
+ * zooming in can drop cluster members that are still part of a visible cluster.
+ */
 export const filterItemsForMapMarkers = (
   items: DiscoverableListing[],
   region: Region,

@@ -95,10 +95,10 @@ import {
   requestDiscoverListingsRefresh,
 } from "../../lib/discoverListingsRefresh";
 import { mergeDiscoverableListingsById } from "../../lib/mapDiscoverableMerge";
+import { buildResolvedMapPointIndex } from "../../lib/mapMarkerVisibility";
 import {
-  buildResolvedMapPointIndex,
-  filterItemsForMapMarkers,
-} from "../../lib/mapMarkerVisibility";
+  findLostClusterLeafKeys,
+} from "../../lib/mapClusterInvariant";
 import { logMapPipelineStage, traceMapMarkerPipeline } from "../../lib/mapDevTrace";
 import { getCachedDiscoverListings, sanitizeCachedDiscoverListings } from "../../lib/discoverListingsCache";
 import { runDevStagingDiscoverCleanup } from "../../lib/discoverCacheCleanup";
@@ -1836,11 +1836,6 @@ export default function MapScreenV25() {
     [items]
   );
 
-  const mapMarkerItems = useMemo(() => {
-    const contentFiltered = items.filter((item) => passesMapContentFilters(item));
-    return filterItemsForMapMarkers(contentFiltered, mapRegion, mapPointIndex);
-  }, [items, mapRegion, mapPointIndex, passesMapContentFilters]);
-
   useEffect(() => {
     if (!selectedItem) return;
 
@@ -1856,8 +1851,8 @@ export default function MapScreenV25() {
   }, [filteredItems, selectedItem]);
 
   const mapPoints = useMemo(
-    () => resolveMapPoints(mapMarkerItems),
-    [mapMarkerItems]
+    () => resolveMapPoints(filteredItems),
+    [filteredItems]
   );
   const mapPointsRef = useRef(mapPoints);
   mapPointsRef.current = mapPoints;
@@ -2012,7 +2007,17 @@ export default function MapScreenV25() {
   useEffect(() => {
     if (!__DEV__) return;
     traceMapMarkerPipeline(items, mapRegion, mapItemsLoadGenerationRef.current);
-  }, [items, mapRegion, mapDisplay.length, mapMarkerItems.length]);
+    const missing = findLostClusterLeafKeys(mapPoints, mapDisplay, getMapMarkerKey);
+    if (missing.length > 0) {
+      const tahchinMissing = missing.some((key) => key === "business-22");
+      logMapPipelineStage("cluster_invariant_violation", {
+        missing,
+        tahchinMissing,
+        region: mapRegion,
+        loadGeneration: mapItemsLoadGenerationRef.current,
+      });
+    }
+  }, [items, mapRegion, mapDisplay, mapPoints]);
 
   const discoveryResults = useMemo(() => {
     if (!isDiscoveryActive) return [];

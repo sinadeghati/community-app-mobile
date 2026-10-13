@@ -1,12 +1,13 @@
 import type { DiscoverableListing } from "./discoverableListings";
 import { getListingId, isEventListing } from "./discoverableListings";
-import { MAP_CLUSTER_LAT_DELTA } from "./mapCoordinates";
+import { getMapMarkerKey as getMapMarkerKeyLite } from "./mapMarkerKeys";
+import { MAP_CLUSTER_LAT_DELTA } from "./mapClusterDisplayLite";
 
-export const getMapMarkerKey = (item: DiscoverableListing): string => {
-  const id = getListingId(item);
-  if (!id) return "unknown";
-  return isEventListing(item) ? `event-${id}` : `business-${id}`;
-};
+export const getMapMarkerKey = (item: DiscoverableListing): string =>
+  getMapMarkerKeyLite({
+    id: getListingId(item),
+    start_at: isEventListing(item) ? item.start_at ?? "" : undefined,
+  });
 
 export const getClusterMarkerKey = (
   clusterId: string,
