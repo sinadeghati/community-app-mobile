@@ -1,12 +1,14 @@
 import React from "react";
 import { Stack } from "expo-router";
 import { HomeBrandSplashGate } from "../components/home/HomeBrandSplashGate";
+import { AppColdStartGate } from "../components/navigation/AppColdStartGate";
 import { LanguageProvider } from "../lib/i18n/LanguageProvider";
 
 export default function RootLayout() {
   return (
     <LanguageProvider>
       <HomeBrandSplashGate>
+        <AppColdStartGate>
         <Stack
           initialRouteName="(tabs)"
           screenOptions={{
@@ -21,6 +23,7 @@ export default function RootLayout() {
           <Stack.Screen name="legal" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         </Stack>
+        </AppColdStartGate>
       </HomeBrandSplashGate>
     </LanguageProvider>
   );

@@ -92,7 +92,14 @@ import {
 } from "../../lib/mapEvents";
 import {
   DISCOVER_LISTINGS_REFRESH_EVENT,
+  requestDiscoverListingsRefresh,
 } from "../../lib/discoverListingsRefresh";
+import { mergeDiscoverableListingsById } from "../../lib/mapDiscoverableMerge";
+import {
+  buildResolvedMapPointIndex,
+  filterItemsForMapMarkers,
+} from "../../lib/mapMarkerVisibility";
+import { logMapPipelineStage, traceMapMarkerPipeline } from "../../lib/mapDevTrace";
 import { getCachedDiscoverListings, sanitizeCachedDiscoverListings } from "../../lib/discoverListingsCache";
 import { runDevStagingDiscoverCleanup } from "../../lib/discoverCacheCleanup";
 import {
@@ -1546,6 +1553,7 @@ export default function MapScreenV25() {
       applyMapLocationState(next);
       setViewportDirty(false);
       setFilterVisible(false);
+      requestDiscoverListingsRefresh();
     } catch (error) {
       console.log("Search this area error:", error);
       setViewportAreaRefreshing(false);
@@ -1637,11 +1645,18 @@ export default function MapScreenV25() {
         );
         if (isStaleLoad()) return;
 
+        const applyMergedListings = (next: MapItem[]) => {
+          if (isStaleLoad() || !next.length) return;
+          hasDisplayedMapItemsRef.current = true;
+          setItems((prev) => mergeDiscoverableListingsById(prev, next));
+          logMapPipelineStage("stored_listings", {
+            loadGeneration: generation,
+            count: next.length,
+          });
+        };
+
         if (background) {
-          if (enriched.length) {
-            hasDisplayedMapItemsRef.current = true;
-            setItems(enriched);
-          }
+          applyMergedListings(enriched);
           void withTimeout(
             ensureBusinessMapCoordinatesBatch(enriched),
             30000,
@@ -1649,8 +1664,7 @@ export default function MapScreenV25() {
             enriched
           ).then((geocoded) => {
             if (isStaleLoad() || !geocoded.length) return;
-            hasDisplayedMapItemsRef.current = true;
-            setItems(geocoded);
+            applyMergedListings(geocoded);
           });
         } else {
           const merged = await withTimeout(
@@ -1662,17 +1676,15 @@ export default function MapScreenV25() {
           if (isStaleLoad()) return;
 
           logLoadedListingEventIds("map", merged);
-
-          if (merged.length) {
-            hasDisplayedMapItemsRef.current = true;
-          }
-          setItems(merged);
+          applyMergedListings(merged);
         }
 
         if (isStaleLoad()) return;
 
-        businessPreviewOpenRef.current = false;
-        setSelectedItem(null);
+        if (!background) {
+          businessPreviewOpenRef.current = false;
+          setSelectedItem(null);
+        }
 
         void loadFavoriteBusinessMap().then(setFavorites).catch(() => undefined);
       };
@@ -1739,10 +1751,7 @@ export default function MapScreenV25() {
           scheduleMapViewport(regionFromAppLocationState(state), false);
         }
       });
-      if (hasDisplayedMapItemsRef.current) {
-        void loadMapItems({ background: true });
-      }
-    }, [applyMapLocationState, loadMapItems, scheduleMapViewport])
+    }, [applyMapLocationState, scheduleMapViewport])
   );
 
   useEffect(() => {
@@ -1792,6 +1801,18 @@ export default function MapScreenV25() {
 
   const isSearchMode = search.trim() !== "";
 
+  const passesMapContentFilters = useCallback(
+    (item: MapItem) => {
+      if (!matchesMapTypeFilter(item, mapTypeFilter)) return false;
+      if (openNowOnly && !matchesMapOpenNowFilter(item)) return false;
+      if (isSearchMode) {
+        return matchesMapSearchFilter(item, search);
+      }
+      return matchesMapCategoryFilter(item, selectedCategory);
+    },
+    [isSearchMode, mapTypeFilter, openNowOnly, search, selectedCategory]
+  );
+
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
       const matchesLocation = listingMatchesDiscoveryLocation(
@@ -1800,26 +1821,25 @@ export default function MapScreenV25() {
         isSearchMode ? { searchQuery: search } : undefined
       );
       if (!matchesLocation) return false;
-
-      if (!matchesMapTypeFilter(item, mapTypeFilter)) return false;
-
-      if (openNowOnly && !matchesMapOpenNowFilter(item)) return false;
-
-      if (isSearchMode) {
-        return matchesMapSearchFilter(item, search);
-      }
-
-      return matchesMapCategoryFilter(item, selectedCategory);
+      return passesMapContentFilters(item);
     });
   }, [
     items,
     search,
-    selectedCategory,
     mapFilterLocation,
     isSearchMode,
-    mapTypeFilter,
-    openNowOnly,
+    passesMapContentFilters,
   ]);
+
+  const mapPointIndex = useMemo(
+    () => buildResolvedMapPointIndex(items),
+    [items]
+  );
+
+  const mapMarkerItems = useMemo(() => {
+    const contentFiltered = items.filter((item) => passesMapContentFilters(item));
+    return filterItemsForMapMarkers(contentFiltered, mapRegion, mapPointIndex);
+  }, [items, mapRegion, mapPointIndex, passesMapContentFilters]);
 
   useEffect(() => {
     if (!selectedItem) return;
@@ -1836,8 +1856,8 @@ export default function MapScreenV25() {
   }, [filteredItems, selectedItem]);
 
   const mapPoints = useMemo(
-    () => resolveMapPoints(filteredItems),
-    [filteredItems]
+    () => resolveMapPoints(mapMarkerItems),
+    [mapMarkerItems]
   );
   const mapPointsRef = useRef(mapPoints);
   mapPointsRef.current = mapPoints;
@@ -1969,21 +1989,17 @@ export default function MapScreenV25() {
       filteredItems
         .map((item) => {
           const point =
-            mapPoints.find((p) => getId(p.item) === getId(item)) ??
-            resolveMapPoints([item])[0];
+            mapPointIndex.get(getId(item)) ?? resolveMapPoints([item])[0];
 
           if (!point) return null;
 
           return { item, point };
         })
         .filter(Boolean) as { item: MapItem; point: ResolvedMapPoint }[],
-    [filteredItems, mapPoints]
+    [filteredItems, mapPointIndex]
   );
 
-  const markerPoints = useMemo(
-    () => mapResultEntries.map((entry) => entry.point),
-    [mapResultEntries]
-  );
+  const markerPoints = mapPoints;
 
   const mapDisplay = useMemo(() => {
     if (regionTooWideForNearby || markerPoints.length === 0) return [];
@@ -1992,6 +2008,11 @@ export default function MapScreenV25() {
       getMapMarkerKey(item as MapItem)
     );
   }, [markerPoints, mapRegion, regionTooWideForNearby]);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    traceMapMarkerPipeline(items, mapRegion, mapItemsLoadGenerationRef.current);
+  }, [items, mapRegion, mapDisplay.length, mapMarkerItems.length]);
 
   const discoveryResults = useMemo(() => {
     if (!isDiscoveryActive) return [];

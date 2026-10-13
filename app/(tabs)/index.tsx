@@ -83,7 +83,7 @@ export default function HomeLoginV2() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [displayName, setDisplayName] = useState("there");
   const [authChecked, setAuthChecked] = useState(false);
-  const [showLoginOverlay, setShowLoginOverlay] = useState(true);
+  const [showLoginOverlay, setShowLoginOverlay] = useState(false);
   const [showWelcomeIntro, setShowWelcomeIntro] = useState(!activePromotion);
 
   const loginOpacity = useRef(new Animated.Value(1)).current;
@@ -225,16 +225,16 @@ export default function HomeLoginV2() {
         } else {
           setIsLoggedIn(false);
           setDisplayName("there");
-          setShowLoginOverlay(true);
-          loginOpacity.setValue(1);
+          setShowLoginOverlay(false);
+          loginOpacity.setValue(0);
         }
       }
     } catch (error) {
       console.log("[loader] home.hydrateAuthSession error:", error);
       setIsLoggedIn(false);
       setDisplayName("there");
-      setShowLoginOverlay(true);
-      loginOpacity.setValue(1);
+      setShowLoginOverlay(false);
+      loginOpacity.setValue(0);
     } finally {
       logLoaderDone(
         background && hasAuthCheckedRef.current
