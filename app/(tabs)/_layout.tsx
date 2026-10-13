@@ -6,6 +6,7 @@ import React from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "../../lib/i18n";
+import { APP_INITIAL_TAB_ROUTE } from "../../lib/appTabConfig";
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
@@ -13,7 +14,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
-      initialRouteName="index"
+      initialRouteName={APP_INITIAL_TAB_ROUTE}
       screenOptions={{
         headerShown: false,
         lazy: true,

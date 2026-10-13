@@ -9,7 +9,7 @@ export async function ensureLoggedInForSave(
 
   Alert.alert("Login required", `Please log in to ${actionLabel}.`, [
     { text: "Cancel", style: "cancel" },
-    { text: "Log in", onPress: () => router.push("/(tabs)") },
+    { text: "Log in", onPress: () => router.push("/login") },
   ]);
 
   return false;

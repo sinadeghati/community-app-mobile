@@ -45,6 +45,10 @@ import {
   type ResolvedMapPoint,
 } from "../../lib/mapCoordinates";
 import { getClusterMarkerKey, getMapMarkerKey } from "../../lib/mapMarkers";
+import {
+  createRegionCompleteGuard,
+  normalizeMapDisplayClusters,
+} from "../../lib/mapRegionGesture";
 import { syncMapRegionState } from "../../lib/mapRegionSync";
 import {
   APP_LOCATION_CHANGED_EVENT,
@@ -1069,6 +1073,7 @@ const MapClusterMarker = memo(function MapClusterMarker({
       tracksViewChanges={Platform.OS === "android" ? tracksViewChanges : false}
     >
       <View
+        collapsable={false}
         pointerEvents="none"
         onLayout={handleMarkerContentLayout}
         style={{
@@ -1145,6 +1150,7 @@ const MapPointMarker = memo(function MapPointMarker({
       }
     >
       <View
+        collapsable={false}
         pointerEvents="none"
         onLayout={handleMarkerContentLayout}
         style={{
@@ -1256,6 +1262,7 @@ export default function MapScreenV25() {
   const regionChangeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+  const regionCompleteGuardRef = useRef(createRegionCompleteGuard());
   const isFocused = useIsFocused();
   const isFocusedRef = useRef(isFocused);
   isFocusedRef.current = isFocused;
@@ -1887,7 +1894,7 @@ export default function MapScreenV25() {
 
   const isDiscoveryActive = isSearchMode || selectedCategory !== "All";
 
-  const applyMapRegionFromGesture = useCallback((region: Region) => {
+  const syncLiveMapRegion = useCallback((region: Region) => {
     const clamped = clampMapRegion(region);
     mapRegionRef.current = clamped;
 
@@ -1899,27 +1906,16 @@ export default function MapScreenV25() {
     }
 
     setMapRegion((prev) => syncMapRegionState(prev, clamped));
-
-    if (tooWide) {
-      setViewportDirty(false);
-      return;
-    }
-
-    if (!suppressViewportDirtyRef.current) {
-      setViewportDirty(true);
-    }
+    return clamped;
   }, []);
 
-  const handleMapRegionChange = useCallback((region: Region) => {
-    if (regionExceedsMapLimits(region)) return;
-
-    const clamped = clampMapRegion(region);
-    mapRegionRef.current = clamped;
-
-    const tooWide = isMapRegionTooWideForNearby(clamped);
-    setRegionTooWideForNearby((prev) => (prev === tooWide ? prev : tooWide));
-    setMapRegion((prev) => syncMapRegionState(prev, clamped));
-  }, []);
+  const handleMapRegionChange = useCallback(
+    (region: Region) => {
+      if (regionExceedsMapLimits(region)) return;
+      syncLiveMapRegion(region);
+    },
+    [syncLiveMapRegion]
+  );
 
   const handleMapRegionChangeComplete = useCallback(
     (region: Region) => {
@@ -1927,22 +1923,37 @@ export default function MapScreenV25() {
         clearTimeout(regionChangeDebounceRef.current);
       }
 
+      const completeSeq =
+        regionCompleteGuardRef.current.markCompleteStarted();
+
       regionChangeDebounceRef.current = setTimeout(() => {
         regionChangeDebounceRef.current = null;
 
-        if (regionExceedsMapLimits(region)) {
+        if (!regionCompleteGuardRef.current.shouldApplyComplete(completeSeq)) {
+          return;
+        }
+
+        const settled = syncLiveMapRegion(mapRegionRef.current);
+
+        if (regionExceedsMapLimits(settled)) {
           suppressViewportDirtyRef.current = true;
-          applyMapRegionFromGesture(clampMapRegion(region));
           setTimeout(() => {
             suppressViewportDirtyRef.current = false;
           }, 100);
           return;
         }
 
-        applyMapRegionFromGesture(region);
-      }, 200);
+        if (isMapRegionTooWideForNearby(settled)) {
+          setViewportDirty(false);
+          return;
+        }
+
+        if (!suppressViewportDirtyRef.current) {
+          setViewportDirty(true);
+        }
+      }, 120);
     },
-    [applyMapRegionFromGesture]
+    [syncLiveMapRegion]
   );
 
   useEffect(() => {
@@ -1976,7 +1987,10 @@ export default function MapScreenV25() {
 
   const mapDisplay = useMemo(() => {
     if (regionTooWideForNearby || markerPoints.length === 0) return [];
-    return buildMapDisplay(markerPoints, mapRegion, { gateTooWide: false });
+    const built = buildMapDisplay(markerPoints, mapRegion, { gateTooWide: false });
+    return normalizeMapDisplayClusters(built, (item) =>
+      getMapMarkerKey(item as MapItem)
+    );
   }, [markerPoints, mapRegion, regionTooWideForNearby]);
 
   const discoveryResults = useMemo(() => {

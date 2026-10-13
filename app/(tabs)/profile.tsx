@@ -1379,7 +1379,7 @@ export default function ProfileV2Clean() {
                 [
                   {
                     text: "OK",
-                    onPress: () => router.replace("/explore"),
+                    onPress: () => router.replace("/(tabs)/map"),
                   },
                 ]
               );
