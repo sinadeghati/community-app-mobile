@@ -131,12 +131,7 @@ export default function AccountScreen() {
             title={t("account.loginSecurity")}
             subtitle={t("account.loginSecuritySubtitle")}
             textAlign={textAlign}
-            onPress={() =>
-              showComingSoon(
-                t("account.loginSecurityComingSoonTitle"),
-                t("account.loginSecurityComingSoonBody")
-              )
-            }
+            onPress={() => router.push("/profile/connected-accounts")}
           />
 
           <Divider />

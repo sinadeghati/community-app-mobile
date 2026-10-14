@@ -23,6 +23,7 @@ import {
 import { setPendingRegistration } from "../lib/pendingRegistration";
 import { korookBrand } from "../lib/korookBrand";
 import { theme } from "../lib/theme";
+import { SocialSignInButtons } from "../components/auth/SocialSignInButtons";
 
 const colors = {
   bg: theme.colors.ivory,
@@ -156,6 +157,7 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [socialBusy, setSocialBusy] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const { returnTo, profileId, serverListingId } = useLocalSearchParams<{
     returnTo?: string;
@@ -378,6 +380,13 @@ export default function RegisterScreen() {
               >
                 Secure sign up
               </Text>
+            </View>
+
+            <View style={{ marginTop: 16 }}>
+              <SocialSignInButtons
+                disabled={loading}
+                onBusyChange={setSocialBusy}
+              />
             </View>
 
             <Field

@@ -126,6 +126,52 @@ export const API = {
     return res.data;
   },
 
+  async socialGoogleLogin(idToken: string) {
+    const res = await client.post("/accounts/auth/google/", { id_token: idToken });
+    return res.data;
+  },
+
+  async socialAppleLogin(
+    identityToken: string,
+    nonce: string,
+    fullName?: { givenName?: string | null; familyName?: string | null } | null
+  ) {
+    const res = await client.post("/accounts/auth/apple/", {
+      identity_token: identityToken,
+      nonce,
+      full_name: fullName
+        ? {
+            givenName: fullName.givenName ?? undefined,
+            familyName: fullName.familyName ?? undefined,
+          }
+        : undefined,
+    });
+    return res.data;
+  },
+
+  async fetchAuthMethods() {
+    const res = await client.get("/accounts/auth/methods/");
+    return res.data as { has_password: boolean; providers: string[] };
+  },
+
+  async linkGoogleAccount(idToken: string) {
+    const res = await client.post("/accounts/auth/google/link/", { id_token: idToken });
+    return res.data;
+  },
+
+  async linkAppleAccount(identityToken: string, nonce: string) {
+    const res = await client.post("/accounts/auth/apple/link/", {
+      identity_token: identityToken,
+      nonce,
+    });
+    return res.data;
+  },
+
+  async disconnectAuthProvider(provider: "google" | "apple") {
+    const res = await client.delete(`/accounts/auth/${provider}/disconnect/`);
+    return res.data;
+  },
+
   async register(username: string, email: string, password: string) {
     const res = await client.post("/accounts/register/", {
       username,

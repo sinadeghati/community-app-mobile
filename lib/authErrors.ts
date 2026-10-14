@@ -108,6 +108,18 @@ export const isEmailVerificationRequired = (error: unknown): boolean => {
   return UNVERIFIED_HINTS.some((hint) => haystack.includes(hint));
 };
 
+export const getAuthErrorCode = (error: unknown): string | undefined => {
+  const data = (error as { response?: { data?: unknown } })?.response?.data;
+  if (data && typeof data === "object" && "code" in data) {
+    const code = (data as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return undefined;
+};
+
+export const isExistingAccountLinkRequired = (error: unknown): boolean =>
+  getAuthErrorCode(error) === "existing_account_link_required";
+
 export const formatVerificationError = (
   error: unknown,
   fallback = "That code did not work. Check the email we sent and try again."

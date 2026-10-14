@@ -15,8 +15,25 @@ module.exports = ({ config }) => {
     );
   }
 
+  const googleIosClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID_STAGING?.trim() ||
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID_PRODUCTION?.trim() ||
+    "";
+  const iosUrlScheme = googleIosClientId
+    ? `com.googleusercontent.apps.${googleIosClientId.replace(/\.apps\.googleusercontent\.com$/i, "")}`
+    : undefined;
+
+  const plugins = [...(config.plugins || [])];
+  if (iosUrlScheme) {
+    plugins.push([
+      "@react-native-google-signin/google-signin",
+      { iosUrlScheme },
+    ]);
+  }
+
   return {
     ...config,
+    plugins,
     android: {
       ...config.android,
       config: {

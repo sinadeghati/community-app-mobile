@@ -20,6 +20,7 @@ import { formatAuthError, isEmailVerificationRequired } from "../lib/authErrors"
 import { KorookLogo } from "../components/brand/KorookLogo";
 import { navigateAfterAuthentication } from "../lib/postAuthNavigation";
 import { theme } from "../lib/theme";
+import { SocialSignInButtons } from "../components/auth/SocialSignInButtons";
 
 export default function LoginScreen() {
   const params = useLocalSearchParams<{
@@ -31,6 +32,7 @@ export default function LoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [socialBusy, setSocialBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
@@ -113,6 +115,11 @@ export default function LoginScreen() {
           </View>
           <Text style={styles.title}>Sign in to Korook</Text>
 
+          <SocialSignInButtons
+            disabled={loading}
+            onBusyChange={setSocialBusy}
+          />
+
           <View style={styles.inputRow}>
             <Ionicons name="person-outline" size={20} color="#6B7280" />
             <TextInput
@@ -156,7 +163,7 @@ export default function LoginScreen() {
           <Pressable
             style={[styles.button, loading && styles.buttonDisabled]}
             onPress={handleLogin}
-            disabled={loading}
+            disabled={loading || socialBusy}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
