@@ -2,6 +2,7 @@
  * Run: npx tsx lib/appLaunchRouting.test.ts
  */
 import {
+  evaluateGuestColdStart,
   GUEST_MAP_ENTRY_HREF,
   resolveGuestColdStartRedirect,
 } from "./appLaunchRouting";
@@ -29,6 +30,37 @@ assert(
 assert(
   "map tab does not redirect",
   resolveGuestColdStartRedirect("(tabs)", { kind: "none" }) === null
+);
+
+const coldStartOnLogin = evaluateGuestColdStart("login", { kind: "none" }, false);
+assert(
+  "cold start on login settles and redirects to map",
+  coldStartOnLogin.settled === true &&
+    coldStartOnLogin.redirectHref === GUEST_MAP_ENTRY_HREF
+);
+
+const coldStartOnTabs = evaluateGuestColdStart("(tabs)", { kind: "none" }, false);
+assert(
+  "cold start on tabs settles without a redirect",
+  coldStartOnTabs.settled === true && coldStartOnTabs.redirectHref === null
+);
+
+const inAppRegister = evaluateGuestColdStart("register", { kind: "none" }, true);
+assert(
+  "in-app register navigation is not treated as a cold start",
+  inAppRegister.settled === true && inAppRegister.redirectHref === null
+);
+
+const inAppLogin = evaluateGuestColdStart("login", { kind: "none" }, true);
+assert(
+  "in-app login navigation is not treated as a cold start",
+  inAppLogin.settled === true && inAppLogin.redirectHref === null
+);
+
+const waitingForSegment = evaluateGuestColdStart(undefined, { kind: "none" }, false);
+assert(
+  "missing root segment waits before settling",
+  waitingForSegment.settled === false && waitingForSegment.redirectHref === null
 );
 
 console.log("appLaunchRouting tests passed");

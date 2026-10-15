@@ -7,10 +7,7 @@ import {
   useSegments,
 } from "expo-router";
 import { hydrateAuthSession } from "../../lib/userSessionStorage";
-import {
-  GUEST_MAP_ENTRY_HREF,
-  resolveGuestColdStartRedirect,
-} from "../../lib/appLaunchRouting";
+import { evaluateGuestColdStart } from "../../lib/appLaunchRouting";
 import { theme } from "../../lib/theme";
 
 type AppColdStartGateProps = {
@@ -19,6 +16,8 @@ type AppColdStartGateProps = {
 
 /**
  * Ensures logged-out cold launches land on Map instead of a persisted /login route.
+ * That check runs once, when the initial route is known. Later visits to login or
+ * register are intentional and stay on those screens.
  * Waits for navigation + session hydration before rendering auth stack routes.
  */
 export function AppColdStartGate({ children }: AppColdStartGateProps) {
@@ -26,7 +25,7 @@ export function AppColdStartGate({ children }: AppColdStartGateProps) {
   const params = useGlobalSearchParams();
   const navigationState = useRootNavigationState();
   const [ready, setReady] = useState(false);
-  const redirectedRef = useRef(false);
+  const coldStartSettledRef = useRef(false);
 
   useEffect(() => {
     if (!navigationState?.key) return;
@@ -41,15 +40,16 @@ export function AppColdStartGate({ children }: AppColdStartGateProps) {
       const hasAuthIntent = Boolean(
         params.returnTo || params.profileId || params.serverListingId
       );
-      if (!session && !redirectedRef.current) {
-        const redirectHref = resolveGuestColdStartRedirect(
-          rootSegment,
-          hasAuthIntent ? { kind: "returnTo", path: String(params.returnTo || "") } : { kind: "none" }
-        );
-        if (redirectHref) {
-          redirectedRef.current = true;
-          router.replace(redirectHref);
-        }
+      const decision = evaluateGuestColdStart(
+        rootSegment,
+        hasAuthIntent
+          ? { kind: "returnTo", path: String(params.returnTo || "") }
+          : { kind: "none" },
+        coldStartSettledRef.current
+      );
+      coldStartSettledRef.current = decision.settled;
+      if (!session && decision.redirectHref) {
+        router.replace(decision.redirectHref);
       }
 
       if (!cancelled) {

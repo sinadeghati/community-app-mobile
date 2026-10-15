@@ -934,7 +934,7 @@ export default function ProfileV2Clean() {
             </Text>
 
             <Pressable
-              onPress={() => go("/(tabs)")}
+              onPress={() => go("/login")}
               style={{
                 marginTop: 22,
                 height: 54,
