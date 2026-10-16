@@ -42,6 +42,15 @@ import { MY_EVENTS_REFRESH_EVENT } from "../../lib/discoverListingsRefresh";
 import { countSavedFavorites } from "../../lib/favoritesCount";
 import { FAVORITES_CHANGED_EVENT } from "../../lib/favoritesRefresh";
 import { resolveProfileDisplayName } from "../../lib/profileDisplay";
+import { ProfileApiError, uploadProfileAvatar } from "../../lib/profileApi";
+import {
+  AVATAR_UNSAVED_ERROR,
+  avatarUriForDisplay,
+  isHttpsAvatarUrl,
+  prepareAvatarUploadFile,
+  readPersistedAvatarUrl,
+  settleAvatarUpload,
+} from "../../lib/profileAvatar";
 import { apiUrl } from "../../lib/apiConfig";
 import { confirmDeleteAccount } from "../../lib/accountActions";
 import { showComingSoon } from "../profile/comingSoon";
@@ -69,6 +78,11 @@ export default function ProfileV2Clean() {
     useState<MyBusinessesLoadState>("idle");
   const [myBusinessId, setMyBusinessId] = useState<string | null>(null);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [avatarPreviewUri, setAvatarPreviewUri] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarUploadError, setAvatarUploadError] = useState<string | null>(
+    null
+  );
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [myEventsCount, setMyEventsCount] = useState(0);
   const [myEventsLoadState, setMyEventsLoadState] =
@@ -77,6 +91,9 @@ export default function ProfileV2Clean() {
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const activeAccountKeyRef = useRef<string | null>(null);
   const lastHydratedUserIdRef = useRef<string | null>(null);
+  const avatarRequestRef = useRef(0);
+  const avatarRefreshEpochRef = useRef(0);
+  const avatarUploadingRef = useRef(false);
   const hasCompletedInitialHydrationRef = useRef(false);
   const hydrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -129,7 +146,17 @@ export default function ProfileV2Clean() {
     }
   };
 
+  const clearAvatarUploadUi = () => {
+    avatarRequestRef.current += 1;
+    avatarRefreshEpochRef.current += 1;
+    avatarUploadingRef.current = false;
+    setAvatarPreviewUri(null);
+    setAvatarUploading(false);
+    setAvatarUploadError(null);
+  };
+
   const resetProfileState = () => {
+    clearAvatarUploadUi();
     setProfile(null);
     setProfileImage(null);
     setLocalBusinesses([]);
@@ -157,6 +184,7 @@ export default function ProfileV2Clean() {
 
     lastHydratedUserIdRef.current = userId;
     activeAccountKeyRef.current = null;
+    clearAvatarUploadUi();
     setProfile(null);
     setProfileImage(null);
     setLocalBusinesses([]);
@@ -239,8 +267,14 @@ export default function ProfileV2Clean() {
   });
 
   const updateProfileAvatar = async () => {
+    if (avatarUploadingRef.current) return;
+    const requestId = avatarRequestRef.current + 1;
+    avatarRequestRef.current = requestId;
+    avatarUploadingRef.current = true;
+
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (avatarRequestRef.current !== requestId) return;
       if (!permission.granted) {
         Alert.alert(
           "Permission needed",
@@ -256,37 +290,129 @@ export default function ProfileV2Clean() {
         quality: 0.85,
       });
 
+      if (avatarRequestRef.current !== requestId) return;
       if (result.canceled || !result.assets?.[0]?.uri) {
         return;
       }
 
-      const uri = result.assets[0].uri;
-      setProfileImage(uri);
-
-      const userId = await getActiveUserId();
-      if (!userId) {
+      const asset = result.assets[0] as {
+        uri: string;
+        mimeType?: string | null;
+        fileName?: string | null;
+        fileSize?: number | null;
+      };
+      const prepared = prepareAvatarUploadFile({
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        fileName: asset.fileName,
+        fileSize: asset.fileSize,
+      });
+      if (!prepared.ok) {
+        setAvatarPreviewUri(null);
+        setAvatarUploadError(prepared.message);
+        Alert.alert("Photo not saved", prepared.message);
         return;
       }
 
+      const userId = await getActiveUserId();
+      if (avatarRequestRef.current !== requestId) return;
+      if (!userId) {
+        Alert.alert("Sign in required", "Sign in to save a profile photo.");
+        return;
+      }
+
+      setAvatarUploadError(null);
+      setAvatarPreviewUri(asset.uri);
+      setAvatarUploading(true);
+
       const identity = identityFromProfile(profile);
-      const current =
-        ((await loadUserProfile(userId, identity)) as Record<string, unknown> | null) ||
-        ({
-          ...(profile || {}),
-          id: userId,
-          user_id: userId,
-        } as Record<string, unknown>);
+      const inMemoryProfile =
+        profile && typeof profile === "object"
+          ? (profile as Record<string, unknown>)
+          : null;
+      let previousProfile: Record<string, unknown> | null = inMemoryProfile;
+      let settlement = settleAvatarUpload({
+        previousProfile,
+        localPreviewUri: asset.uri,
+        outcome: { ok: false, message: AVATAR_UNSAVED_ERROR },
+      });
 
-      const updated = {
-        ...current,
-        profileImage: uri,
-        profile_image: uri,
-      };
+      try {
+        previousProfile =
+          ((await loadUserProfile(userId, identity)) as Record<
+            string,
+            unknown
+          > | null) ||
+          ({
+            ...(inMemoryProfile || {}),
+            id: userId,
+            user_id: userId,
+          } as Record<string, unknown>);
 
-      await saveUserProfile(userId, updated);
-      setProfile(updated);
+        const uploaded = await uploadProfileAvatar(prepared.file);
+        if (avatarRequestRef.current !== requestId) return;
+        const activeUserId = await getActiveUserId();
+        if (activeUserId !== userId || avatarRequestRef.current !== requestId) {
+          setAvatarPreviewUri(null);
+          return;
+        }
+
+        settlement = settleAvatarUpload({
+          previousProfile,
+          localPreviewUri: asset.uri,
+          outcome: { ok: true, profile: uploaded },
+        });
+      } catch (error) {
+        if (avatarRequestRef.current !== requestId) return;
+        const message =
+          error instanceof ProfileApiError
+            ? error.message
+            : AVATAR_UNSAVED_ERROR;
+        settlement = settleAvatarUpload({
+          previousProfile,
+          localPreviewUri: asset.uri,
+          outcome: { ok: false, message },
+        });
+      }
+
+      if (avatarRequestRef.current !== requestId) return;
+
+      setAvatarPreviewUri(settlement.previewUri);
+      setAvatarUploadError(settlement.error);
+
+      if (
+        !settlement.saved ||
+        !settlement.profileToPersist ||
+        !settlement.displayUrl
+      ) {
+        Alert.alert(
+          "Photo not saved",
+          settlement.error || AVATAR_UNSAVED_ERROR
+        );
+        return;
+      }
+
+      avatarRefreshEpochRef.current += 1;
+      setProfile(settlement.profileToPersist);
+      setProfileImage(settlement.displayUrl);
+      try {
+        await saveUserProfile(userId, settlement.profileToPersist);
+      } catch {
+        Alert.alert(
+          "Photo uploaded",
+          "Your photo was saved on your account, but this device could not store it. It will show again after a refresh."
+        );
+      }
     } catch {
+      if (avatarRequestRef.current === requestId) {
+        setAvatarPreviewUri(null);
+      }
       Alert.alert("Error", "Could not update your profile photo.");
+    } finally {
+      if (avatarRequestRef.current === requestId) {
+        avatarUploadingRef.current = false;
+        setAvatarUploading(false);
+      }
     }
   };
 
@@ -294,11 +420,24 @@ export default function ProfileV2Clean() {
     React.useCallback(() => {
       let cancelled = false;
 
+      const applyLoadedAvatar = (
+        record: Record<string, unknown> | null | undefined,
+        refreshEpoch: number,
+        requestAtStart: number
+      ) => {
+        if (cancelled || avatarUploadingRef.current) return;
+        if (avatarRefreshEpochRef.current !== refreshEpoch) return;
+        if (avatarRequestRef.current !== requestAtStart) return;
+        setProfileImage(readPersistedAvatarUrl(record));
+      };
+
       const applyFallbackProfile = async (
         userId: string,
         identity: ReturnType<typeof identityFromProfile>,
         reason: string
       ) => {
+        const refreshEpoch = avatarRefreshEpochRef.current;
+        const requestAtStart = avatarRequestRef.current;
         if (cancelled) return;
 
         const cached = (await loadUserProfile(userId, identity)) as Record<
@@ -307,13 +446,23 @@ export default function ProfileV2Clean() {
         > | null;
 
         if (cached && resolveProfileDisplayName(cached)) {
-          setProfile(cached);
-          setProfileImage(
-            (cached.profileImage as string) ||
-              (cached.profile_image as string) ||
-              null
-          );
+          if (
+            !cancelled &&
+            avatarRefreshEpochRef.current === refreshEpoch &&
+            avatarRequestRef.current === requestAtStart
+          ) {
+            setProfile(cached);
+          }
+          applyLoadedAvatar(cached, refreshEpoch, requestAtStart);
           setProfileLoadError(null);
+          return;
+        }
+
+        if (
+          cancelled ||
+          avatarRefreshEpochRef.current !== refreshEpoch ||
+          avatarRequestRef.current !== requestAtStart
+        ) {
           return;
         }
 
@@ -325,6 +474,7 @@ export default function ProfileV2Clean() {
         };
 
         setProfile(fallback);
+        setProfileImage(null);
         setProfileLoadError(reason);
         await saveUserProfile(userId, fallback);
         logAuthEvent("profile_fallback_applied", { userId, reason });
@@ -335,6 +485,8 @@ export default function ProfileV2Clean() {
         userId: string,
         initialIdentity: ReturnType<typeof identityFromProfile>
       ) => {
+        const refreshEpoch = avatarRefreshEpochRef.current;
+        const requestAtStart = avatarRequestRef.current;
         let identity = initialIdentity;
 
         try {
@@ -456,13 +608,15 @@ export default function ProfileV2Clean() {
 
           const mergedProfile = mergeProfileWithApi(cachedProfile, data);
           if (cancelled) return;
+          if (
+            avatarRefreshEpochRef.current !== refreshEpoch ||
+            avatarRequestRef.current !== requestAtStart
+          ) {
+            return;
+          }
 
           setProfile(mergedProfile);
-          setProfileImage(
-            (mergedProfile.profileImage as string) ||
-              (mergedProfile.profile_image as string) ||
-              null
-          );
+          applyLoadedAvatar(mergedProfile, refreshEpoch, requestAtStart);
           setProfileLoadError(null);
           await saveUserProfile(userId, mergedProfile);
 
@@ -547,10 +701,10 @@ export default function ProfileV2Clean() {
 
           if (cachedProfile && hasCachedIdentity) {
             setProfile(cachedProfile);
-            setProfileImage(
-              (cachedProfile.profileImage as string) ||
-                (cachedProfile.profile_image as string) ||
-                null
+            applyLoadedAvatar(
+              cachedProfile,
+              avatarRefreshEpochRef.current,
+              avatarRequestRef.current
             );
             finishProfileHydration();
             void loadLocalBusinesses(userId, identity);
@@ -608,10 +762,10 @@ export default function ProfileV2Clean() {
 
           if (cachedProfile && hasCachedIdentity) {
             setProfile(cachedProfile);
-            setProfileImage(
-              (cachedProfile.profileImage as string) ||
-                (cachedProfile.profile_image as string) ||
-                null
+            applyLoadedAvatar(
+              cachedProfile,
+              avatarRefreshEpochRef.current,
+              avatarRequestRef.current
             );
             finishProfileHydration();
             void loadLocalBusinesses(userId, identity);
@@ -681,6 +835,18 @@ export default function ProfileV2Clean() {
   })();
 
   const hasProfileIdentity = Boolean(profileDisplayName || profile?.email);
+  const persistedAvatarUri = isHttpsAvatarUrl(profileImage)
+    ? profileImage.trim()
+    : readPersistedAvatarUrl(
+        profile && typeof profile === "object"
+          ? (profile as Record<string, unknown>)
+          : null
+      );
+  const displayedAvatarUri = avatarUriForDisplay({
+    previewUri: avatarPreviewUri,
+    persistedUri: persistedAvatarUri,
+    placeholder: USER_AVATAR,
+  });
 
   const openMyBusinesses = () => {
     router.push("/profile/my-businesses");
@@ -1123,7 +1289,7 @@ export default function ProfileV2Clean() {
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <View>
                   <Image
-                    source={{ uri: profileImage || USER_AVATAR }}
+                    source={{ uri: displayedAvatarUri }}
                     style={{
                       width: 88,
                       height: 88,
@@ -1133,8 +1299,28 @@ export default function ProfileV2Clean() {
                       borderColor: "#fff",
                     }}
                   />
+                  {avatarUploading ? (
+                    <View
+                      style={{
+                        position: "absolute",
+                        width: 88,
+                        height: 88,
+                        borderRadius: 44,
+                        backgroundColor: "rgba(17,17,17,0.35)",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <ActivityIndicator color="#fff" />
+                    </View>
+                  ) : null}
                   <Pressable
                     onPress={updateProfileAvatar}
+                    disabled={avatarUploading}
+                    accessibilityState={{
+                      disabled: avatarUploading,
+                      busy: avatarUploading,
+                    }}
                     style={({ pressed }) => ({
                       position: "absolute",
                       right: 0,
@@ -1147,7 +1333,7 @@ export default function ProfileV2Clean() {
                       justifyContent: "center",
                       borderWidth: 2,
                       borderColor: theme.colors.card,
-                      opacity: pressed ? 0.85 : 1,
+                      opacity: avatarUploading ? 0.6 : pressed ? 0.85 : 1,
                     })}
                   >
                     <Ionicons name="camera" size={14} color="#fff" />
@@ -1194,6 +1380,31 @@ export default function ProfileV2Clean() {
                   >
                     {profile?.email || t("profile.noEmail")}
                   </Text>
+
+                  {avatarUploading ? (
+                    <Text
+                      style={{
+                        marginTop: 4,
+                        color: theme.colors.turquoise,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Uploading photo…
+                    </Text>
+                  ) : avatarUploadError ? (
+                    <Text
+                      style={{
+                        marginTop: 4,
+                        color: theme.colors.danger,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                      numberOfLines={3}
+                    >
+                      {avatarUploadError}
+                    </Text>
+                  ) : null}
 
                   {!isVerifiedMember ? (
                     <View

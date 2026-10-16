@@ -21,6 +21,7 @@ import {
     saveUserProfile,
 } from "../../lib/userSessionStorage";
 import { fetchAccountProfile, ProfileApiError } from "../../lib/profileApi";
+import { readPersistedAvatarUrl } from "../../lib/profileAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 
@@ -41,6 +42,7 @@ type UserProfile = {
     instagram?: string;
     profileImage?: string | null;
     profile_image?: string | null;
+    avatar_url?: string | null;
 };
 
 export default function EditProfileV2() {
@@ -141,7 +143,7 @@ export default function EditProfileV2() {
             setCity(saved.city || "");
             setPhone(saved.phone || "");
             setInstagram(saved.instagram || "");
-            setProfileImage(saved.profileImage || saved.profile_image || null);
+            setProfileImage(readPersistedAvatarUrl(savedRecord));
         } catch (error) {
             console.log("EDIT PROFILE LOAD ERROR:", error);
         }
@@ -160,6 +162,12 @@ export default function EditProfileV2() {
             const oldRecord = await loadUserProfile(userId);
             const oldProfile: UserProfile = (oldRecord || {}) as UserProfile;
 
+            const avatarUrl =
+                readPersistedAvatarUrl({
+                    avatar_url: profileImage,
+                    profileImage,
+                    profile_image: profileImage,
+                }) ?? readPersistedAvatarUrl(oldRecord);
             const updatedProfile: UserProfile = {
                 ...oldProfile,
 
@@ -172,8 +180,9 @@ export default function EditProfileV2() {
                 phone,
                 instagram,
 
-                profileImage,
-                profile_image: profileImage,
+                avatar_url: avatarUrl,
+                profileImage: avatarUrl,
+                profile_image: avatarUrl,
             };
 
             await saveUserProfile(userId, updatedProfile as Record<string, unknown>);

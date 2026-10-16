@@ -11,6 +11,7 @@ import {
   tryRefreshStoredAccessToken,
 } from "./authSession";
 import { isPlaceholderProfileName } from "./profileDisplay";
+import { applyAvatarMerge } from "./profileAvatar";
 import {
   businessOwnerId,
   businessOwnerUsername,
@@ -1804,7 +1805,7 @@ export const clearUserSession = async () => {
   }
 };
 
-/** API supplies identity; saved local custom fields must survive login refresh. */
+/** API supplies identity; saved local custom fields must survive login refresh. Server avatar_url replaces a stale local file URI. */
 export const mergeProfileWithApi = (
   cached: Record<string, unknown> | null,
   api: Record<string, unknown>
@@ -1821,7 +1822,7 @@ export const mergeProfileWithApi = (
   const resolvedApiName =
     apiName && !isPlaceholderProfileName(apiName) ? apiName : undefined;
 
-  return mergeStoredUserProfiles(userId, cached, {
+  const merged = mergeStoredUserProfiles(userId, cached, {
     ...api,
     id: userId,
     user_id: userId,
@@ -1830,4 +1831,5 @@ export const mergeProfileWithApi = (
     name: pickNonEmpty(cachedName, api.username, cached?.username, resolvedApiName),
     business_id: pickNonEmpty(api.business_id, cached?.business_id),
   });
+  return applyAvatarMerge(merged, cached, api);
 };
