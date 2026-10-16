@@ -5,16 +5,16 @@ export type OAuthPublicConfig = {
   googleWebClientId: string;
 };
 
-const read = (key: string): string => (process.env[key] || "").trim();
+const trimEnv = (value: string | undefined): string => (value || "").trim();
 
 const stagingConfig = (): OAuthPublicConfig => ({
-  googleIosClientId: read("EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID_STAGING"),
-  googleWebClientId: read("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID_STAGING"),
+  googleIosClientId: trimEnv(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID_STAGING),
+  googleWebClientId: trimEnv(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID_STAGING),
 });
 
 const productionConfig = (): OAuthPublicConfig => ({
-  googleIosClientId: read("EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID_PRODUCTION"),
-  googleWebClientId: read("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID_PRODUCTION"),
+  googleIosClientId: trimEnv(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID_PRODUCTION),
+  googleWebClientId: trimEnv(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID_PRODUCTION),
 });
 
 /** Public OAuth client IDs only — never secrets. */
