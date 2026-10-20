@@ -46,6 +46,13 @@ import {
 } from "../../lib/mapCoordinates";
 import { getClusterMarkerKey, getMapMarkerKey } from "../../lib/mapMarkers";
 import {
+  androidMarkerTrackingSignature,
+  createAndroidMarkerSnapshotTracker,
+  createMapDeselectGuard,
+  createMapSearchGestureGuard,
+  MAP_VIEWPORT_GUARD_MS,
+} from "../../lib/mapDeselectGuard";
+import {
   createRegionCompleteGuard,
   normalizeMapDisplayClusters,
 } from "../../lib/mapRegionGesture";
@@ -1010,47 +1017,74 @@ function MarkerPulseRing({
   );
 }
 
-function useAndroidMarkerViewTracking(
-  visualSignature: string,
-  needsContinuousTracking: boolean
-) {
+function useAndroidMarkerViewTracking(visualSignature: string) {
+  const trackerRef = useRef(createAndroidMarkerSnapshotTracker());
   const [tracksViewChanges, setTracksViewChanges] = useState(
     () => Platform.OS === "android"
   );
-  const signatureRef = useRef(visualSignature);
-  const stabilizedRef = useRef(false);
+
+  if (Platform.OS === "android") {
+    trackerRef.current.sync(visualSignature);
+    if (trackerRef.current.tracksViewChanges() && !tracksViewChanges) {
+      setTracksViewChanges(true);
+    }
+  }
 
   useEffect(() => {
-    if (Platform.OS !== "android") return;
+    if (Platform.OS !== "android" || !tracksViewChanges) return;
 
-    if (needsContinuousTracking) {
-      stabilizedRef.current = false;
-      setTracksViewChanges(true);
-      return;
-    }
+    let cancelled = false;
+    let fallback: ReturnType<typeof setTimeout> | undefined;
 
-    if (visualSignature !== signatureRef.current) {
-      signatureRef.current = visualSignature;
-      stabilizedRef.current = false;
-      setTracksViewChanges(true);
-    }
-  }, [needsContinuousTracking, visualSignature]);
+    const tick = () => {
+      fallback = setTimeout(() => {
+        if (cancelled) return;
+        const phase = trackerRef.current.fallbackTick();
+        if (phase === "waiting-for-layout") {
+          tick();
+          return;
+        }
+        setTracksViewChanges(trackerRef.current.tracksViewChanges());
+      }, 64);
+    };
+
+    tick();
+    return () => {
+      cancelled = true;
+      if (fallback) clearTimeout(fallback);
+    };
+  }, [tracksViewChanges, visualSignature]);
 
   const handleMarkerContentLayout = useCallback(() => {
     if (Platform.OS !== "android") return;
-    if (needsContinuousTracking) return;
-    if (stabilizedRef.current) return;
+    if (!trackerRef.current.noteLayout()) return;
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        stabilizedRef.current = true;
+        if (!trackerRef.current.commitAfterLayout()) return;
         setTracksViewChanges(false);
       });
     });
-  }, [needsContinuousTracking]);
+  }, []);
 
   return { tracksViewChanges, handleMarkerContentLayout };
 }
+
+const MARKER_TOUCH_TARGET = 44;
+
+/** Keep the visible marker's bottom-center on the map coordinate inside the larger touch box. */
+function markerTouchAnchor(visualSize: number) {
+  const visualBottom = (MARKER_TOUCH_TARGET + visualSize) / 2;
+  return { x: 0.5, y: visualBottom / MARKER_TOUCH_TARGET };
+}
+
+const markerTouchStyle = {
+  minWidth: MARKER_TOUCH_TARGET,
+  minHeight: MARKER_TOUCH_TARGET,
+  alignItems: "center" as const,
+  justifyContent: "center" as const,
+  backgroundColor: "transparent",
+};
 
 type MapClusterMarkerProps = {
   cluster: Extract<MapMarkerDisplay, { type: "cluster" }>;
@@ -1062,9 +1096,8 @@ const MapClusterMarker = memo(function MapClusterMarker({
   clusterKey,
   onPress,
 }: MapClusterMarkerProps & { clusterKey: string }) {
-  const visualSignature = clusterKey;
   const { tracksViewChanges, handleMarkerContentLayout } =
-    useAndroidMarkerViewTracking(visualSignature, false);
+    useAndroidMarkerViewTracking(clusterKey);
 
   return (
     <Marker
@@ -1073,6 +1106,8 @@ const MapClusterMarker = memo(function MapClusterMarker({
         latitude: cluster.latitude,
         longitude: cluster.longitude,
       }}
+      anchor={markerTouchAnchor(30)}
+      moveOnMarkerPress={false}
       onPress={(e) => {
         e.stopPropagation?.();
         onPress(cluster);
@@ -1082,33 +1117,39 @@ const MapClusterMarker = memo(function MapClusterMarker({
       <View
         collapsable={false}
         pointerEvents="none"
-        onLayout={handleMarkerContentLayout}
-        style={{
-          minWidth: 30,
-          height: 30,
-          paddingHorizontal: 6,
-          borderRadius: 15,
-          backgroundColor: "#FFFFFF",
-          borderWidth: 1.5,
-          borderColor: theme.colors.turquoise,
-          alignItems: "center",
-          justifyContent: "center",
-          shadowColor: "#000",
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-          shadowOffset: { width: 0, height: 2 },
-          elevation: 3,
-        }}
+        style={markerTouchStyle}
       >
-        <Text
+        <View
+          collapsable={false}
+          pointerEvents="none"
+          onLayout={handleMarkerContentLayout}
           style={{
-            fontSize: 12,
-            fontWeight: "800",
-            color: theme.colors.turquoise,
+            minWidth: 30,
+            height: 30,
+            paddingHorizontal: 6,
+            borderRadius: 15,
+            backgroundColor: "#FFFFFF",
+            borderWidth: 1.5,
+            borderColor: theme.colors.turquoise,
+            alignItems: "center",
+            justifyContent: "center",
+            shadowColor: "#000",
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 2 },
+            elevation: 3,
           }}
         >
-          {cluster.count}
-        </Text>
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: "800",
+              color: theme.colors.turquoise,
+            }}
+          >
+            {cluster.count}
+          </Text>
+        </View>
       </View>
     </Marker>
   );
@@ -1135,11 +1176,14 @@ const MapPointMarker = memo(function MapPointMarker({
     : MARKER_VISUALS[kind];
   const pinSize = isActive ? 34 : 30;
   const iconSize = isActive ? 15 : 13;
-  const visualSignature = `${markerKey}:${isActive ? 1 : 0}:${
-    activeUpdate ? "update" : "plain"
-  }:${kind}`;
+  const trackingSignature = androidMarkerTrackingSignature({
+    markerKey,
+    selected: isActive,
+    activeUpdate: Boolean(activeUpdate),
+    kind,
+  });
   const { tracksViewChanges, handleMarkerContentLayout } =
-    useAndroidMarkerViewTracking(visualSignature, isActive);
+    useAndroidMarkerViewTracking(trackingSignature);
 
   return (
     <Marker
@@ -1148,6 +1192,8 @@ const MapPointMarker = memo(function MapPointMarker({
         latitude: point.latitude,
         longitude: point.longitude,
       }}
+      anchor={markerTouchAnchor(pinSize)}
+      moveOnMarkerPress={false}
       onPress={(e) => {
         e.stopPropagation?.();
         onPress(item);
@@ -1159,12 +1205,15 @@ const MapPointMarker = memo(function MapPointMarker({
       <View
         collapsable={false}
         pointerEvents="none"
-        onLayout={handleMarkerContentLayout}
-        style={{
-          alignItems: "center",
-          justifyContent: "center",
-        }}
+        style={markerTouchStyle}
       >
+        <View
+          pointerEvents="none"
+          style={{
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
         <MarkerPulseRing
           active={isActive}
           color={isActive ? theme.colors.turquoise : visual.accent}
@@ -1186,6 +1235,8 @@ const MapPointMarker = memo(function MapPointMarker({
         ) : null}
 
         <View
+          collapsable={false}
+          onLayout={handleMarkerContentLayout}
           style={{
             width: pinSize,
             height: pinSize,
@@ -1229,6 +1280,7 @@ const MapPointMarker = memo(function MapPointMarker({
             }}
           />
         ) : null}
+        </View>
       </View>
     </Marker>
   );
@@ -1288,7 +1340,9 @@ export default function MapScreenV25() {
   const mapRegionRef = useRef<Region>(SAN_DIEGO_REGION);
   const pendingMapRegionRef = useRef<Region | null>(null);
   const businessPreviewOpenRef = useRef(false);
-  const suppressMapDeselectRef = useRef(false);
+  const suppressMapDeselectRef = useRef(createMapDeselectGuard());
+  const viewportGuardSeqRef = useRef(0);
+  const mapSearchGestureRef = useRef(createMapSearchGestureGuard());
   const [previewCarouselData, setPreviewCarouselData] = useState<
     MapPreviewCarouselEntry[]
   >([]);
@@ -1305,6 +1359,23 @@ export default function MapScreenV25() {
 
   const dismissKeyboard = () => {
     Keyboard.dismiss();
+  };
+
+  const beginMapSearchGesture = () => {
+    mapSearchGestureRef.current.begin();
+  };
+
+  const endMapSearchGesture = () => {
+    mapSearchGestureRef.current.end();
+  };
+
+  const releaseMapDeselectGuard = (delayMs: number) => {
+    const viewportSeq = ++viewportGuardSeqRef.current;
+    const armedGeneration = suppressMapDeselectRef.current.generation();
+    setTimeout(() => {
+      if (viewportGuardSeqRef.current !== viewportSeq) return;
+      suppressMapDeselectRef.current.release(armedGeneration);
+    }, delayMs);
   };
 
   const commitMapRegion = useCallback((region: Region) => {
@@ -1345,6 +1416,11 @@ export default function MapScreenV25() {
       const clamped = clampMapRegion(region);
       commitMapRegion(clamped);
       pendingViewportRef.current = { region: clamped, animate };
+      const viewportSeq = ++viewportGuardSeqRef.current;
+      const armedGeneration = suppressMapDeselectRef.current.generation();
+      const guardMs = animate
+        ? MAP_VIEWPORT_GUARD_MS.animate
+        : MAP_VIEWPORT_GUARD_MS.immediate;
 
       InteractionManager.runAfterInteractions(() => {
         requestAnimationFrame(() => {
@@ -1352,7 +1428,10 @@ export default function MapScreenV25() {
             flushPendingMapViewport();
             setTimeout(() => {
               suppressViewportDirtyRef.current = false;
-            }, animate ? 500 : 50);
+              if (viewportGuardSeqRef.current === viewportSeq) {
+                suppressMapDeselectRef.current.release(armedGeneration);
+              }
+            }, guardMs);
           });
         });
       });
@@ -1567,8 +1646,11 @@ export default function MapScreenV25() {
   };
 
   const handleMapBackgroundPress = (action?: string) => {
+    if (mapSearchGestureRef.current.shouldIgnoreBackgroundPress()) {
+      return;
+    }
     dismissKeyboard();
-    if (suppressMapDeselectRef.current || action === "marker-press") {
+    if (!suppressMapDeselectRef.current.shouldClearSelection(action)) {
       return;
     }
     clearSelectedMapItem();
@@ -2146,7 +2228,7 @@ export default function MapScreenV25() {
       mapPoints.find((p) => getId(p.item) === getId(item)) ??
       resolveMapPoints([item])[0];
 
-    if (!point) return;
+    if (!point) return false;
 
     const latOffset = isMapEvent(item) ? 0.006 : 0.012;
     const region: Region = {
@@ -2157,6 +2239,7 @@ export default function MapScreenV25() {
     };
 
     scheduleMapViewport(region, options?.animate !== false);
+    return true;
   };
 
   const selectMapItem = (
@@ -2164,17 +2247,18 @@ export default function MapScreenV25() {
     options?: { focus?: boolean; animate?: boolean }
   ) => {
     dismissKeyboard();
-    suppressMapDeselectRef.current = true;
+    suppressMapDeselectRef.current.arm();
     businessPreviewOpenRef.current = !isMapEvent(item);
     setSelectedItem(item);
 
-    if (options?.focus !== false) {
-      focusOnMapItem(item, { animate: options?.animate !== false });
-    }
+    const focused =
+      options?.focus === false
+        ? false
+        : focusOnMapItem(item, { animate: options?.animate !== false });
 
-    requestAnimationFrame(() => {
-      suppressMapDeselectRef.current = false;
-    });
+    if (!focused) {
+      releaseMapDeselectGuard(MAP_VIEWPORT_GUARD_MS.immediate);
+    }
   };
 
   const toggleFavorite = async (item: MapItem) => {
@@ -2360,7 +2444,7 @@ export default function MapScreenV25() {
   const handleMapMarkerPress = useCallback(
     (item: MapItem) => {
       dismissKeyboard();
-      suppressMapDeselectRef.current = true;
+      suppressMapDeselectRef.current.arm();
       businessPreviewOpenRef.current = !isMapEvent(item);
       setSelectedItem(item);
 
@@ -2368,22 +2452,21 @@ export default function MapScreenV25() {
         mapPointsRef.current.find((p) => getId(p.item) === getId(item)) ??
         resolveMapPoints([item])[0];
 
-      if (point) {
-        const latOffset = isMapEvent(item) ? 0.006 : 0.012;
-        scheduleMapViewport(
-          {
-            latitude: point.latitude - latOffset,
-            longitude: point.longitude,
-            latitudeDelta: 0.055,
-            longitudeDelta: 0.055,
-          },
-          true
-        );
+      if (!point) {
+        releaseMapDeselectGuard(MAP_VIEWPORT_GUARD_MS.immediate);
+        return;
       }
 
-      requestAnimationFrame(() => {
-        suppressMapDeselectRef.current = false;
-      });
+      const latOffset = isMapEvent(item) ? 0.006 : 0.012;
+      scheduleMapViewport(
+        {
+          latitude: point.latitude - latOffset,
+          longitude: point.longitude,
+          latitudeDelta: 0.055,
+          longitudeDelta: 0.055,
+        },
+        true
+      );
     },
     [scheduleMapViewport]
   );
@@ -2540,6 +2623,14 @@ export default function MapScreenV25() {
             }}
           >
             <View
+              onTouchStart={beginMapSearchGesture}
+              onTouchEnd={endMapSearchGesture}
+              onTouchCancel={endMapSearchGesture}
+              onStartShouldSetResponderCapture={() => {
+                beginMapSearchGesture();
+                return false;
+              }}
+              onStartShouldSetResponder={() => true}
               style={{
                 flex: 1,
                 height: 46,
