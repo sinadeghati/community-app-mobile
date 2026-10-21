@@ -14,6 +14,7 @@
     "staging": {
       "distribution": "internal",
       "channel": "staging",
+      "environment": "preview",
       "env": {
         "EXPO_PUBLIC_API_ENV": "staging"
       }
