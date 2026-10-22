@@ -77,6 +77,18 @@ async function setTokens(tokens: Tokens | null | undefined) {
   await AsyncStorage.removeItem(LEGACY_ASYNC_KEY);
 }
 
+/** Social login only. SecureStore is enough for the next cold start. */
+export async function setSocialLoginTokens(tokens: Tokens): Promise<void> {
+  const access = String(tokens?.access || "").trim();
+  if (!access) {
+    throw new Error("missing_access_token");
+  }
+
+  const refresh = String(tokens.refresh || "").trim();
+  const normalized: Tokens = refresh ? { access, refresh } : { access };
+  await SecureStore.setItemAsync(KEY, JSON.stringify(normalized));
+}
+
 async function getTokens(): Promise<Tokens | null> {
   let raw = await readSecure();
   if (!raw) {

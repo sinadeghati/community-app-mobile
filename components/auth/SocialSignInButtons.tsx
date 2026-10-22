@@ -17,7 +17,10 @@ import {
   SocialAuthCancelledError,
 } from "../../lib/socialAuth";
 import { API } from "../../lib/api";
-import { completeSocialLogin } from "../../lib/completeSocialLogin";
+import {
+  completeSocialLogin,
+  runAfterNativeAuthDismissal,
+} from "../../lib/completeSocialLogin";
 import { formatAuthError, isExistingAccountLinkRequired } from "../../lib/authErrors";
 import { theme } from "../../lib/theme";
 
@@ -51,6 +54,11 @@ export function SocialSignInButtons({ disabled, onBusyChange }: Props) {
     onBusyChange?.(value);
   };
 
+  const clearLoadingAfterAuthDismissal = () =>
+    runAfterNativeAuthDismissal(() => {
+      setLoading(false);
+    });
+
   const handleGoogle = async () => {
     if (busy || disabled) return;
     try {
@@ -74,7 +82,7 @@ export function SocialSignInButtons({ disabled, onBusyChange }: Props) {
         formatAuthError(error, "We could not sign you in with Google. Please try again.")
       );
     } finally {
-      setLoading(false);
+      await clearLoadingAfterAuthDismissal();
     }
   };
 
@@ -105,7 +113,7 @@ export function SocialSignInButtons({ disabled, onBusyChange }: Props) {
         formatAuthError(error, "We could not sign you in with Apple. Please try again.")
       );
     } finally {
-      setLoading(false);
+      await clearLoadingAfterAuthDismissal();
     }
   };
 

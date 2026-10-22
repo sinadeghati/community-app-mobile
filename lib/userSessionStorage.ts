@@ -1763,6 +1763,15 @@ export const reconcileSessionBusinessCache = async (
   }
 };
 
+/**
+ * Social login: drop the in-memory hydrate cache only.
+ * Access and refresh already live in SecureStore. AsyncStorage session markers
+ * are rebuilt on the next hydrate from that token.
+ */
+export const bindSocialLoginSession = (): void => {
+  invalidateHydrateAuthCache();
+};
+
 /** Login: bind session to user id and reconcile polluted scoped business cache. */
 export const prepareSessionForUser = async (
   userId: string,
