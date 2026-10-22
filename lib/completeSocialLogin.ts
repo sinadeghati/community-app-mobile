@@ -1,3 +1,5 @@
+import type { PendingBusinessClaimReturn } from "./businessClaimReturnIntent";
+
 export type SocialTokenPayload = {
   access?: string;
   refresh?: string;
@@ -6,41 +8,13 @@ export type SocialTokenPayload = {
 
 type StoredTokens = { access: string; refresh?: string };
 
-type AfterNativeAuthInteractions = (
-  task: () => void | Promise<void>
-) => void;
-
 export type SocialLoginDependencies = {
   setTokens: (tokens: StoredTokens) => Promise<void>;
   clearHydrateCache: () => void | Promise<void>;
-  navigateAfterAuthentication: () => Promise<void> | void;
-  runAfterInteractions: AfterNativeAuthInteractions;
+  navigateAfterAuthentication: (
+    preloadedPending: PendingBusinessClaimReturn | null
+  ) => Promise<void> | void;
 };
-
-const runWithInteractionManager: AfterNativeAuthInteractions = (task) => {
-  const { InteractionManager } = require("react-native") as {
-    InteractionManager: {
-      runAfterInteractions: (task: () => void) => void;
-    };
-  };
-  InteractionManager.runAfterInteractions(() => {
-    void task();
-  });
-};
-
-/** Let the Google or Apple sheet finish dismissing before the next UI update. */
-export const runAfterNativeAuthDismissal = (
-  task: () => void | Promise<void>,
-  runAfterInteractions: AfterNativeAuthInteractions = runWithInteractionManager
-): Promise<void> =>
-  new Promise((resolve, reject) => {
-    runAfterInteractions(() => {
-      Promise.resolve()
-        .then(task)
-        .then(() => resolve())
-        .catch(reject);
-    });
-  });
 
 export const socialLoginSetTokens = async (
   tokens: StoredTokens
@@ -49,20 +23,23 @@ export const socialLoginSetTokens = async (
   await setSocialLoginTokens(tokens);
 };
 
-const defaultSocialLoginDependencies = async (): Promise<SocialLoginDependencies> => {
+const defaultSocialLoginDependencies = async (
+  preloadedPending: PendingBusinessClaimReturn | null
+): Promise<SocialLoginDependencies> => {
   const { bindSocialLoginSession } = await import("./userSessionStorage");
   const { navigateAfterAuthentication } = await import("./postAuthNavigation");
 
   return {
     setTokens: socialLoginSetTokens,
     clearHydrateCache: bindSocialLoginSession,
-    navigateAfterAuthentication,
-    runAfterInteractions: runWithInteractionManager,
+    navigateAfterAuthentication: () =>
+      navigateAfterAuthentication({ preloadedPending }),
   };
 };
 
 export const completeSocialLogin = async (
   payload: SocialTokenPayload,
+  preloadedPending: PendingBusinessClaimReturn | null = null,
   dependencies?: SocialLoginDependencies
 ): Promise<void> => {
   const access = payload?.access || payload?.tokens?.access;
@@ -72,13 +49,10 @@ export const completeSocialLogin = async (
     throw new Error("missing_access_token");
   }
 
-  const deps = dependencies ?? (await defaultSocialLoginDependencies());
+  const deps =
+    dependencies ?? (await defaultSocialLoginDependencies(preloadedPending));
 
   await deps.setTokens({ access, refresh });
   await deps.clearHydrateCache();
-
-  await runAfterNativeAuthDismissal(
-    () => deps.navigateAfterAuthentication(),
-    deps.runAfterInteractions
-  );
+  await deps.navigateAfterAuthentication(preloadedPending);
 };

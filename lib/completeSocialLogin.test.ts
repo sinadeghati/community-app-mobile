@@ -2,6 +2,7 @@
  * Run: npx tsx lib/completeSocialLogin.test.ts
  */
 import { createRequire } from "node:module";
+import type { PendingBusinessClaimReturn } from "./businessClaimReturnIntent";
 
 const nodeRequire = createRequire(`${process.cwd()}/package.json`);
 
@@ -28,15 +29,14 @@ const assertRejects = async (
   throw new Error(`FAIL: ${label} (did not throw)`);
 };
 
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 type StorageSpies = {
   secure: { key: string; value: string }[];
   mutations: string[];
+  routes: string[];
 };
 
 const installStorageMocks = (): StorageSpies => {
-  const state: StorageSpies = { secure: [], mutations: [] };
+  const state: StorageSpies = { secure: [], mutations: [], routes: [] };
   const Module = nodeRequire("module") as {
     prototype: { require: (this: unknown, id: string) => unknown };
   };
@@ -56,18 +56,18 @@ const installStorageMocks = (): StorageSpies => {
     if (spec.includes("async-storage")) {
       const record = (name: string) => async () => {
         state.mutations.push(name);
+        return null;
       };
-      return {
-        default: {
-          setItem: record("setItem"),
-          removeItem: record("removeItem"),
-          multiRemove: record("multiRemove"),
-          multiSet: record("multiSet"),
-          getItem: async () => null,
-          getAllKeys: async () => [],
-          multiGet: async () => [],
-        },
+      const api = {
+        setItem: record("setItem"),
+        removeItem: record("removeItem"),
+        multiRemove: record("multiRemove"),
+        multiSet: record("multiSet"),
+        getItem: record("getItem"),
+        getAllKeys: async () => [],
+        multiGet: record("multiGet"),
       };
+      return { __esModule: true, default: api };
     }
     if (spec === "react-native") {
       return {
@@ -79,149 +79,96 @@ const installStorageMocks = (): StorageSpies => {
         },
       };
     }
+    if (spec === "expo-router") {
+      return {
+        router: {
+          replace: (href: unknown) => {
+            state.routes.push(`replace:${JSON.stringify(href)}`);
+          },
+          dismissTo: (href: unknown) => {
+            state.routes.push(`dismissTo:${JSON.stringify(href)}`);
+          },
+          push: (href: unknown) => {
+            state.routes.push(`push:${JSON.stringify(href)}`);
+          },
+          canGoBack: () => false,
+          canDismiss: () => false,
+        },
+      };
+    }
     return original.apply(this, arguments);
   };
 
   return state;
 };
 
+const claim: PendingBusinessClaimReturn = {
+  routeProfileId: "19",
+  serverListingId: "19",
+  openClaimModal: true,
+  savedAt: 1,
+  awaitingAuth: true,
+};
+
 const main = async () => {
+  (globalThis as { __DEV__?: boolean }).__DEV__ = false;
   const storage = installStorageMocks();
-  const { completeSocialLogin, socialLoginSetTokens } = await import(
-    "./completeSocialLogin"
-  );
-  const { bindSocialLoginSession } = await import("./userSessionStorage");
+  const { completeSocialLogin } = await import("./completeSocialLogin");
 
-  bindSocialLoginSession();
-  assert(
-    "clearing the social hydrate cache does not write AsyncStorage",
-    storage.mutations.length === 0
-  );
-
-  type Harness = {
-    events: string[];
-    releaseInteraction: () => void;
-  };
-
-  const createHarness = (): Harness => {
-    const events: string[] = [];
-    let queued: (() => void | Promise<void>) | null = null;
-
-    return {
-      events,
-      releaseInteraction: () => {
-        if (!queued) throw new Error("navigation was not scheduled");
-        void queued();
-      },
-      deps: {
-        setTokens: async (tokens: { access: string; refresh?: string }) => {
-          await socialLoginSetTokens(tokens);
-          events.push("tokens");
-        },
-        clearHydrateCache: () => {
-          bindSocialLoginSession();
-          events.push("cache");
-        },
-        navigateAfterAuthentication: async () => {
-          events.push("navigate");
-        },
-        runAfterInteractions: (task: () => void | Promise<void>) => {
-          queued = task;
-          events.push("scheduled");
-        },
-      },
-    } as Harness & {
-      deps: {
-        setTokens: (tokens: { access: string; refresh?: string }) => Promise<void>;
-        clearHydrateCache: () => void;
-        navigateAfterAuthentication: () => Promise<void>;
-        runAfterInteractions: (task: () => void | Promise<void>) => void;
-      };
-    };
-  };
-
-  const success = createHarness() as ReturnType<typeof createHarness> & {
-    deps: {
-      setTokens: (tokens: { access: string; refresh?: string }) => Promise<void>;
-      clearHydrateCache: () => void;
-      navigateAfterAuthentication: () => Promise<void>;
-      runAfterInteractions: (task: () => void | Promise<void>) => void;
-    };
-  };
-  const pending = completeSocialLogin(
+  await completeSocialLogin(
     { access: "access-token", refresh: "refresh-token" },
-    success.deps
+    null
   );
-
-  const waitUntil = async (ready: () => boolean) => {
-    for (let attempt = 0; attempt < 20 && !ready(); attempt += 1) {
-      await flush();
-    }
-  };
-
-  await waitUntil(() => success.events.includes("scheduled"));
-
   const stored = storage.secure[0];
-  const parsed = stored ? (JSON.parse(stored.value) as { access?: string; refresh?: string }) : null;
+  const parsed = stored
+    ? (JSON.parse(stored.value) as { access?: string; refresh?: string })
+    : null;
   assert(
-    "successful social login stores access and refresh through SecureStore",
+    "successful social login stores access and refresh and navigates once",
     storage.secure.length === 1 &&
       stored.key === "authTokens_v2" &&
       parsed?.access === "access-token" &&
-      parsed?.refresh === "refresh-token"
+      parsed?.refresh === "refresh-token" &&
+      storage.routes.length === 1 &&
+      storage.routes[0] === 'replace:"/(tabs)/explore"'
   );
   assert(
-    "successful social login does not call AsyncStorage removeItem, multiRemove, or setItem before navigation",
-    storage.mutations.length === 0 && !success.events.includes("navigate")
-  );
-  assert(
-    "navigation is scheduled only after SecureStore persistence",
-    success.events.indexOf("tokens") !== -1 &&
-      success.events.indexOf("tokens") < success.events.indexOf("scheduled")
+    "no AsyncStorage getItem, setItem, removeItem, multiGet, multiSet, or multiRemove occurs after social token storage",
+    storage.mutations.length === 0
   );
 
-  success.releaseInteraction();
-  await pending;
-
-  assert(
-    "navigation runs only after token persistence",
-    success.events.includes("navigate") &&
-      success.events.indexOf("tokens") < success.events.indexOf("navigate") &&
-      storage.mutations.length === 0
-  );
-
-  const nestedStart = storage.secure.length;
-  const nested = createHarness() as typeof success;
-  const nestedPending = completeSocialLogin(
+  const routesBeforeClaim = storage.routes.length;
+  const secureBeforeClaim = storage.secure.length;
+  await completeSocialLogin(
     { tokens: { access: "nested-access", refresh: "nested-refresh" } },
-    nested.deps
+    claim
   );
-  await waitUntil(() => nested.events.includes("scheduled"));
-  const nestedStored = storage.secure[nestedStart];
-  const nestedParsed = JSON.parse(nestedStored.value) as {
+  const claimStored = storage.secure[secureBeforeClaim];
+  const claimParsed = JSON.parse(claimStored.value) as {
     access?: string;
     refresh?: string;
   };
   assert(
-    "nested token payloads are stored in SecureStore before navigation",
-    nestedParsed.access === "nested-access" &&
-      nestedParsed.refresh === "nested-refresh" &&
-      !nested.events.includes("navigate") &&
-      storage.mutations.length === 0
+    "a preloaded claim uses the existing profile route without another storage read/write",
+    claimParsed.access === "nested-access" &&
+      claimParsed.refresh === "nested-refresh" &&
+      storage.mutations.length === 0 &&
+      storage.routes.slice(routesBeforeClaim).join("|") ===
+        'dismissTo:{"pathname":"/profile/v2","params":{"id":"19"}}'
   );
-  nested.releaseInteraction();
-  await nestedPending;
 
-  const missing = createHarness() as typeof success;
   const secureBeforeMissing = storage.secure.length;
+  const routesBeforeMissing = storage.routes.length;
   await assertRejects(
     "a response without an access token does not navigate",
-    () => completeSocialLogin({ refresh: "only-refresh" }, missing.deps),
+    () => completeSocialLogin({ refresh: "only-refresh" }, null),
     "missing_access_token"
   );
   assert(
-    "a missing access token does not store tokens or schedule navigation",
-    missing.events.length === 0 && storage.secure.length === secureBeforeMissing
+    "missing access token neither stores nor navigates",
+    storage.secure.length === secureBeforeMissing &&
+      storage.routes.length === routesBeforeMissing &&
+      storage.mutations.length === 0
   );
 
   console.log("completeSocialLogin tests passed");

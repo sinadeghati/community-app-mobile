@@ -3,6 +3,7 @@ import { logClaimNavigation } from "./claimNavigationDebug";
 import {
   markPendingBusinessClaimAuthResumeReady,
   peekPendingBusinessClaimReturn,
+  type PendingBusinessClaimReturn,
 } from "./businessClaimReturnIntent";
 import {
   resolvePostAuthNavigationAction,
@@ -16,10 +17,18 @@ const runResetExploreThenProfile = (href: ClaimProfileHref): void => {
   });
 };
 
-/** After login/register/verify, return to pending business claim or default home. */
-export const navigateAfterAuthentication = async (): Promise<void> => {
-  const pending = await peekPendingBusinessClaimReturn();
-  if (pending) {
+/**
+ * Email login omits options and reads the stored claim.
+ * Social login passes the claim preloaded before the native sheet, including null.
+ */
+export const navigateAfterAuthentication = async (options?: {
+  preloadedPending: PendingBusinessClaimReturn | null;
+}): Promise<void> => {
+  const pending =
+    options !== undefined
+      ? options.preloadedPending
+      : await peekPendingBusinessClaimReturn();
+  if (options === undefined && pending) {
     await markPendingBusinessClaimAuthResumeReady();
   }
 

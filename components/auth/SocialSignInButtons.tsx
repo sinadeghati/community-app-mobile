@@ -17,11 +17,14 @@ import {
   SocialAuthCancelledError,
 } from "../../lib/socialAuth";
 import { API } from "../../lib/api";
-import {
-  completeSocialLogin,
-  runAfterNativeAuthDismissal,
-} from "../../lib/completeSocialLogin";
+import { completeSocialLogin } from "../../lib/completeSocialLogin";
 import { formatAuthError, isExistingAccountLinkRequired } from "../../lib/authErrors";
+import {
+  markPendingBusinessClaimAuthResumeReady,
+  peekPendingBusinessClaimReturn,
+  savePendingBusinessClaimReturn,
+  type PendingBusinessClaimReturn,
+} from "../../lib/businessClaimReturnIntent";
 import { theme } from "../../lib/theme";
 
 type Props = {
@@ -32,6 +35,7 @@ type Props = {
 export function SocialSignInButtons({ disabled, onBusyChange }: Props) {
   const [busy, setBusy] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,68 +58,73 @@ export function SocialSignInButtons({ disabled, onBusyChange }: Props) {
     onBusyChange?.(value);
   };
 
-  const clearLoadingAfterAuthDismissal = () =>
-    runAfterNativeAuthDismissal(() => {
-      setLoading(false);
+  const clearResumeReadyIfMarked = async (
+    markedResumeReady: boolean,
+    pending: PendingBusinessClaimReturn | null
+  ) => {
+    if (!markedResumeReady || !pending) return;
+    await savePendingBusinessClaimReturn({
+      routeProfileId: pending.routeProfileId,
+      serverListingId: pending.serverListingId,
+      openClaimModal: pending.openClaimModal,
+      awaitingAuth: pending.awaitingAuth,
     });
+  };
 
-  const handleGoogle = async () => {
+  const runSocialAuthentication = async (
+    provider: "Google" | "Apple",
+    authenticate: (pending: PendingBusinessClaimReturn | null) => Promise<void>
+  ) => {
     if (busy || disabled) return;
+    setErrorMessage(null);
+    setLoading(true);
+
+    let pending: PendingBusinessClaimReturn | null = null;
+    let markedResumeReady = false;
     try {
-      setLoading(true);
-      const { idToken } = await signInWithGoogleNative();
-      const payload = await API.socialGoogleLogin(idToken);
-      await completeSocialLogin(payload);
-    } catch (error) {
-      if (error instanceof SocialAuthCancelledError) return;
-      if (isExistingAccountLinkRequired(error)) {
-        const { Alert } = await import("react-native");
-        Alert.alert(
-          "Account already exists",
-          "An account with this email already uses email and password. Sign in that way first, then link Google from your profile."
-        );
-        return;
+      pending = await peekPendingBusinessClaimReturn();
+      if (pending && !pending.authResumeReady) {
+        await markPendingBusinessClaimAuthResumeReady();
+        markedResumeReady = true;
       }
-      const { Alert } = await import("react-native");
-      Alert.alert(
-        "Google sign-in failed",
-        formatAuthError(error, "We could not sign you in with Google. Please try again.")
-      );
-    } finally {
-      await clearLoadingAfterAuthDismissal();
+      await authenticate(pending);
+    } catch (error) {
+      try {
+        await clearResumeReadyIfMarked(markedResumeReady, pending);
+      } catch {
+        // Claim cleanup must not hide the original auth result.
+      }
+      if (!(error instanceof SocialAuthCancelledError)) {
+        setErrorMessage(
+          isExistingAccountLinkRequired(error)
+            ? `Account already exists. An account with this email already uses email and password. Sign in that way first, then link ${provider} from your profile.`
+            : formatAuthError(
+                error,
+                `We could not sign you in with ${provider}. Please try again.`
+              )
+        );
+      }
+      setLoading(false);
     }
   };
 
-  const handleApple = async () => {
-    if (busy || disabled) return;
-    try {
-      setLoading(true);
+  const handleGoogle = () =>
+    runSocialAuthentication("Google", async (pending) => {
+      const { idToken } = await signInWithGoogleNative();
+      const payload = await API.socialGoogleLogin(idToken);
+      await completeSocialLogin(payload, pending);
+    });
+
+  const handleApple = () =>
+    runSocialAuthentication("Apple", async (pending) => {
       const apple = await signInWithAppleNative();
       const payload = await API.socialAppleLogin(
         apple.identityToken,
         apple.nonce,
         apple.fullName
       );
-      await completeSocialLogin(payload);
-    } catch (error) {
-      if (error instanceof SocialAuthCancelledError) return;
-      if (isExistingAccountLinkRequired(error)) {
-        const { Alert } = await import("react-native");
-        Alert.alert(
-          "Account already exists",
-          "An account with this email already uses email and password. Sign in that way first, then link Apple from your profile."
-        );
-        return;
-      }
-      const { Alert } = await import("react-native");
-      Alert.alert(
-        "Apple sign-in failed",
-        formatAuthError(error, "We could not sign you in with Apple. Please try again.")
-      );
-    } finally {
-      await clearLoadingAfterAuthDismissal();
-    }
-  };
+      await completeSocialLogin(payload, pending);
+    });
 
   const showGoogle = canUseGoogleSignIn();
   if (!showGoogle && !appleAvailable) {
@@ -151,8 +160,13 @@ export function SocialSignInButtons({ disabled, onBusyChange }: Props) {
           cornerRadius={14}
           style={styles.appleBtn}
           onPress={handleApple}
-          disabled={busy || disabled}
         />
+      ) : null}
+
+      {errorMessage ? (
+        <Text accessibilityRole="alert" style={styles.errorText}>
+          {errorMessage}
+        </Text>
       ) : null}
 
       <View style={styles.dividerRow}>
@@ -179,6 +193,12 @@ const styles = StyleSheet.create({
   },
   googleText: { fontSize: 16, fontWeight: "700", color: "#111" },
   appleBtn: { width: "100%", height: 52 },
+  errorText: {
+    color: theme.colors.danger,
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   disabled: { opacity: 0.6 },
   dividerRow: {
     flexDirection: "row",
